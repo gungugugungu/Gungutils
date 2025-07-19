@@ -7,6 +7,3 @@
 [submodule "include/stb"]
 	path = include/stb
 	url = https://github.com/nothings/stb.git
-[submodule "include/cgltf"]
-	path = include/cgltf
-	url = https://github.com/jkuhlmann/cgltf.git

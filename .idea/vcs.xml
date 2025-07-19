@@ -2,9 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/include/HandmadeMath" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/include/cgltf" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/include/sokol" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/include/stb" vcs="Git" />
   </component>
 </project>
