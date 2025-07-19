@@ -1,0 +1,12 @@
+[submodule "include/sokol"]
+	path = include/sokol
+	url = https://github.com/floooh/sokol.git
+[submodule "include/HandmadeMath"]
+	path = include/HandmadeMath
+	url = https://github.com/HandmadeMath/HandmadeMath.git
+[submodule "include/stb"]
+	path = include/stb
+	url = https://github.com/nothings/stb.git
+[submodule "include/cgltf"]
+	path = include/cgltf
+	url = https://github.com/jkuhlmann/cgltf.git
