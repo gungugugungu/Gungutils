@@ -19,6 +19,8 @@
 #include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
+#define TINYGLTF_IMPLEMENTATION
+#include "tinygltf/tiny_gltf.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 
@@ -52,16 +54,13 @@ void fetch_callback(const sfetch_response_t* response);
 
 class Mesh {
 public:
-    // Transform components
     HMM_Vec3 position = {0.0f, 0.0f, 0.0f};
-    HMM_Quat rotation = {0.0f, 0.0f, 0.0f, 1.0f};  // w=1 identity
+    HMM_Quat rotation = {0.0f, 0.0f, 0.0f, 1.0f};
     HMM_Vec3 scale = {1.0f, 1.0f, 1.0f};
 
-    // Vertex data: interleaved positions (3 floats) and texcoords (2 floats)
-    std::vector<float> vertices;
+    float vertices[];
 
-    // Index data
-    std::vector<unsigned int> indices;
+    unsigned int indices[];
 };
 
 void init() {
@@ -70,7 +69,6 @@ void init() {
     sg_setup(&desc);
     stm_setup();
 
-    // flip images after loading
     stbi_set_flip_vertically_on_load(true);
 
     sapp_show_mouse(false);
@@ -78,7 +76,7 @@ void init() {
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
-    state.yaw = -90.0f;  // Start looking down the negative Z axis
+    state.yaw = -90.0f;
     state.pitch = 0.0f;
     state.first_mouse = true;
     state.last_time = stm_now();
@@ -357,6 +355,6 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     desc.width = 800;
     desc.height = 600;
     desc.high_dpi = true;
-    desc.window_title = "learnopengl.com but in sokol";
+    desc.window_title = "Gungutils";
     return desc;
 }
