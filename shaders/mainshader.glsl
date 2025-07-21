@@ -29,7 +29,7 @@ layout(binding = 0) uniform sampler palette_smp;
 #define palette2D sampler2D(_palette2D, palette_smp)
 
 void main() {
-    FragColor = vec4(1.0, 0.0, 0.0, 1.0);;
+    FragColor = texture(palette2D, TexCoord);
 }
 @end
 
