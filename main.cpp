@@ -7,6 +7,8 @@
 #include <cstring>
 #include <iostream>
 #include <cstdlib>
+#include <tuple>
+#include <map>
 #include "sokol/sokol_app.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_glue.h"
@@ -18,10 +20,18 @@
 #endif
 #include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image.h"
+#include "stb/stb_image_write.h"
 #define TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_NO_STB_IMAGE
+#define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tinygltf/tiny_gltf.h"
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tinyobjloader/tiny_obj_loader.h"
 // shaders
+#include <ranges>
+
 #include "shaders/mainshader.glsl.h"
 
 using namespace std;
@@ -49,19 +59,215 @@ struct AppState {
 
 AppState state;
 int texture_index = 0;
+int mesh_index = 0;
+int num_elements = 0;
 
 void fetch_callback(const sfetch_response_t* response);
 
 class Mesh {
 public:
-    HMM_Vec3 position = {0.0f, 0.0f, 0.0f};
-    HMM_Quat rotation = {0.0f, 0.0f, 0.0f, 1.0f};
-    HMM_Vec3 scale = {1.0f, 1.0f, 1.0f};
+    HMM_Vec3 position{0,0,0};
+    HMM_Quat rotation{0,0,0,1};
+    HMM_Vec3 scale{1,1,1};
 
-    float vertices[];
+    float*    vertices = nullptr; // 3 floats for pos, 3 floats for normals and 2 floats for tex coords
+    size_t    vertex_count = 0;
+    uint32_t* indices  = nullptr;
+    size_t    index_count = 0;
 
-    unsigned int indices[];
+    sg_buffer vertex_buffer = {0};
+    sg_buffer index_buffer = {0};
+
+    Mesh() = default;
+    ~Mesh() {
+        delete[] vertices;
+        delete[] indices;
+    }
+    // disable copy, allow move
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
+    Mesh(Mesh&& o) noexcept {
+        *this = std::move(o);
+    }
+    Mesh& operator=(Mesh&& o) noexcept {
+        std::swap(vertices,    o.vertices);
+        std::swap(vertex_count,o.vertex_count);
+        std::swap(indices,     o.indices);
+        std::swap(index_count, o.index_count);
+        std::swap(vertex_buffer, o.vertex_buffer);
+        std::swap(index_buffer, o.index_buffer);
+        position = o.position;
+        rotation = o.rotation;
+        scale    = o.scale;
+        return *this;
+    }
 };
+
+vector<Mesh> all_meshes;
+
+void Mesh_To_Buffers(Mesh& mesh) {
+    // Create vertex buffer
+    sg_buffer_desc vbuf_desc = {};
+    vbuf_desc.size = mesh.vertex_count * 8 * sizeof(float);
+    vbuf_desc.data = SG_RANGE(mesh.vertices);
+    vbuf_desc.label = "mesh-vertices";
+    mesh.vertex_buffer = sg_make_buffer(&vbuf_desc);
+
+    // Create index buffer
+    sg_buffer_desc ibuf_desc = {};
+    ibuf_desc.size = mesh.index_count * sizeof(uint32_t);
+    ibuf_desc.data = SG_RANGE(mesh.indices);
+    ibuf_desc.label = "mesh-indices";
+    ibuf_desc.usage.vertex_buffer = false;
+    ibuf_desc.usage.index_buffer = true;
+    mesh.index_buffer = sg_make_buffer(&ibuf_desc);
+    mesh.index_count = static_cast<int>(mesh.index_count);
+
+    all_meshes.push_back(std::move(mesh));
+}
+
+std::vector<Mesh> load_gltf(const std::string& path) {
+    tinygltf::TinyGLTF loader;
+    tinygltf::Model model;
+    std::string err, warn;
+    bool ok = loader.LoadBinaryFromFile(&model, &err, &warn, path);
+    if (!warn.empty())  std::cout << "WARN: " << warn << "\n";
+    if (!ok) {
+        std::cerr << "ERROR: " << err << "\n";
+        return {};
+    }
+
+    std::vector<Mesh> meshes;
+    // iterate all mesh definitions
+    for (const auto& meshDef : model.meshes) {
+        // each primitive -> one Mesh entry
+        for (const auto& prim : meshDef.primitives) {
+            // vertex count
+            const auto& posAcc  = model.accessors[prim.attributes.at("POSITION")];
+            const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
+            const auto& uvAcc   = model.accessors[prim.attributes.at("TEXCOORD_0")];
+            size_t vcount = posAcc.count;
+
+            auto* verts = new float[vcount * 8];
+            const auto* posBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[posAcc.bufferView].buffer].data.data()+model.bufferViews[posAcc.bufferView].byteOffset+posAcc.byteOffset);
+            const auto* normBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[normAcc.bufferView].buffer].data.data()+model.bufferViews[normAcc.bufferView].byteOffset+normAcc.byteOffset);
+            const auto* uvBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[uvAcc.bufferView].buffer].data.data()+model.bufferViews[uvAcc.bufferView].byteOffset+uvAcc.byteOffset);
+
+            for (size_t i = 0; i < vcount; i++) {
+                // position
+                verts[i*8 + 0] = posBuf[i*3 + 0];
+                verts[i*8 + 1] = posBuf[i*3 + 1];
+                verts[i*8 + 2] = posBuf[i*3 + 2];
+                // normal
+                verts[i*8 + 3] = normBuf[i*3 + 0];
+                verts[i*8 + 4] = normBuf[i*3 + 1];
+                verts[i*8 + 5] = normBuf[i*3 + 2];
+                // texcoord
+                verts[i*8 + 6] = uvBuf[i*2 + 0];
+                verts[i*8 + 7] = uvBuf[i*2 + 1];
+            }
+
+            // indices
+            const auto& idxAcc = model.accessors[prim.indices];
+            size_t icount = idxAcc.count;
+            auto* idxs = new uint32_t[icount];
+            const auto* idxBuf = reinterpret_cast<const uint16_t*>(
+                model.buffers[ model.bufferViews[idxAcc.bufferView].buffer ].data.data()
+                + model.bufferViews[idxAcc.bufferView].byteOffset
+                + idxAcc.byteOffset
+            );
+            // oh no if not uint16 indicies
+            for (size_t i = 0; i < icount; i++) {
+                idxs[i] = idxBuf[i];
+            }
+
+            Mesh mesh;
+            mesh.vertices = verts;
+            mesh.vertex_count = vcount;
+            mesh.indices = idxs;
+            mesh.index_count = icount;
+            meshes.push_back(std::move(mesh));
+        }
+    }
+    return meshes;
+}
+
+bool load_obj(
+    const std::string& filename,
+    float** out_vertices,
+    uint32_t* out_vertex_count,
+    uint32_t** out_indices,
+    uint32_t* out_index_count
+) {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    *out_vertices = nullptr;
+    *out_vertex_count = 0;
+    *out_indices = nullptr;
+    *out_index_count = 0;
+
+    bool ok = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str(), nullptr, true);
+    if (!warn.empty()) std::cout << "WARN: " << warn << "\n";
+    if (!err.empty())  std::cerr << "ERR: " << err << "\n";
+    if (!ok)          return false;
+
+    std::vector<float> vertices;
+    std::vector<uint32_t> indices;
+    std::map<std::tuple<int, int, int>, uint32_t> vertex_index_map;
+
+    for (const auto& shape : shapes) {
+        size_t index_offset = 0;
+        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
+            int fv = shape.mesh.num_face_vertices[f];
+            for (size_t v = 0; v < fv; v++) {
+                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                auto key = std::make_tuple(idx.vertex_index, idx.normal_index, idx.texcoord_index);
+
+                if (auto it = vertex_index_map.find(key); it != vertex_index_map.end()) {
+                    indices.push_back(it->second);
+                } else {
+                    float px = attrib.vertices[3 * idx.vertex_index + 0];
+                    float py = attrib.vertices[3 * idx.vertex_index + 1];
+                    float pz = attrib.vertices[3 * idx.vertex_index + 2];
+
+                    float nx = 0.0f, ny = 0.0f, nz = 0.0f;
+                    if (idx.normal_index >= 0) {
+                        nx = attrib.normals[3 * idx.normal_index + 0];
+                        ny = attrib.normals[3 * idx.normal_index + 1];
+                        nz = attrib.normals[3 * idx.normal_index + 2];
+                    }
+
+                    float u = 0.0f, v_ = 0.0f;
+                    if (idx.texcoord_index >= 0) {
+                        u = attrib.texcoords[2 * idx.texcoord_index + 0];
+                        v_ = attrib.texcoords[2 * idx.texcoord_index + 1];
+                    }
+
+                    vertices.insert(vertices.end(), {px, py, pz, nx, ny, nz, u, v_});
+                    uint32_t new_index = static_cast<uint32_t>(vertex_index_map.size());
+                    vertex_index_map[key] = new_index;
+                    indices.push_back(new_index);
+                }
+            }
+            index_offset += fv;
+        }
+    }
+
+    const size_t vertex_data_size = vertices.size() * sizeof(float);
+    *out_vertices = new float[vertices.size()];
+    memcpy(*out_vertices, vertices.data(), vertex_data_size);
+    *out_vertex_count = static_cast<uint32_t>(vertices.size() / 8);
+
+    const size_t index_data_size = indices.size() * sizeof(uint32_t);
+    *out_indices = new uint32_t[indices.size()];
+    memcpy(*out_indices, indices.data(), index_data_size);
+    *out_index_count = static_cast<uint32_t>(indices.size());
+
+    return true;
+}
 
 void init() {
     sg_desc desc = {};
@@ -82,17 +288,6 @@ void init() {
     state.last_time = stm_now();
     state.fov = 45.0f;
 
-    state.cube_positions[0] = HMM_V3( 0.0f,  0.0f,  0.0f);
-    state.cube_positions[1] = HMM_V3( 2.0f,  5.0f, -15.0f);
-    state.cube_positions[2] = HMM_V3(-1.5f, -2.2f, -2.5f);
-    state.cube_positions[3] = HMM_V3(-3.8f, -2.0f, -12.3f);
-    state.cube_positions[4] = HMM_V3( 2.4f, -0.4f, -3.5f);
-    state.cube_positions[5] = HMM_V3(-1.7f,  3.0f, -7.5f);
-    state.cube_positions[6] = HMM_V3( 1.3f, -2.0f, -2.5f);
-    state.cube_positions[7] = HMM_V3( 1.5f,  2.0f, -2.5f);
-    state.cube_positions[8] = HMM_V3( 1.5f,  0.2f, -1.5f);
-    state.cube_positions[9] = HMM_V3(-1.3f,  1.0f, -1.5f);
-
     sfetch_desc_t fetch_desc = {};
     fetch_desc.max_requests = 2;
     fetch_desc.num_channels = 1;
@@ -107,62 +302,22 @@ void init() {
     sampler_desc.wrap_v = SG_WRAP_REPEAT;
     state.bind.samplers[0] = sg_make_sampler(&sampler_desc);
 
-    // again!!!
-    sg_sampler_desc sampler_desc_2 = {};
-    sampler_desc_2.min_filter = SG_FILTER_LINEAR;
-    sampler_desc_2.mag_filter = SG_FILTER_LINEAR;
-    sampler_desc_2.wrap_u = SG_WRAP_REPEAT;
-    sampler_desc_2.wrap_v = SG_WRAP_REPEAT;
-    state.bind.samplers[1] = sg_make_sampler(&sampler_desc_2);
+    float* verts = nullptr;
+    uint32_t vertex_count = 0;
+    uint32_t* indices = nullptr;
+    uint32_t index_count = 0;
 
-    float vertices[] = {
-        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
-        0.5f, -0.5f, -0.5f, 1.0f, 0.0f,
-        0.5f,  0.5f, -0.5f, 1.0f, 1.0f,
-        0.5f,  0.5f, -0.5f, 1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
-
-        -0.5f, -0.5f,  0.5f, 0.0f, 0.0f,
-        0.5f, -0.5f,  0.5f, 1.0f, 0.0f,
-        0.5f,  0.5f,  0.5f, 1.0f, 1.0f,
-        0.5f,  0.5f,  0.5f, 1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 0.0f, 0.0f,
-
-        -0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-
-        0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-        0.5f,  0.5f, -0.5f, 1.0f, 1.0f,
-        0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        0.5f, -0.5f,  0.5f, 0.0f, 0.0f,
-        0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        0.5f, -0.5f, -0.5f, 1.0f, 1.0f,
-        0.5f, -0.5f,  0.5f, 1.0f, 0.0f,
-        0.5f, -0.5f,  0.5f, 1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f, 0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-
-        -0.5f,  0.5f, -0.5f, 0.0f, 1.0f,
-        0.5f,  0.5f, -0.5f, 1.0f, 1.0f,
-        0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-        0.5f,  0.5f,  0.5f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-    };
-    sg_buffer_desc vbuf_desc = {};
-    vbuf_desc.size = sizeof(vertices);
-    vbuf_desc.data = SG_RANGE(vertices);
-    vbuf_desc.label = "cube-vertices";
-    state.bind.vertex_buffers[0] = sg_make_buffer(&vbuf_desc);
+    if (load_obj("test.obj", &verts, &vertex_count, &indices, &index_count)) {
+        Mesh loaded_mesh = Mesh();
+        loaded_mesh.vertices = verts;
+        loaded_mesh.vertex_count = vertex_count;
+        loaded_mesh.indices = indices;
+        loaded_mesh.index_count = index_count;
+        loaded_mesh.position = HMM_V3(0.0f, 0.0f, 0.0f);
+        Mesh_To_Buffers(loaded_mesh);
+        std::cout << "Loaded OBJ" << std::endl;
+        state.bind.vertex_buffers[0] = loaded_mesh.vertex_buffer;
+    }
 
     sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
 
@@ -171,26 +326,24 @@ void init() {
     pip_desc.color_count = 1;
     pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_simple_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
     pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
     // TODO: add cull mode when model loading comes
     //pip_desc.cull_mode = SG_CULLMODE_BACK;
-    pip_desc.label = "cube-pipeline";
+    pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
     state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     state.pass_action.colors[0].clear_value = { 0.2f, 0.3f, 0.3f, 1.0f };
+    state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    state.pass_action.depth.clear_value = 1.0f;
 
     sfetch_request_t request = {};
-    request.path = "container.jpg";
-    request.callback = fetch_callback;
-    request.buffer.ptr = state.file_buffer.data();
-    request.buffer.size = state.file_buffer.size();
-    sfetch_send(&request);
-
-    request = {};
-    request.path = "awesomeface.png";
+    request.path = "palette.png";
     request.callback = fetch_callback;
     request.buffer.ptr = state.file_buffer.data();
     request.buffer.size = state.file_buffer.size();
@@ -204,6 +357,7 @@ void frame(void) {
     pass.action = state.pass_action;
     pass.swapchain = sglue_swapchain();
 
+    // input
     float camera_speed = 5.f * (float) stm_sec(state.delta_time);
     if (state.inputs[SAPP_KEYCODE_W] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
@@ -222,28 +376,43 @@ void frame(void) {
         state.camera_pos = HMM_AddV3(state.camera_pos, offset);
     }
 
-    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake from github
+    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
+    HMM_Mat4 projection = HMM_Perspective_LH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
 
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
-    sg_apply_bindings(&state.bind);
 
     vs_params_t vs_params = {
         .view = view,
         .projection = projection
     };
 
-    for(size_t i = 0; i < 10; i++) {
-        HMM_Mat4 model = HMM_Translate(state.cube_positions[i]);
-        float angle = 20.0f * i;
-        model = HMM_MulM4(model, HMM_Rotate_RH(HMM_AngleDeg(angle), HMM_V3(1.0f, 0.3f, 0.5f)));
+    for (auto& mesh : all_meshes) {
+        //state.bind.vertex_buffers[0] = mesh.vertex_buffer;
+        //state.bind.index_buffer = mesh.index_buffer;
+        sg_apply_bindings(&state.bind);
+        std::cout << "Model vertices: " << mesh.vertex_count << std::endl;
+        for (int i = 0; i < mesh.vertex_count; i++) {
+            std::cout << "----------------------------------------" << std::endl;
+            std::cout << "Positions: " << mesh.vertices[i*8 + 0] << " " << mesh.vertices[i*8 + 1] << " " << mesh.vertices[i*8 + 2] << std::endl;
+            std::cout << "Normals: " << mesh.vertices[i*8 + 3] << " " << mesh.vertices[i*8 + 4] << " " << mesh.vertices[i*8 + 5] << std::endl;
+            std::cout << "Texture coordinates: " << mesh.vertices[i*8 + 6] << " " << mesh.vertices[i*8 + 7] << std::endl;
+            std::cout << "Camera pos: " << state.camera_pos.X << ", " << state.camera_pos.Y << ", " << state.camera_pos.Z << std::endl;
+            std::cout << "Mesh pos: " << mesh.position.X << ", " << mesh.position.Y << ", " << mesh.position.Z << std::endl;
+            std::cout << "Index count: " << mesh.index_count << std::endl;
+        }
+
+        HMM_Mat4 model = HMM_Translate(mesh.position);
+        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+        HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+        model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
         vs_params.model = model;
         sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-        sg_draw(0, 36, 1);
+        sg_draw(0, mesh.index_count, 1);
     }
+
     sg_end_pass();
     sg_commit();
 }
@@ -343,7 +512,7 @@ void fetch_callback(const sfetch_response_t* response) {
         state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
         std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
     }
-    texture_index += 1;
+    texture_index++;
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {

@@ -10,3 +10,6 @@
 [submodule "include/tinygltf"]
 	path = include/tinygltf
 	url = https://github.com/syoyo/tinygltf
+[submodule "include/tinyobjloader"]
+	path = include/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git
