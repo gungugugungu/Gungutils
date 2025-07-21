@@ -105,26 +105,70 @@ public:
 
 vector<Mesh> all_meshes;
 
+// I've been doing this non-stop for a week 12 hours a day
+// and this is still not working
 void Mesh_To_Buffers(Mesh& mesh) {
-    // Create vertex buffer
+    // god damn I'm stuck in debugging hell like wtf is this bullshit
+    std::cout << "=== Stupid Mesh Debug info ===" << std::endl;
+    std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
+    std::cout << "Index count: " << mesh.index_count << std::endl;
+    std::cout << "Vertices pointer: " << (void*)mesh.vertices << std::endl;
+    std::cout << "Indices pointer: " << (void*)mesh.indices << std::endl;
+
+    if (mesh.vertices != nullptr && mesh.vertex_count > 0) {
+        std::cout << "First few vertices:" << std::endl;
+        for (size_t i = 0; i < std::min((size_t)3, mesh.vertex_count); i++) {
+            std::cout << "  Vertex " << i << ": pos("
+                      << mesh.vertices[i*8+0] << ", " << mesh.vertices[i*8+1] << ", " << mesh.vertices[i*8+2]
+                      << ") tex(" << mesh.vertices[i*8+6] << ", " << mesh.vertices[i*8+7] << ")" << std::endl;
+        }
+    }
+
+    // vbuf
     sg_buffer_desc vbuf_desc = {};
     vbuf_desc.size = mesh.vertex_count * 8 * sizeof(float);
-    vbuf_desc.data = SG_RANGE(mesh.vertices);
-    vbuf_desc.label = "mesh-vertices";
+    vbuf_desc.data.ptr = mesh.vertices;
+    vbuf_desc.data.size = vbuf_desc.size;
+    vbuf_desc.usage.immutable = true;
+    cout << "vbuf size: " << vbuf_desc.size << endl;
+    string label = "mesh"+to_string(all_meshes.size())+"-vertices";
+    vbuf_desc.label = label.c_str();
     mesh.vertex_buffer = sg_make_buffer(&vbuf_desc);
 
-    // Create index buffer
+    auto* indices16 = new uint16_t[mesh.index_count];
+    bool can_use_uint16 = true;
+    for (size_t i = 0; i < mesh.index_count; i++) {
+        if (mesh.indices[i] > 65535) {
+            can_use_uint16 = false;
+            break;
+        }
+        indices16[i] = static_cast<uint16_t>(mesh.indices[i]);
+    }
+
     sg_buffer_desc ibuf_desc = {};
-    ibuf_desc.size = mesh.index_count * sizeof(uint32_t);
-    ibuf_desc.data = SG_RANGE(mesh.indices);
-    ibuf_desc.label = "mesh-indices";
-    ibuf_desc.usage.vertex_buffer = false;
+    if (can_use_uint16) {
+        ibuf_desc.size = mesh.index_count * sizeof(uint16_t);
+        ibuf_desc.data.ptr = indices16;
+        ibuf_desc.data.size = ibuf_desc.size;
+    } else {
+        ibuf_desc.size = mesh.index_count * sizeof(uint32_t);
+        ibuf_desc.data.ptr = mesh.indices;
+        ibuf_desc.data.size = ibuf_desc.size;
+        std::cout << "Warning: Using uint32 indices" << std::endl;
+    }
+
+    // ibuf
+    ibuf_desc.usage.vertex_buffer = true;
     ibuf_desc.usage.index_buffer = true;
+    ibuf_desc.usage.immutable = true;
+    label = "mesh"+to_string(all_meshes.size())+"-indices";
+    ibuf_desc.label = label.c_str();
     mesh.index_buffer = sg_make_buffer(&ibuf_desc);
-    mesh.index_count = static_cast<int>(mesh.index_count);
 
     all_meshes.push_back(std::move(mesh));
+    std::cout << "=== No More Stupid Debug Info ===" << std::endl;
 }
+
 
 std::vector<Mesh> load_gltf(const std::string& path) {
     tinygltf::TinyGLTF loader;
@@ -314,9 +358,9 @@ void init() {
         loaded_mesh.indices = indices;
         loaded_mesh.index_count = index_count;
         loaded_mesh.position = HMM_V3(0.0f, 0.0f, 0.0f);
+
         Mesh_To_Buffers(loaded_mesh);
         std::cout << "Loaded OBJ" << std::endl;
-        state.bind.vertex_buffers[0] = loaded_mesh.vertex_buffer;
     }
 
     sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
@@ -330,7 +374,7 @@ void init() {
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
     pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    pip_desc.index_type = SG_INDEXTYPE_UINT32;
+    pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.depth.write_enabled = true;
     // TODO: add cull mode when model loading comes
     //pip_desc.cull_mode = SG_CULLMODE_BACK;
@@ -378,7 +422,7 @@ void frame(void) {
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_LH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
 
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
@@ -389,10 +433,10 @@ void frame(void) {
     };
 
     for (auto& mesh : all_meshes) {
-        //state.bind.vertex_buffers[0] = mesh.vertex_buffer;
-        //state.bind.index_buffer = mesh.index_buffer;
+        state.bind.vertex_buffers[0] = mesh.vertex_buffer;
+        state.bind.index_buffer = mesh.index_buffer;
         sg_apply_bindings(&state.bind);
-        std::cout << "Model vertices: " << mesh.vertex_count << std::endl;
+        /*std::cout << "Model vertices: " << mesh.vertex_count << std::endl;
         for (int i = 0; i < mesh.vertex_count; i++) {
             std::cout << "----------------------------------------" << std::endl;
             std::cout << "Positions: " << mesh.vertices[i*8 + 0] << " " << mesh.vertices[i*8 + 1] << " " << mesh.vertices[i*8 + 2] << std::endl;
@@ -401,7 +445,7 @@ void frame(void) {
             std::cout << "Camera pos: " << state.camera_pos.X << ", " << state.camera_pos.Y << ", " << state.camera_pos.Z << std::endl;
             std::cout << "Mesh pos: " << mesh.position.X << ", " << mesh.position.Y << ", " << mesh.position.Z << std::endl;
             std::cout << "Index count: " << mesh.index_count << std::endl;
-        }
+        }*/
 
         HMM_Mat4 model = HMM_Translate(mesh.position);
         HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
