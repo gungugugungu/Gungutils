@@ -13,3 +13,6 @@
 [submodule "include/tinyobjloader"]
 	path = include/tinyobjloader
 	url = https://github.com/tinyobjloader/tinyobjloader.git
+[submodule "include/SDL"]
+	path = include/SDL
+	url = https://github.com/libsdl-org/SDL.git

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <tuple>
 #include <map>
+#include <ranges>
 #include "sokol/sokol_app.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_glue.h"
@@ -25,9 +26,8 @@
 #include "tinygltf/tiny_gltf.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobjloader/tiny_obj_loader.h"
+#include "SDL3/SDL.h"
 // shaders
-#include <ranges>
-
 #include "shaders/mainshader.glsl.h"
 
 using namespace std;
@@ -287,6 +287,8 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 // extract transforms
                 decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
 
+                mesh.rotation.Y = -mesh.rotation.Y; // Fuck this
+
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -481,7 +483,7 @@ void init() {
     uint32_t* indices = nullptr;
     uint32_t index_count = 0;*/
 
-    vector<Mesh> loaded_meshes = load_gltf("test2.glb");
+    vector<Mesh> loaded_meshes = load_gltf("test4.glb");
     for (auto& mesh : loaded_meshes) {
         Mesh_To_Buffers(mesh);
     }
@@ -600,7 +602,7 @@ void cleanup(void) {
 }
 
 void event(const sapp_event* e) {
-        if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN) {
+    if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN) {
         state.mouse_btn = true;
     } else if (e->type == SAPP_EVENTTYPE_MOUSE_UP) {
         state.mouse_btn = false;

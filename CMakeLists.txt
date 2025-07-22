@@ -17,16 +17,18 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCURSOR REQUIRED xcursor)
 
 add_executable(Gungutils main.cpp)
+add_subdirectory(include/SDL)
 
 # Link against the required libraries
 target_link_libraries(Gungutils
     PRIVATE
-    OpenGL::GL
+        SDL3::SDL3
+        OpenGL::GL
         X11::Xi
         ${X11_LIBRARIES}
-    ${XCURSOR_LIBRARIES}
-    dl
-    pthread
+        ${XCURSOR_LIBRARIES}
+        dl
+        pthread
 )
 
 # Include directories
