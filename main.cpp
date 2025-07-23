@@ -64,7 +64,7 @@ void event(SDL_Event* e) {
     } else if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
         state.inputs[e->key.key] = true;
         if (e->key.key == SDLK_ESCAPE) {
-            SDL_Quit();
+            state.running = false;
         }
 
         if (e->key.key == SDLK_SPACE) {

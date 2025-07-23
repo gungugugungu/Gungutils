@@ -49,6 +49,7 @@ struct AppState {
     float pitch;
     float fov;
     bool inputs[259];
+    bool running = true;
 };
 
 AppState state;
@@ -555,7 +556,7 @@ void _frame() {
 }
 
 void _event(SDL_Event* e) {
-
+    if (e->type == SDL_EVENT_QUIT) state.running = false;
 }
 
 void fetch_callback(const sfetch_response_t* response) {
@@ -617,11 +618,9 @@ int main(int argc, char* argv[]) {
     _init();
     init_callback();
 
-    bool running = true;
-    while (running) {
+    while (state.running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_EVENT_QUIT) running = false;
             _event(&e);
             event_callback(&e);
         }
