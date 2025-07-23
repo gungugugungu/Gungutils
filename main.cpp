@@ -43,9 +43,6 @@ struct AppState {
     uint64_t last_time;
     uint64_t delta_time;
     bool mouse_btn;
-    bool first_mouse;
-    float last_x;
-    float last_y;
     float yaw;
     float pitch;
     float fov;
@@ -236,9 +233,9 @@ std::vector<Mesh> load_gltf(const std::string& path) {
             const auto& meshDef = model.meshes[node.mesh];
             for (const auto& prim : meshDef.primitives) {
                 // vertex count
-                const auto& posAcc  = model.accessors[prim.attributes.at("POSITION")];
+                const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
                 const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
-                const auto& uvAcc   = model.accessors[prim.attributes.at("TEXCOORD_0")];
+                const auto& uvAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
                 size_t vcount = posAcc.count;
 
                 auto* verts = new float[vcount * 8];
@@ -447,9 +444,8 @@ void init() {
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
     state.yaw = -90.0f;
     state.pitch = 0.0f;
-    state.first_mouse = true;
     state.last_time = stm_now();
-    state.fov = 45.0f;
+    state.fov = 95.0f;
 
     sfetch_desc_t fetch_desc = {};
     fetch_desc.max_requests = 2;
@@ -535,6 +531,7 @@ void frame(void) {
     sg_apply_pipeline(state.pip);
 
     // input
+    if (!SDL_CursorVisible()) {SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);}
     float camera_speed = 5.f * (float) stm_sec(state.delta_time);
     if (state.inputs[SDLK_W] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
@@ -613,23 +610,10 @@ void event(SDL_Event* e) {
     } else if (e->type == SDL_EVENT_KEY_UP && e->key.repeat == 0) {
         state.inputs[e->key.key] = false;
     }  else if (e->type == SDL_EVENT_MOUSE_MOTION && state.mouse_btn) {
-        if(state.first_mouse) {
-            state.last_x = e->motion.x;
-            state.last_y = e->motion.y;
-            state.first_mouse = false;
-        }
-
-        float xoffset = e->motion.x - state.last_x;
-        float yoffset = state.last_y - e->motion.y;
-        state.last_x = e->motion.x;
-        state.last_y = e->motion.y;
-
         float sensitivity = 0.1f;
-        xoffset *= sensitivity;
-        yoffset *= sensitivity;
 
-        state.yaw   += xoffset;
-        state.pitch += yoffset;
+        state.yaw += e->motion.xrel * sensitivity;
+        state.pitch += -e->motion.yrel * sensitivity;
 
         if(state.pitch > 89.0f) {
             state.pitch = 89.0f;
@@ -648,10 +632,10 @@ void event(SDL_Event* e) {
         if (state.fov >= 1.0f && state.fov <= 45.0f) {
             state.fov -= e->wheel.y;
         }
-        if (state.fov <= 1.0f)
-            state.fov = 1.0f;
-        else if (state.fov >= 45.0f)
-            state.fov = 45.0f;
+        if (state.fov <= 60.0f)
+            state.fov = 60.0f;
+        else if (state.fov >= 95.0f)
+            state.fov = 95.0f;
     }
 }
 
@@ -707,7 +691,7 @@ int main(int argc, char* argv[]) {
     sg_environment env = {};
     env.defaults.color_format = SG_PIXELFORMAT_RGBA8;
     env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    env.defaults.sample_count = 4;
+    env.defaults.sample_count = 1;
     desc.environment = env;
     sg_setup(&desc);
     stm_setup();
