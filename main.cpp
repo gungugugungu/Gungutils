@@ -10,9 +10,7 @@
 #include <tuple>
 #include <map>
 #include <ranges>
-#include "sokol/sokol_app.h"
 #include "sokol/sokol_gfx.h"
-#include "sokol/sokol_glue.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
 #ifdef B32
@@ -35,6 +33,7 @@ using namespace std;
 struct AppState {
     sg_pipeline pip{};
     sg_bindings bind{};
+    SDL_Window* win;
     sg_pass_action pass_action{};
     std::array<uint8_t, 512 * 1024> file_buffer{};
     HMM_Vec3 cube_positions[10];
@@ -50,7 +49,7 @@ struct AppState {
     float yaw;
     float pitch;
     float fov;
-    bool inputs[348];
+    bool inputs[259];
 };
 
 AppState state;
@@ -127,8 +126,6 @@ void Mesh_To_Buffers(Mesh& mesh) {
     vbuf_desc.data.size = vbuf_desc.size;
     vbuf_desc.usage.immutable = true;
     cout << "vbuf size: " << vbuf_desc.size << endl;
-    string label = "mesh"+to_string(all_meshes.size())+"-vertices";
-    vbuf_desc.label = label.c_str();
     mesh.vertex_buffer = sg_make_buffer(&vbuf_desc);
 
     auto* indices16 = new uint16_t[mesh.index_count];
@@ -157,12 +154,9 @@ void Mesh_To_Buffers(Mesh& mesh) {
     ibuf_desc.usage.vertex_buffer = true;
     ibuf_desc.usage.index_buffer = true;
     ibuf_desc.usage.immutable = true;
-    label = "mesh"+to_string(all_meshes.size())+"-indices";
-    ibuf_desc.label = label.c_str();
     mesh.index_buffer = sg_make_buffer(&ibuf_desc);
 
     all_meshes.push_back(std::move(mesh));
-    std::cout << "=== No More Stupid Debug Info ===" << std::endl;
 }
 
 void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotation, HMM_Vec3& scale) {
@@ -446,14 +440,7 @@ bool load_obj(
 }
 
 void init() {
-    sg_desc desc = {};
-    desc.environment = sglue_environment();
-    sg_setup(&desc);
-    stm_setup();
-
     stbi_set_flip_vertically_on_load(true);
-
-    sapp_show_mouse(false);
 
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
@@ -534,33 +521,41 @@ void frame(void) {
     sfetch_dowork();
     sg_pass pass = {};
     pass.action = state.pass_action;
-    pass.swapchain = sglue_swapchain();
+    sg_swapchain swapchain = {};
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    swapchain.width = w_width;
+    swapchain.height = w_height;
+    swapchain.sample_count = 1;
+    swapchain.color_format = SG_PIXELFORMAT_RGBA8;
+    swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    swapchain.gl.framebuffer = 0;
+    pass.swapchain = swapchain;
+    sg_begin_pass(&pass);
+    sg_apply_pipeline(state.pip);
 
     // input
     float camera_speed = 5.f * (float) stm_sec(state.delta_time);
-    if (state.inputs[SAPP_KEYCODE_W] == true) {
+    if (state.inputs[SDLK_W] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
         state.camera_pos = HMM_AddV3(state.camera_pos, offset);
     }
-    if (state.inputs[SAPP_KEYCODE_S] == true) {
+    if (state.inputs[SDLK_S] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
         state.camera_pos = HMM_SubV3(state.camera_pos, offset);
     }
-    if (state.inputs[SAPP_KEYCODE_A] == true) {
+    if (state.inputs[SDLK_A] == true) {
         HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
         state.camera_pos = HMM_SubV3(state.camera_pos, offset);
     }
-    if (state.inputs[SAPP_KEYCODE_D] == true) {
+    if (state.inputs[SDLK_D] == true) {
         HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
         state.camera_pos = HMM_AddV3(state.camera_pos, offset);
     }
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)sapp_width() / (float)sapp_height(), 0.1f, 100.0f);
-
-    sg_begin_pass(&pass);
-    sg_apply_pipeline(state.pip);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 100.0f);
 
     vs_params_t vs_params = {
         .view = view,
@@ -596,40 +591,38 @@ void frame(void) {
     sg_commit();
 }
 
-void cleanup(void) {
-    sg_shutdown();
-    sfetch_shutdown();
-}
-
-void event(const sapp_event* e) {
-    if (e->type == SAPP_EVENTTYPE_MOUSE_DOWN) {
+void event(SDL_Event* e) {
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         state.mouse_btn = true;
-    } else if (e->type == SAPP_EVENTTYPE_MOUSE_UP) {
+    } else if (e->type == SDL_EVENT_MOUSE_BUTTON_UP) {
         state.mouse_btn = false;
-    } else if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
-        state.inputs[e->key_code] = true;
-        if (e->key_code == SAPP_KEYCODE_ESCAPE) {
-            sapp_request_quit();
+    } else if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
+        state.inputs[e->key.key] = true;
+        if (e->key.key == SDLK_ESCAPE) {
+            SDL_Quit();
         }
 
-        if (e->key_code == SAPP_KEYCODE_SPACE) {
-            bool mouse_shown = sapp_mouse_shown();
-            sapp_show_mouse(!mouse_shown);
+        if (e->key.key == SDLK_SPACE) {
+            if (SDL_CursorVisible()) {
+                SDL_HideCursor();
+            } else {
+                SDL_ShowCursor();
+            }
         }
 
-    } else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
-        state.inputs[e->key_code] = false;
-    }  else if (e->type == SAPP_EVENTTYPE_MOUSE_MOVE && state.mouse_btn) {
+    } else if (e->type == SDL_EVENT_KEY_UP && e->key.repeat == 0) {
+        state.inputs[e->key.key] = false;
+    }  else if (e->type == SDL_EVENT_MOUSE_MOTION && state.mouse_btn) {
         if(state.first_mouse) {
-            state.last_x = e->mouse_x;
-            state.last_y = e->mouse_y;
+            state.last_x = e->motion.x;
+            state.last_y = e->motion.y;
             state.first_mouse = false;
         }
 
-        float xoffset = e->mouse_x - state.last_x;
-        float yoffset = state.last_y - e->mouse_y;
-        state.last_x = e->mouse_x;
-        state.last_y = e->mouse_y;
+        float xoffset = e->motion.x - state.last_x;
+        float yoffset = state.last_y - e->motion.y;
+        state.last_x = e->motion.x;
+        state.last_y = e->motion.y;
 
         float sensitivity = 0.1f;
         xoffset *= sensitivity;
@@ -651,9 +644,9 @@ void event(const sapp_event* e) {
         direction.Z = sinf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
         state.camera_front = HMM_NormV3(direction);
     }
-    else if (e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+    else if (e->type == SDL_EVENT_MOUSE_WHEEL) {
         if (state.fov >= 1.0f && state.fov <= 45.0f) {
-            state.fov -= e->scroll_y;
+            state.fov -= e->wheel.y;
         }
         if (state.fov <= 1.0f)
             state.fov = 1.0f;
@@ -675,7 +668,6 @@ void fetch_callback(const sfetch_response_t* response) {
         if (pixels) {
             // yay, memory safety!
             sg_destroy_image(state.bind.images[texture_index]);
-
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
             img_desc.height = img_height;
@@ -694,7 +686,7 @@ void fetch_callback(const sfetch_response_t* response) {
     texture_index++;
 }
 
-sapp_desc sokol_main(int argc, char* argv[]) {
+/*sapp_desc sokol_main(int argc, char* argv[]) {
     sapp_desc desc = {};
     desc.init_cb = init;
     desc.frame_cb = frame;
@@ -705,4 +697,38 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     desc.high_dpi = true;
     desc.window_title = "Gungutils";
     return desc;
+}*/
+
+int main(int argc, char* argv[]) {
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
+    state.win = SDL_CreateWindow("Gungutils", 640, 512, SDL_WINDOW_OPENGL | SDL_WINDOW_MAXIMIZED);
+    SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
+    sg_desc desc = {};
+    sg_environment env = {};
+    env.defaults.color_format = SG_PIXELFORMAT_RGBA8;
+    env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    env.defaults.sample_count = 4;
+    desc.environment = env;
+    sg_setup(&desc);
+    stm_setup();
+    init();
+
+    bool running = true;
+    while (running) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_EVENT_QUIT) running = false;
+            event(&e);
+        }
+        frame();
+        SDL_GL_SwapWindow(state.win);
+    }
+
+    sfetch_shutdown();
+    sg_shutdown();
+    SDL_GL_DestroyContext(ctx);
+    SDL_DestroyWindow(state.win);
+    SDL_Quit();
+    sg_shutdown();
+    return 1;
 }
