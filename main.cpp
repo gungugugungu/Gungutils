@@ -3,8 +3,6 @@
 //
 #include "gungutils.hpp"
 
-int frames = 0;
-
 void init() {
     state.background_color = {0.2f, 0.3f, 0.5f};
     /*float* verts = nullptr;
@@ -30,9 +28,6 @@ void init() {
 }
 
 void frame() {
-    frames++;
-    state.background_color.X = sin(frames * 0.01f) * 0.5f + 0.5f;
-
     // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);

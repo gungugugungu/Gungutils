@@ -48,7 +48,7 @@ struct AppState {
     float yaw;
     float pitch;
     float fov;
-    bool inputs[259];
+    map<SDL_Keycode, bool> inputs;
     bool running = true;
 };
 
@@ -605,7 +605,7 @@ void fetch_callback(const sfetch_response_t* response) {
 
 int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
-    state.win = SDL_CreateWindow("Gungutils", 640, 512, SDL_WINDOW_OPENGL | SDL_WINDOW_MAXIMIZED);
+    state.win = SDL_CreateWindow("Gungutils", 640, 512, SDL_WINDOW_OPENGL);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     sg_desc desc = {};
     sg_environment env = {};

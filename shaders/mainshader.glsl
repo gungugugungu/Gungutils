@@ -29,7 +29,16 @@ layout(binding = 0) uniform sampler palette_smp;
 #define palette2D sampler2D(_palette2D, palette_smp)
 
 void main() {
-    FragColor = texture(palette2D, TexCoord);
+    vec4 hereTex = texture(palette2D, TexCoord);
+    FragColor = hereTex;
+    // white glow
+    if (hereTex.r == 1. && hereTex.b == 1.) {
+        FragColor = vec4(0.9, 0.9, 1., 1.);
+    }
+    // orange-ish glow
+    if (hereTex.g == 1. && hereTex.b == 1.) {
+        FragColor = vec4(1., 0.5, 0., 1.);
+    }
 }
 @end
 
