@@ -5,12 +5,13 @@
 
 void init() {
     state.background_color = {0.2f, 0.3f, 0.5f};
+    SDL_HideCursor();
     /*float* verts = nullptr;
     uint32_t vertex_count = 0;
     uint32_t* indices = nullptr;
     uint32_t index_count = 0;*/
 
-    vector<Mesh> loaded_meshes = load_gltf("test4.glb");
+    vector<Mesh> loaded_meshes = load_gltf("test5.glb");
     for (auto& mesh : loaded_meshes) {
         Mesh_To_Buffers(mesh);
     }
@@ -31,7 +32,7 @@ void frame() {
     // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
-    if (!SDL_CursorVisible()) {SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);}
+    SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     float camera_speed = 5.f * (float) stm_sec(state.delta_time);
     if (state.inputs[SDLK_W] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
@@ -52,27 +53,15 @@ void frame() {
 }
 
 void event(SDL_Event* e) {
-    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-        state.mouse_btn = true;
-    } else if (e->type == SDL_EVENT_MOUSE_BUTTON_UP) {
-        state.mouse_btn = false;
-    } else if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
+    if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
         state.inputs[e->key.key] = true;
         if (e->key.key == SDLK_ESCAPE) {
             state.running = false;
         }
 
-        if (e->key.key == SDLK_SPACE) {
-            if (SDL_CursorVisible()) {
-                SDL_HideCursor();
-            } else {
-                SDL_ShowCursor();
-            }
-        }
-
     } else if (e->type == SDL_EVENT_KEY_UP && e->key.repeat == 0) {
         state.inputs[e->key.key] = false;
-    }  else if (e->type == SDL_EVENT_MOUSE_MOTION && state.mouse_btn) {
+    }  else if (e->type == SDL_EVENT_MOUSE_MOTION) {
         float sensitivity = 0.1f;
 
         state.yaw += e->motion.xrel * sensitivity;

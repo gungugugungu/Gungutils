@@ -474,6 +474,9 @@ void _init() {
     pip_desc.shader = shd;
     pip_desc.color_count = 1;
     pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    pip_desc.colors->blend.enabled = true;
+    pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
@@ -481,7 +484,7 @@ void _init() {
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.depth.write_enabled = true;
-    pip_desc.cull_mode = SG_CULLMODE_FRONT;
+    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky, only use it if you avoided issues with it in scenes
     pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 
@@ -605,7 +608,9 @@ void fetch_callback(const sfetch_response_t* response) {
 
 int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
-    state.win = SDL_CreateWindow("Gungutils", 640, 512, SDL_WINDOW_OPENGL);
+    SDL_Rect display_bounds;
+    SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     sg_desc desc = {};
     sg_environment env = {};
