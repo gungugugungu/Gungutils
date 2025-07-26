@@ -22,16 +22,17 @@ void init() {
     std::cout << "Created event desc, count: " << event_count << std::endl;
     print_fmod_error(result);
 
-    if (event_count > 0 && event_descriptions != nullptr) {
-        FMOD::Studio::EventInstance* event_instance = nullptr;
-        result = event_descriptions->createInstance(&event_instance);
-        std::cout << "Created event instance" << std::endl;
-        print_fmod_error(result);
-
-        event_instance->start();
-    } else {
-        std::cout << "No events found in bank" << std::endl;
-    }
+    FMOD::Studio::EventInstance* event_instance = nullptr;
+    result = event_descriptions->createInstance(&event_instance);
+    std::cout << "Created event instance" << std::endl;
+    print_fmod_error(result);
+    FMOD_3D_ATTRIBUTES threeDeezNutsBoi;
+    threeDeezNutsBoi.position = {0.0f, 0.0f, 0.0f};
+    threeDeezNutsBoi.velocity = {0.0f, 0.0f, 0.0f};
+    threeDeezNutsBoi.up = {0.0f, 1.0f, 0.0f};
+    result = event_instance->set3DAttributes(&threeDeezNutsBoi);
+    print_fmod_error(result);
+    event_instance->start();
 
     vector<Mesh> loaded_meshes = load_gltf("test5.glb");
     for (auto& mesh : loaded_meshes) {

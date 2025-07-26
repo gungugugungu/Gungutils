@@ -464,6 +464,12 @@ void _init() {
     print_fmod_error(result);
     result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
     print_fmod_error(result);
+    result = state.fmod_system->setNumListeners(1);
+    print_fmod_error(result);
+    FMOD::System* sys;
+    result = state.fmod_system->getCoreSystem(&sys);
+    print_fmod_error(result);
+    result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
 
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
@@ -526,7 +532,14 @@ void _init() {
 
 void _frame() {
     // FMOD
+    FMOD_RESULT result;
     state.fmod_system->update();
+    FMOD_3D_ATTRIBUTES camera_attributes;
+    camera_attributes.position = { state.camera_pos.X, state.camera_pos.Y, state.camera_pos.Z };
+    camera_attributes.velocity = { 0.0f, 0.0f, 0.0f };
+    camera_attributes.forward = { state.camera_front.X, state.camera_front.Y, state.camera_front.Z };
+    result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
+    print_fmod_error(result);
 
     state.delta_time = stm_laptime(&state.last_time);
     sfetch_dowork();
