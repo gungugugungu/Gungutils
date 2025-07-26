@@ -1,0 +1,636 @@
+.
+├── api
+│   ├── core
+│   │   ├── examples
+│   │   │   ├── 3d
+│   │   │   │   ├── 3d.cflags
+│   │   │   │   ├── 3d.config
+│   │   │   │   ├── 3d.creator
+│   │   │   │   ├── 3d.creator.shared
+│   │   │   │   ├── 3d.cxxflags
+│   │   │   │   ├── 3d.files
+│   │   │   │   └── 3d.includes
+│   │   │   ├── 3d.cpp
+│   │   │   ├── asyncio
+│   │   │   │   ├── asyncio.cflags
+│   │   │   │   ├── asyncio.config
+│   │   │   │   ├── asyncio.creator
+│   │   │   │   ├── asyncio.creator.shared
+│   │   │   │   ├── asyncio.cxxflags
+│   │   │   │   ├── asyncio.files
+│   │   │   │   └── asyncio.includes
+│   │   │   ├── asyncio.cpp
+│   │   │   ├── channel_groups
+│   │   │   │   ├── channel_groups.cflags
+│   │   │   │   ├── channel_groups.config
+│   │   │   │   ├── channel_groups.creator
+│   │   │   │   ├── channel_groups.creator.shared
+│   │   │   │   ├── channel_groups.cxxflags
+│   │   │   │   ├── channel_groups.files
+│   │   │   │   └── channel_groups.includes
+│   │   │   ├── channel_groups.cpp
+│   │   │   ├── common.cpp
+│   │   │   ├── common.h
+│   │   │   ├── common_platform.cpp
+│   │   │   ├── common_platform.h
+│   │   │   ├── convolution_reverb
+│   │   │   │   ├── convolution_reverb.cflags
+│   │   │   │   ├── convolution_reverb.config
+│   │   │   │   ├── convolution_reverb.creator
+│   │   │   │   ├── convolution_reverb.creator.shared
+│   │   │   │   ├── convolution_reverb.cxxflags
+│   │   │   │   ├── convolution_reverb.files
+│   │   │   │   └── convolution_reverb.includes
+│   │   │   ├── convolution_reverb.cpp
+│   │   │   ├── dsp_custom
+│   │   │   │   ├── dsp_custom.cflags
+│   │   │   │   ├── dsp_custom.config
+│   │   │   │   ├── dsp_custom.creator
+│   │   │   │   ├── dsp_custom.creator.shared
+│   │   │   │   ├── dsp_custom.cxxflags
+│   │   │   │   ├── dsp_custom.files
+│   │   │   │   └── dsp_custom.includes
+│   │   │   ├── dsp_custom.cpp
+│   │   │   ├── dsp_effect_per_speaker
+│   │   │   │   ├── dsp_effect_per_speaker.cflags
+│   │   │   │   ├── dsp_effect_per_speaker.config
+│   │   │   │   ├── dsp_effect_per_speaker.creator
+│   │   │   │   ├── dsp_effect_per_speaker.creator.shared
+│   │   │   │   ├── dsp_effect_per_speaker.cxxflags
+│   │   │   │   ├── dsp_effect_per_speaker.files
+│   │   │   │   └── dsp_effect_per_speaker.includes
+│   │   │   ├── dsp_effect_per_speaker.cpp
+│   │   │   ├── dsp_inspector
+│   │   │   │   ├── dsp_inspector.cflags
+│   │   │   │   ├── dsp_inspector.config
+│   │   │   │   ├── dsp_inspector.creator
+│   │   │   │   ├── dsp_inspector.creator.shared
+│   │   │   │   ├── dsp_inspector.cxxflags
+│   │   │   │   ├── dsp_inspector.files
+│   │   │   │   └── dsp_inspector.includes
+│   │   │   ├── dsp_inspector.cpp
+│   │   │   ├── effects
+│   │   │   │   ├── effects.cflags
+│   │   │   │   ├── effects.config
+│   │   │   │   ├── effects.creator
+│   │   │   │   ├── effects.creator.shared
+│   │   │   │   ├── effects.cxxflags
+│   │   │   │   ├── effects.files
+│   │   │   │   └── effects.includes
+│   │   │   ├── effects.cpp
+│   │   │   ├── gapless_playback
+│   │   │   │   ├── gapless_playback.cflags
+│   │   │   │   ├── gapless_playback.config
+│   │   │   │   ├── gapless_playback.creator
+│   │   │   │   ├── gapless_playback.creator.shared
+│   │   │   │   ├── gapless_playback.cxxflags
+│   │   │   │   ├── gapless_playback.files
+│   │   │   │   └── gapless_playback.includes
+│   │   │   ├── gapless_playback.cpp
+│   │   │   ├── generate_tone
+│   │   │   │   ├── generate_tone.cflags
+│   │   │   │   ├── generate_tone.config
+│   │   │   │   ├── generate_tone.creator
+│   │   │   │   ├── generate_tone.creator.shared
+│   │   │   │   ├── generate_tone.cxxflags
+│   │   │   │   ├── generate_tone.files
+│   │   │   │   └── generate_tone.includes
+│   │   │   ├── generate_tone.cpp
+│   │   │   ├── granular_synth
+│   │   │   │   ├── granular_synth.cflags
+│   │   │   │   ├── granular_synth.config
+│   │   │   │   ├── granular_synth.creator
+│   │   │   │   ├── granular_synth.creator.shared
+│   │   │   │   ├── granular_synth.cxxflags
+│   │   │   │   ├── granular_synth.files
+│   │   │   │   └── granular_synth.includes
+│   │   │   ├── granular_synth.cpp
+│   │   │   ├── load_from_memory
+│   │   │   │   ├── load_from_memory.cflags
+│   │   │   │   ├── load_from_memory.config
+│   │   │   │   ├── load_from_memory.creator
+│   │   │   │   ├── load_from_memory.creator.shared
+│   │   │   │   ├── load_from_memory.cxxflags
+│   │   │   │   ├── load_from_memory.files
+│   │   │   │   └── load_from_memory.includes
+│   │   │   ├── load_from_memory.cpp
+│   │   │   ├── make
+│   │   │   │   ├── 3d.makefile
+│   │   │   │   ├── asyncio.makefile
+│   │   │   │   ├── channel_groups.makefile
+│   │   │   │   ├── convolution_reverb.makefile
+│   │   │   │   ├── dsp_custom.makefile
+│   │   │   │   ├── dsp_effect_per_speaker.makefile
+│   │   │   │   ├── dsp_inspector.makefile
+│   │   │   │   ├── effects.makefile
+│   │   │   │   ├── gapless_playback.makefile
+│   │   │   │   ├── generate_tone.makefile
+│   │   │   │   ├── granular_synth.makefile
+│   │   │   │   ├── load_from_memory.makefile
+│   │   │   │   ├── multiple_speaker.makefile
+│   │   │   │   ├── multiple_system.makefile
+│   │   │   │   ├── net_stream.makefile
+│   │   │   │   ├── play_sound.makefile
+│   │   │   │   ├── play_stream.makefile
+│   │   │   │   ├── record_enumeration.makefile
+│   │   │   │   ├── record.makefile
+│   │   │   │   └── user_created_sound.makefile
+│   │   │   ├── media
+│   │   │   │   ├── c.ogg
+│   │   │   │   ├── d.ogg
+│   │   │   │   ├── drumloop.wav
+│   │   │   │   ├── e.ogg
+│   │   │   │   ├── granular
+│   │   │   │   │   ├── truck_idle_off_01.wav
+│   │   │   │   │   ├── truck_idle_off_02.wav
+│   │   │   │   │   ├── truck_idle_off_03.wav
+│   │   │   │   │   ├── truck_idle_off_04.wav
+│   │   │   │   │   ├── truck_idle_off_05.wav
+│   │   │   │   │   └── truck_idle_off_06.wav
+│   │   │   │   ├── jaguar.wav
+│   │   │   │   ├── singing.wav
+│   │   │   │   ├── standrews.wav
+│   │   │   │   ├── stereo.ogg
+│   │   │   │   ├── swish.wav
+│   │   │   │   ├── wave.mp3
+│   │   │   │   └── wave_vorbis.fsb
+│   │   │   ├── multiple_speaker
+│   │   │   │   ├── multiple_speaker.cflags
+│   │   │   │   ├── multiple_speaker.config
+│   │   │   │   ├── multiple_speaker.creator
+│   │   │   │   ├── multiple_speaker.creator.shared
+│   │   │   │   ├── multiple_speaker.cxxflags
+│   │   │   │   ├── multiple_speaker.files
+│   │   │   │   └── multiple_speaker.includes
+│   │   │   ├── multiple_speaker.cpp
+│   │   │   ├── multiple_system
+│   │   │   │   ├── multiple_system.cflags
+│   │   │   │   ├── multiple_system.config
+│   │   │   │   ├── multiple_system.creator
+│   │   │   │   ├── multiple_system.creator.shared
+│   │   │   │   ├── multiple_system.cxxflags
+│   │   │   │   ├── multiple_system.files
+│   │   │   │   └── multiple_system.includes
+│   │   │   ├── multiple_system.cpp
+│   │   │   ├── net_stream
+│   │   │   │   ├── net_stream.cflags
+│   │   │   │   ├── net_stream.config
+│   │   │   │   ├── net_stream.creator
+│   │   │   │   ├── net_stream.creator.shared
+│   │   │   │   ├── net_stream.cxxflags
+│   │   │   │   ├── net_stream.files
+│   │   │   │   └── net_stream.includes
+│   │   │   ├── net_stream.cpp
+│   │   │   ├── play_sound
+│   │   │   │   ├── play_sound.cflags
+│   │   │   │   ├── play_sound.config
+│   │   │   │   ├── play_sound.creator
+│   │   │   │   ├── play_sound.creator.shared
+│   │   │   │   ├── play_sound.cxxflags
+│   │   │   │   ├── play_sound.files
+│   │   │   │   └── play_sound.includes
+│   │   │   ├── play_sound.cpp
+│   │   │   ├── play_stream
+│   │   │   │   ├── play_stream.cflags
+│   │   │   │   ├── play_stream.config
+│   │   │   │   ├── play_stream.creator
+│   │   │   │   ├── play_stream.creator.shared
+│   │   │   │   ├── play_stream.cxxflags
+│   │   │   │   ├── play_stream.files
+│   │   │   │   └── play_stream.includes
+│   │   │   ├── play_stream.cpp
+│   │   │   ├── plugins
+│   │   │   │   ├── fmod_codec_raw.cpp
+│   │   │   │   ├── fmod_distance_filter.cpp
+│   │   │   │   ├── fmod_gain.cpp
+│   │   │   │   ├── fmod_noise.cpp
+│   │   │   │   └── fmod_rnbo.cpp
+│   │   │   ├── record
+│   │   │   │   ├── record.cflags
+│   │   │   │   ├── record.config
+│   │   │   │   ├── record.creator
+│   │   │   │   ├── record.creator.shared
+│   │   │   │   ├── record.cxxflags
+│   │   │   │   ├── record.files
+│   │   │   │   └── record.includes
+│   │   │   ├── record.cpp
+│   │   │   ├── record_enumeration
+│   │   │   │   ├── record_enumeration.cflags
+│   │   │   │   ├── record_enumeration.config
+│   │   │   │   ├── record_enumeration.creator
+│   │   │   │   ├── record_enumeration.creator.shared
+│   │   │   │   ├── record_enumeration.cxxflags
+│   │   │   │   ├── record_enumeration.files
+│   │   │   │   └── record_enumeration.includes
+│   │   │   ├── record_enumeration.cpp
+│   │   │   ├── user_created_sound
+│   │   │   │   ├── user_created_sound.cflags
+│   │   │   │   ├── user_created_sound.config
+│   │   │   │   ├── user_created_sound.creator
+│   │   │   │   ├── user_created_sound.creator.shared
+│   │   │   │   ├── user_created_sound.cxxflags
+│   │   │   │   ├── user_created_sound.files
+│   │   │   │   └── user_created_sound.includes
+│   │   │   └── user_created_sound.cpp
+│   │   ├── inc
+│   │   │   ├── fmod_codec.h
+│   │   │   ├── fmod_common.h
+│   │   │   ├── fmod.cs
+│   │   │   ├── fmod_dsp.cs
+│   │   │   ├── fmod_dsp_effects.h
+│   │   │   ├── fmod_dsp.h
+│   │   │   ├── fmod_errors.cs
+│   │   │   ├── fmod_errors.h
+│   │   │   ├── fmod.h
+│   │   │   ├── fmod.hpp
+│   │   │   └── fmod_output.h
+│   │   └── lib
+│   │       ├── arm
+│   │       │   ├── libfmodL.so -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14 -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14.8
+│   │       │   ├── libfmod.so -> libfmod.so.14.8
+│   │       │   ├── libfmod.so.14 -> libfmod.so.14.8
+│   │       │   └── libfmod.so.14.8
+│   │       ├── arm64
+│   │       │   ├── libfmodL.so -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14 -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14.8
+│   │       │   ├── libfmod.so -> libfmod.so.14.8
+│   │       │   ├── libfmod.so.14 -> libfmod.so.14.8
+│   │       │   └── libfmod.so.14.8
+│   │       ├── x86
+│   │       │   ├── libfmodL.so -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14 -> libfmodL.so.14.8
+│   │       │   ├── libfmodL.so.14.8
+│   │       │   ├── libfmod.so -> libfmod.so.14.8
+│   │       │   ├── libfmod.so.14 -> libfmod.so.14.8
+│   │       │   └── libfmod.so.14.8
+│   │       └── x86_64
+│   │           ├── libfmodL.so -> libfmodL.so.14.8
+│   │           ├── libfmodL.so.14 -> libfmodL.so.14.8
+│   │           ├── libfmodL.so.14.8
+│   │           ├── libfmod.so -> libfmod.so.14.8
+│   │           ├── libfmod.so.14 -> libfmod.so.14.8
+│   │           └── libfmod.so.14.8
+│   ├── fsbank
+│   │   ├── inc
+│   │   │   ├── fsbank_errors.h
+│   │   │   └── fsbank.h
+│   │   └── lib
+│   │       ├── x86
+│   │       │   ├── libfsbankL.so -> libfsbankL.so.14.8
+│   │       │   ├── libfsbankL.so.14 -> libfsbankL.so.14.8
+│   │       │   ├── libfsbankL.so.14.8
+│   │       │   ├── libfsbank.so -> libfsbank.so.14.8
+│   │       │   ├── libfsbank.so.14 -> libfsbank.so.14.8
+│   │       │   ├── libfsbank.so.14.8
+│   │       │   ├── libfsbvorbis.so
+│   │       │   └── libopus.so
+│   │       └── x86_64
+│   │           ├── libfsbankL.so -> libfsbankL.so.14.8
+│   │           ├── libfsbankL.so.14 -> libfsbankL.so.14.8
+│   │           ├── libfsbankL.so.14.8
+│   │           ├── libfsbank.so -> libfsbank.so.14.8
+│   │           ├── libfsbank.so.14 -> libfsbank.so.14.8
+│   │           ├── libfsbank.so.14.8
+│   │           ├── libfsbvorbis.so
+│   │           └── libopus.so
+│   └── studio
+│       ├── examples
+│       │   ├── 3d
+│       │   │   ├── 3d.cflags
+│       │   │   ├── 3d.config
+│       │   │   ├── 3d.creator
+│       │   │   ├── 3d.creator.shared
+│       │   │   ├── 3d.cxxflags
+│       │   │   ├── 3d.files
+│       │   │   └── 3d.includes
+│       │   ├── 3d.cpp
+│       │   ├── 3d_multi
+│       │   │   ├── 3d_multi.cflags
+│       │   │   ├── 3d_multi.config
+│       │   │   ├── 3d_multi.creator
+│       │   │   ├── 3d_multi.creator.shared
+│       │   │   ├── 3d_multi.cxxflags
+│       │   │   ├── 3d_multi.files
+│       │   │   └── 3d_multi.includes
+│       │   ├── 3d_multi.cpp
+│       │   ├── common.cpp
+│       │   ├── common.h
+│       │   ├── common_platform.cpp
+│       │   ├── common_platform.h
+│       │   ├── event_parameter
+│       │   │   ├── event_parameter.cflags
+│       │   │   ├── event_parameter.config
+│       │   │   ├── event_parameter.creator
+│       │   │   ├── event_parameter.creator.shared
+│       │   │   ├── event_parameter.cxxflags
+│       │   │   ├── event_parameter.files
+│       │   │   └── event_parameter.includes
+│       │   ├── event_parameter.cpp
+│       │   ├── load_banks
+│       │   │   ├── load_banks.cflags
+│       │   │   ├── load_banks.config
+│       │   │   ├── load_banks.creator
+│       │   │   ├── load_banks.creator.shared
+│       │   │   ├── load_banks.cxxflags
+│       │   │   ├── load_banks.files
+│       │   │   └── load_banks.includes
+│       │   ├── load_banks.cpp
+│       │   ├── make
+│       │   │   ├── 3d.makefile
+│       │   │   ├── 3d_multi.makefile
+│       │   │   ├── event_parameter.makefile
+│       │   │   ├── load_banks.makefile
+│       │   │   ├── music_callbacks.makefile
+│       │   │   ├── objectpan.makefile
+│       │   │   ├── programmer_sound.makefile
+│       │   │   ├── recording_playback.makefile
+│       │   │   └── simple_event.makefile
+│       │   ├── media
+│       │   │   ├── 640148main_APU Shutdown.ogg
+│       │   │   ├── 640165main_Lookin At It.ogg
+│       │   │   ├── 640166main_MECO.ogg
+│       │   │   ├── 640169main_Press to ATO.ogg
+│       │   │   ├── Dialogue_CN.bank
+│       │   │   ├── Dialogue_EN.bank
+│       │   │   ├── Dialogue_JP.bank
+│       │   │   ├── Master.bank
+│       │   │   ├── Master.strings.bank
+│       │   │   ├── Music.bank
+│       │   │   ├── programmer_sound.fsb
+│       │   │   ├── SFX.bank
+│       │   │   ├── Vehicles.bank
+│       │   │   └── VO.bank
+│       │   ├── music_callbacks
+│       │   │   ├── music_callbacks.cflags
+│       │   │   ├── music_callbacks.config
+│       │   │   ├── music_callbacks.creator
+│       │   │   ├── music_callbacks.creator.shared
+│       │   │   ├── music_callbacks.cxxflags
+│       │   │   ├── music_callbacks.files
+│       │   │   └── music_callbacks.includes
+│       │   ├── music_callbacks.cpp
+│       │   ├── objectpan
+│       │   │   ├── objectpan.cflags
+│       │   │   ├── objectpan.config
+│       │   │   ├── objectpan.creator
+│       │   │   ├── objectpan.creator.shared
+│       │   │   ├── objectpan.cxxflags
+│       │   │   ├── objectpan.files
+│       │   │   └── objectpan.includes
+│       │   ├── objectpan.cpp
+│       │   ├── programmer_sound
+│       │   │   ├── programmer_sound.cflags
+│       │   │   ├── programmer_sound.config
+│       │   │   ├── programmer_sound.creator
+│       │   │   ├── programmer_sound.creator.shared
+│       │   │   ├── programmer_sound.cxxflags
+│       │   │   ├── programmer_sound.files
+│       │   │   └── programmer_sound.includes
+│       │   ├── programmer_sound.cpp
+│       │   ├── recording_playback
+│       │   │   ├── recording_playback.cflags
+│       │   │   ├── recording_playback.config
+│       │   │   ├── recording_playback.creator
+│       │   │   ├── recording_playback.creator.shared
+│       │   │   ├── recording_playback.cxxflags
+│       │   │   ├── recording_playback.files
+│       │   │   └── recording_playback.includes
+│       │   ├── recording_playback.cpp
+│       │   ├── simple_event
+│       │   │   ├── simple_event.cflags
+│       │   │   ├── simple_event.config
+│       │   │   ├── simple_event.creator
+│       │   │   ├── simple_event.creator.shared
+│       │   │   ├── simple_event.cxxflags
+│       │   │   ├── simple_event.files
+│       │   │   └── simple_event.includes
+│       │   └── simple_event.cpp
+│       ├── inc
+│       │   ├── fmod_studio_common.h
+│       │   ├── fmod_studio.cs
+│       │   ├── fmod_studio.h
+│       │   └── fmod_studio.hpp
+│       └── lib
+│           ├── arm
+│           │   ├── libfmodstudioL.so -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14 -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14.8
+│           │   ├── libfmodstudio.so -> libfmodstudio.so.14.8
+│           │   ├── libfmodstudio.so.14 -> libfmodstudio.so.14.8
+│           │   └── libfmodstudio.so.14.8
+│           ├── arm64
+│           │   ├── libfmodstudioL.so -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14 -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14.8
+│           │   ├── libfmodstudio.so -> libfmodstudio.so.14.8
+│           │   ├── libfmodstudio.so.14 -> libfmodstudio.so.14.8
+│           │   └── libfmodstudio.so.14.8
+│           ├── x86
+│           │   ├── libfmodstudioL.so -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14 -> libfmodstudioL.so.14.8
+│           │   ├── libfmodstudioL.so.14.8
+│           │   ├── libfmodstudio.so -> libfmodstudio.so.14.8
+│           │   ├── libfmodstudio.so.14 -> libfmodstudio.so.14.8
+│           │   └── libfmodstudio.so.14.8
+│           └── x86_64
+│               ├── libfmodstudioL.so -> libfmodstudioL.so.14.8
+│               ├── libfmodstudioL.so.14 -> libfmodstudioL.so.14.8
+│               ├── libfmodstudioL.so.14.8
+│               ├── libfmodstudio.so -> libfmodstudio.so.14.8
+│               ├── libfmodstudio.so.14 -> libfmodstudio.so.14.8
+│               └── libfmodstudio.so.14.8
+├── bin
+│   ├── fmodprofiler
+│   ├── fsbank
+│   ├── fsbank_gui
+│   ├── lib
+│   │   ├── libfmodL.so.14
+│   │   ├── libfsbankL.so.14
+│   │   ├── libfsbvorbis.so
+│   │   ├── libicudata.so.56
+│   │   ├── libicui18n.so.56
+│   │   ├── libicuuc.so.56
+│   │   ├── libopus.so
+│   │   ├── libQt6Core.so.6
+│   │   ├── libQt6DBus.so.6
+│   │   ├── libQt6Gui.so.6
+│   │   ├── libQt6Network.so.6
+│   │   ├── libQt6OpenGL.so.6
+│   │   ├── libQt6Widgets.so.6
+│   │   ├── libQt6XcbQpa.so.6
+│   │   └── libQt6Xml.so.6
+│   ├── Qt
+│   │   └── platforms
+│   │       └── libqxcb.so
+│   └── qt.conf
+├── doc
+│   ├── FMOD API User Manual
+│   │   ├── advanced-core-api-topics.html
+│   │   ├── core-api-channelcontrol.html
+│   │   ├── core-api-channelgroup.html
+│   │   ├── core-api-channel.html
+│   │   ├── core-api-common-dsp-effects.html
+│   │   ├── core-api-common.html
+│   │   ├── core-api-concepts.html
+│   │   ├── core-api-dspconnection.html
+│   │   ├── core-api-dsp.html
+│   │   ├── core-api-geometry.html
+│   │   ├── core-api.html
+│   │   ├── core-api-platform-android.html
+│   │   ├── core-api-platform-html5.html
+│   │   ├── core-api-platform-ios.html
+│   │   ├── core-api-reverb3d.html
+│   │   ├── core-api-soundgroup.html
+│   │   ├── core-api-sound.html
+│   │   ├── core-api-system.html
+│   │   ├── dsp-plugin-api-guide.html
+│   │   ├── effects-reference.html
+│   │   ├── fsbank-api.html
+│   │   ├── glossary.html
+│   │   ├── images
+│   │   │   ├── 3d-reverb.png
+│   │   │   ├── 3d-studio-1.png
+│   │   │   ├── 3d-studio-2.png
+│   │   │   ├── 3d-studio-3.png
+│   │   │   ├── dsp-chain.png
+│   │   │   ├── dsp-channelmix-grouping.svg
+│   │   │   ├── dsp-channelmix-levels.svg
+│   │   │   ├── dsp-channelmix-routing.svg
+│   │   │   ├── dsp-chorus-wave.svg
+│   │   │   ├── dsp-compressor.svg
+│   │   │   ├── dsp-convolution-impulse.svg
+│   │   │   ├── dsp-delay-wave.svg
+│   │   │   ├── dsp-distortion-wave.svg
+│   │   │   ├── dsp-echo-wave.svg
+│   │   │   ├── dsp-fft-blackmanharris.png
+│   │   │   ├── dsp-fft-blackman.png
+│   │   │   ├── dsp-fft-hamming.png
+│   │   │   ├── dsp-fft-hanning.png
+│   │   │   ├── dsp-fft-process.png
+│   │   │   ├── dsp-fft-process.svg
+│   │   │   ├── dsp-fft-rectangle.png
+│   │   │   ├── dsp-fft-triangle.png
+│   │   │   ├── dsp-flange-wave.svg
+│   │   │   ├── dsp-limiter-signals.svg
+│   │   │   ├── dsp-multibandeq-bands.svg
+│   │   │   ├── dspnet-img001.png
+│   │   │   ├── dspnet-img002.png
+│   │   │   ├── dspnet-img003.png
+│   │   │   ├── dspnet-img004.png
+│   │   │   ├── dspnet-img005.png
+│   │   │   ├── dspnet-img006.png
+│   │   │   ├── dspnet-img007.png
+│   │   │   ├── dspnet-img008.png
+│   │   │   ├── dspnet-img009.png
+│   │   │   ├── dspnet-img010.png
+│   │   │   ├── dspnet-img011.png
+│   │   │   ├── dspnet-img012.png
+│   │   │   ├── dspnet-img013.png
+│   │   │   ├── dspnet-img014.png
+│   │   │   ├── dspnet-img015.png
+│   │   │   ├── dsp-normalize-signals.svg
+│   │   │   ├── dsp-objectpanner-diagram.svg
+│   │   │   ├── dsp-oscillator-waves.svg
+│   │   │   ├── dsp-pan-2d-height-side.svg
+│   │   │   ├── dsp-pan-2d-height.svg
+│   │   │   ├── dsp-pan-2d.png
+│   │   │   ├── dsp-pan-2d-stereo-anim.gif
+│   │   │   ├── dsp-pan-2d-stereo.svg
+│   │   │   ├── dsp-pan-2d-surround-anim.gif
+│   │   │   ├── dsp-pan-2d-surround-direction-anim.gif
+│   │   │   ├── dsp-pan-2d-surround-discrete-anim.gif
+│   │   │   ├── dsp-pan-2d-surround-discretesep-anim.gif
+│   │   │   ├── dsp-pan-2d-surround-extent-5ch.png
+│   │   │   ├── dsp-pan-2d-surround-height-714down.gif
+│   │   │   ├── dsp-pan-2d-surround-height-714up.gif
+│   │   │   ├── dsp-pan-2d-surround-height.gif
+│   │   │   ├── dsp-pan-2d-surround-rotate-anim.gif
+│   │   │   ├── dsp-pan-2d.svg
+│   │   │   ├── dsp-pan-3d-extent-off.gif
+│   │   │   ├── dsp-pan-3d-position.svg
+│   │   │   ├── dsp-pan-3d-rolloff-custom.svg
+│   │   │   ├── dsp-pan-3d-rolloff-inverse.svg
+│   │   │   ├── dsp-pan-3d-rolloff-invtaper.svg
+│   │   │   ├── dsp-pan-3d-rolloff-linear.svg
+│   │   │   ├── dsp-pan-3d-rolloff-linsquared.svg
+│   │   │   ├── dsp-pan-3d-surround-minextent.gif
+│   │   │   ├── dsp-pan-3d-surround-soundsize.gif
+│   │   │   ├── dsp-pan-general-enabledspeakers.gif
+│   │   │   ├── dsp-send-return.svg
+│   │   │   ├── dsp-sfxreverb.svg
+│   │   │   ├── dsp-threeeq.svg
+│   │   │   ├── dsp-transceiver.svg
+│   │   │   ├── dynamic-response-compress-down.svg
+│   │   │   ├── dynamic-response-compress-up.svg
+│   │   │   ├── dynamic-response-expand-down.svg
+│   │   │   ├── dynamic-response-expand-up.svg
+│   │   │   ├── mpeg-frames.png
+│   │   │   ├── multi-channel-mpeg.png
+│   │   │   ├── object_spatializer_effect_diagram.png
+│   │   │   ├── samples-bytes-milliseconds.png
+│   │   │   ├── studio-bank-layout.png
+│   │   │   ├── studio-thread-async.png
+│   │   │   ├── studio-thread-sync.png
+│   │   │   └── virtual-dspgraph.png
+│   │   ├── loading-and-playing-sounds-in-the-core-api.html
+│   │   ├── managing-resources-in-the-core-api.html
+│   │   ├── mixing-and-routing-in-the-core-api.html
+│   │   ├── platforms-android.html
+│   │   ├── platforms.html
+│   │   ├── platforms-html5.html
+│   │   ├── platforms-ios.html
+│   │   ├── platforms-linux.html
+│   │   ├── platforms-mac.html
+│   │   ├── platforms-openharmony.html
+│   │   ├── platforms-uwp.html
+│   │   ├── platforms-win.html
+│   │   ├── plugin-api-codec.html
+│   │   ├── plugin-api-dsp.html
+│   │   ├── plugin-api.html
+│   │   ├── plugin-api-output.html
+│   │   ├── running-the-core-api.html
+│   │   ├── scripts
+│   │   │   └── language-selector.js
+│   │   ├── spatializing-sounds-in-the-core-api.html
+│   │   ├── studio-api-3d-events.html
+│   │   ├── studio-api-bank.html
+│   │   ├── studio-api-bus.html
+│   │   ├── studio-api-commandreplay.html
+│   │   ├── studio-api-common.html
+│   │   ├── studio-api-eventdescription.html
+│   │   ├── studio-api-eventinstance.html
+│   │   ├── studio-api-getting-started.html
+│   │   ├── studio-api.html
+│   │   ├── studio-api-system.html
+│   │   ├── studio-api-threads.html
+│   │   ├── studio-api-vca.html
+│   │   ├── studio-guide.html
+│   │   ├── style
+│   │   │   ├── code_highlight.css
+│   │   │   ├── DINWeb-Medium.woff
+│   │   │   ├── DINWeb.woff
+│   │   │   └── docs.css
+│   │   ├── troubleshooting.html
+│   │   ├── using-dsp-effects-in-the-core-api.html
+│   │   ├── welcome.html
+│   │   ├── welcome-revision-history.html
+│   │   ├── welcome-whats-new-110.html
+│   │   ├── welcome-whats-new-200.html
+│   │   ├── welcome-whats-new-201.html
+│   │   ├── welcome-whats-new-202.html
+│   │   └── welcome-whats-new-203.html
+│   ├── LICENSE.TXT
+│   └── revision.txt
+└── plugins
+    └── resonance_audio
+        ├── inc
+        │   └── RoomProperties.h
+        ├── lib
+        │   └── libresonanceaudio.so
+        ├── license.txt
+        └── readme.txt
+
+71 directories, 563 files

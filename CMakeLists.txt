@@ -14,7 +14,13 @@ pkg_check_modules(XCURSOR REQUIRED xcursor)
 add_executable(Gungutils main.cpp)
 add_subdirectory(include/SDL)
 
-# Link against the required libraries
+set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
+set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
+set(FMOD_INCLUDE_DIRS
+        ${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/inc
+        ${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/inc
+)
+
 target_link_libraries(Gungutils
     PRIVATE
         SDL3::SDL3
@@ -22,14 +28,16 @@ target_link_libraries(Gungutils
         X11::Xi
         ${X11_LIBRARIES}
         ${XCURSOR_LIBRARIES}
+        ${FMOD_STUDIO_LIB}
+        ${FMOD_CORE_LIB}
         dl
         pthread
 )
 
-# Include directories
 target_include_directories(Gungutils
     PRIVATE
         include
+        ${FMOD_INCLUDE_DIRS}
         ${X11_INCLUDE_DIR}
         ${XCURSOR_INCLUDE_DIRS}
 )

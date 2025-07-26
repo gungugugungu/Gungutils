@@ -14,7 +14,6 @@
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
-#include "sokol/sokol_audio.h"
 #ifdef B32
 #pragma message("B32 is defined as: " B32)
 #undef B32
@@ -27,6 +26,9 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobjloader/tiny_obj_loader.h"
 #include "SDL3/SDL.h"
+#include "FModStudio/api/core/inc/fmod.hpp"
+#include "FModStudio/api/studio/inc/fmod_studio.hpp"
+#include "FModStudio/api/core/inc/fmod_errors.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 
@@ -51,6 +53,7 @@ struct AppState {
     float fov;
     map<SDL_Keycode, bool> inputs;
     bool running = true;
+    FMOD::Studio::System* fmod_system = NULL;
 };
 
 AppState state;
@@ -447,6 +450,21 @@ extern void (*event_callback)(SDL_Event* e);
 void _init() {
     stbi_set_flip_vertically_on_load(true);
 
+    // FMOD
+    FMOD_RESULT result;
+    result = FMOD::Studio::System::create(&state.fmod_system);
+    if (result != FMOD_OK)
+    {
+        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        exit(-1);
+    }
+    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
+    if (result != FMOD_OK)
+    {
+        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        exit(-1);
+    }
+
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
@@ -507,6 +525,9 @@ void _init() {
 }
 
 void _frame() {
+    // FMOD
+    state.fmod_system->update();
+
     state.delta_time = stm_laptime(&state.last_time);
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
@@ -639,6 +660,7 @@ int main(int argc, char* argv[]) {
         SDL_GL_SwapWindow(state.win);
     }
 
+    state.fmod_system->release();
     sfetch_shutdown();
     sg_shutdown();
     SDL_GL_DestroyContext(ctx);
