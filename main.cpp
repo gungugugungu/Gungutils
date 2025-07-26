@@ -4,7 +4,7 @@
 #include "gungutils.hpp"
 
 void init() {
-    state.background_color = {0.2f, 0.3f, 0.5f};
+    state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
     /*float* verts = nullptr;
     uint32_t vertex_count = 0;

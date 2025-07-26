@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(Gungutils)
 
-execute_process(
-        COMMAND ${CMAKE_SOURCE_DIR}/compile_shaders.sh
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
 set(CMAKE_CXX_STANDARD 20)
 
 # Find required packages
@@ -34,7 +29,7 @@ target_link_libraries(Gungutils
 # Include directories
 target_include_directories(Gungutils
     PRIVATE
-    include
-    ${X11_INCLUDE_DIR}
-    ${XCURSOR_INCLUDE_DIRS}
+        include
+        ${X11_INCLUDE_DIR}
+        ${XCURSOR_INCLUDE_DIRS}
 )

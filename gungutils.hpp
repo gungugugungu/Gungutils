@@ -14,6 +14,7 @@
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
+#include "sokol/sokol_audio.h"
 #ifdef B32
 #pragma message("B32 is defined as: " B32)
 #undef B32
@@ -477,6 +478,10 @@ void _init() {
     pip_desc.colors->blend.enabled = true;
     pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
     pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    pip_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
