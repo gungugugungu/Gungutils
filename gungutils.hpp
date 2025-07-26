@@ -443,6 +443,14 @@ bool load_obj(
     return true;
 }
 
+void print_fmod_error(FMOD_RESULT result) {
+    if (result != FMOD_OK)
+    {
+        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        exit(-1);
+    }
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -453,17 +461,9 @@ void _init() {
     // FMOD
     FMOD_RESULT result;
     result = FMOD::Studio::System::create(&state.fmod_system);
-    if (result != FMOD_OK)
-    {
-        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
-        exit(-1);
-    }
+    print_fmod_error(result);
     result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
-    if (result != FMOD_OK)
-    {
-        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
-        exit(-1);
-    }
+    print_fmod_error(result);
 
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);

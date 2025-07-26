@@ -11,6 +11,28 @@ void init() {
     uint32_t* indices = nullptr;
     uint32_t index_count = 0;*/
 
+    FMOD::Studio::Bank* bank = nullptr;
+    FMOD_RESULT result;
+    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &bank);
+    print_fmod_error(result);
+
+    FMOD::Studio::EventDescription* event_descriptions = nullptr;
+    int event_count = 0;
+    result = bank->getEventList(&event_descriptions, 1, &event_count);
+    std::cout << "Created event desc, count: " << event_count << std::endl;
+    print_fmod_error(result);
+
+    if (event_count > 0 && event_descriptions != nullptr) {
+        FMOD::Studio::EventInstance* event_instance = nullptr;
+        result = event_descriptions->createInstance(&event_instance);
+        std::cout << "Created event instance" << std::endl;
+        print_fmod_error(result);
+
+        event_instance->start();
+    } else {
+        std::cout << "No events found in bank" << std::endl;
+    }
+
     vector<Mesh> loaded_meshes = load_gltf("test5.glb");
     for (auto& mesh : loaded_meshes) {
         Mesh_To_Buffers(mesh);
