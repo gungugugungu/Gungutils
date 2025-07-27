@@ -621,10 +621,13 @@ void _frame() {
     if (state.editor_open) {
         ImGui::ShowDemoWindow();
         ImGui::Begin("Object list");
-        for (auto& mesh : all_meshes) {
-            ImGui::Text("Mesh");
+        for (int i = 0; i < all_meshes.size(); i++) {
+            auto& mesh = all_meshes[i];
+            ImGui::Text("Mesh %d", i);
             ImGui::Text(to_string(mesh.vertex_count).c_str());
-            ImGui::DragFloat3("Positon", &mesh.position.X, 0.01f);
+
+            string label = "Position##" + to_string(i);  // ##i makes it unique but invisible
+            ImGui::DragFloat3(label.c_str(), &mesh.position.X, 0.01f);
         }
         ImGui::End();
     }
