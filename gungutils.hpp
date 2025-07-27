@@ -462,14 +462,15 @@ void _init() {
     FMOD_RESULT result;
     result = FMOD::Studio::System::create(&state.fmod_system);
     print_fmod_error(result);
-    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
-    print_fmod_error(result);
-    result = state.fmod_system->setNumListeners(1);
-    print_fmod_error(result);
     FMOD::System* sys;
     result = state.fmod_system->getCoreSystem(&sys);
     print_fmod_error(result);
     result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
+    print_fmod_error(result);
+    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
+    print_fmod_error(result);
+    result = state.fmod_system->setNumListeners(1);
+    print_fmod_error(result);
 
     state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
@@ -535,9 +536,10 @@ void _frame() {
     FMOD_RESULT result;
     state.fmod_system->update();
     FMOD_3D_ATTRIBUTES camera_attributes;
-    camera_attributes.position = { state.camera_pos.X, state.camera_pos.Y, state.camera_pos.Z };
+    camera_attributes.position = { -state.camera_pos.X, state.camera_pos.Y, -state.camera_pos.Z };
     camera_attributes.velocity = { 0.0f, 0.0f, 0.0f };
     camera_attributes.forward = { state.camera_front.X, state.camera_front.Y, state.camera_front.Z };
+    camera_attributes.up = { state.camera_up.X, state.camera_up.Y, state.camera_up.Z };
     result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
     print_fmod_error(result);
 

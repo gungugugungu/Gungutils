@@ -30,6 +30,7 @@ void init() {
     threeDeezNutsBoi.position = {0.0f, 0.0f, 0.0f};
     threeDeezNutsBoi.velocity = {0.0f, 0.0f, 0.0f};
     threeDeezNutsBoi.up = {0.0f, 1.0f, 0.0f};
+    threeDeezNutsBoi.forward = {0.0f, 0.0f, 1.0f};
     result = event_instance->set3DAttributes(&threeDeezNutsBoi);
     print_fmod_error(result);
     event_instance->start();
@@ -102,6 +103,9 @@ void event(SDL_Event* e) {
         direction.Y = sinf(state.pitch * HMM_PI / 180.0f);
         direction.Z = sinf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
         state.camera_front = HMM_NormV3(direction);
+        HMM_Vec3 world_up = HMM_V3(0.0f, 1.0f, 0.0f);
+        HMM_Vec3 camera_right = HMM_NormV3(HMM_Cross(state.camera_front, world_up));
+        state.camera_up = HMM_NormV3(HMM_Cross(camera_right, state.camera_front));
     }
     else if (e->type == SDL_EVENT_MOUSE_WHEEL) {
         if (state.fov >= 1.0f && state.fov <= 45.0f) {
