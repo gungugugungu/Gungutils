@@ -30,7 +30,7 @@ layout(binding = 0) uniform sampler palette_smp;
 
 void main() {
     vec4 hereTex = texture(palette2D, TexCoord);
-    FragColor = hereTex;
+    FragColor = vec4(hereTex.rgba);
 }
 @end
 

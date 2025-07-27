@@ -92,13 +92,9 @@ void event(SDL_Event* e) {
         }
     }
     if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
-        state.inputs[e->key.key] = true;
         if (e->key.key == SDLK_ESCAPE) {
             state.running = false;
         }
-
-    } else if (e->type == SDL_EVENT_KEY_UP && e->key.repeat == 0) {
-        state.inputs[e->key.key] = false;
     }  else if (e->type == SDL_EVENT_MOUSE_MOTION and (!state.editor_open or state.mouse_btn == true)) {
         float sensitivity = 0.1f;
 
