@@ -467,12 +467,12 @@ void _init() {
     print_fmod_error(result);
     result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
     print_fmod_error(result);
-    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, 0);
+    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL | FMOD_STUDIO_INIT_LIVEUPDATE, FMOD_INIT_NORMAL, 0);
     print_fmod_error(result);
     result = state.fmod_system->setNumListeners(1);
     print_fmod_error(result);
 
-    state.camera_pos = HMM_V3(0.0f, 0.0f, 3.0f);
+    state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
     state.yaw = -90.0f;
