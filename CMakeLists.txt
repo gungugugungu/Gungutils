@@ -11,6 +11,11 @@ find_package(X11 REQUIRED COMPONENTS Xi)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCURSOR REQUIRED xcursor)
 
+set(IMGUI_PATH  "include/imgui/")
+file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp)
+add_library(ImGui STATIC ${IMGUI_SOURCES})
+target_include_directories(ImGui PUBLIC ${IMGUI_PATH})
+
 add_executable(Gungutils main.cpp)
 add_subdirectory(include/SDL)
 
@@ -30,6 +35,7 @@ target_link_libraries(Gungutils
         ${XCURSOR_LIBRARIES}
         ${FMOD_STUDIO_LIB}
         ${FMOD_CORE_LIB}
+        ImGui
         dl
         pthread
 )

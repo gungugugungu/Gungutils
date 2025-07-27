@@ -3,6 +3,8 @@
 //
 #include "gungutils.hpp"
 
+bool mouse_btn = false;
+
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
@@ -56,7 +58,9 @@ void frame() {
     // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
-    SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
+    if (!state.editor_open) {
+        SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
+    }
     float camera_speed = 5.f * (float) stm_sec(state.delta_time);
     if (state.inputs[SDLK_W] == true) {
         HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
@@ -77,6 +81,16 @@ void frame() {
 }
 
 void event(SDL_Event* e) {
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        if (e->button.button == SDL_BUTTON_RIGHT) {
+            state.mouse_btn = true;
+        }
+    }
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_UP) {
+        if (e->button.button == SDL_BUTTON_RIGHT) {
+            state.mouse_btn = false;
+        }
+    }
     if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
         state.inputs[e->key.key] = true;
         if (e->key.key == SDLK_ESCAPE) {
@@ -85,7 +99,7 @@ void event(SDL_Event* e) {
 
     } else if (e->type == SDL_EVENT_KEY_UP && e->key.repeat == 0) {
         state.inputs[e->key.key] = false;
-    }  else if (e->type == SDL_EVENT_MOUSE_MOTION) {
+    }  else if (e->type == SDL_EVENT_MOUSE_MOTION and (!state.editor_open or state.mouse_btn == true)) {
         float sensitivity = 0.1f;
 
         state.yaw += e->motion.xrel * sensitivity;

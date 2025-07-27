@@ -11,9 +11,12 @@
 #include <tuple>
 #include <map>
 #include <ranges>
+#include "imgui/imgui.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
+#define SOKOL_IMGUI_NO_SOKOL_APP
+#include "sokol/util/sokol_imgui.h"
 #ifdef B32
 #pragma message("B32 is defined as: " B32)
 #undef B32
@@ -54,6 +57,7 @@ struct AppState {
     map<SDL_Keycode, bool> inputs;
     bool running = true;
     FMOD::Studio::System* fmod_system = NULL;
+    bool editor_open = false;
 };
 
 AppState state;
@@ -458,6 +462,9 @@ extern void (*event_callback)(SDL_Event* e);
 void _init() {
     stbi_set_flip_vertically_on_load(true);
 
+    simgui_desc_t imgui_desc = {};
+    simgui_setup(imgui_desc);
+
     // FMOD
     FMOD_RESULT result;
     result = FMOD::Studio::System::create(&state.fmod_system);
@@ -531,6 +538,8 @@ void _init() {
     sfetch_send(&request);
 }
 
+float f = 0.0f;
+
 void _frame() {
     // FMOD
     FMOD_RESULT result;
@@ -560,6 +569,14 @@ void _frame() {
     pass.swapchain = swapchain;
     sg_begin_pass(&pass);
     sg_apply_pipeline(state.pip);
+
+    // imgui
+    simgui_frame_desc_t imgui_frame_desc = {};
+    imgui_frame_desc.width = w_width;
+    imgui_frame_desc.height = w_height;
+    imgui_frame_desc.delta_time = state.delta_time;
+    imgui_frame_desc.dpi_scale = 1.0f;
+    simgui_new_frame(imgui_frame_desc);
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
@@ -595,12 +612,57 @@ void _frame() {
         sg_draw(0, mesh.index_count, 1);
     }
 
+    // imgui thing I have to call every frame god damn it
+    if (state.editor_open) {
+        ImGui::Begin("Jeffery Katzenberg");
+        ImGui::Text("Or is it Katzemberg?");
+        ImGui::Text("Nah, I'm pretty sure it's with an N");
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
+        ImGui::ColorEdit3("clear color", &state.pass_action.colors[0].clear_value.r);
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Text("w: %d, h: %d, dpi_scale: %.1f", w_width, w_height, "1.0f");
+        ImGui::End();
+    }
+    simgui_render();
+
     sg_end_pass();
     sg_commit();
 }
 
 void _event(SDL_Event* e) {
     if (e->type == SDL_EVENT_QUIT) state.running = false;
+    if (e->type == SDL_EVENT_MOUSE_MOTION) {
+        simgui_add_mouse_pos_event(e->motion.x, e->motion.y);
+    }
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        simgui_add_mouse_button_event(static_cast<int>(e->button.button)-1, true);
+    }
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_UP) {
+        simgui_add_mouse_button_event(static_cast<int>(e->button.button)-1, false);
+    }
+    if (e->type == SDL_EVENT_MOUSE_WHEEL) {
+        simgui_add_mouse_wheel_event(static_cast<float>(e->wheel.x), e->wheel.y);
+    }
+    if (e->type == SDL_EVENT_KEY_DOWN) {
+        simgui_add_key_event(e->key.raw, true);
+        if (e->key.key == SDLK_0) {
+            state.editor_open = !state.editor_open;
+            if (state.editor_open) {
+                SDL_ShowCursor();
+            } else {
+                SDL_HideCursor();
+            }
+        }
+    }
+    if (e->type == SDL_EVENT_KEY_UP) {
+        simgui_add_key_event(static_cast<int>(e->key.raw), false);
+    }
+    if (e->type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
+        simgui_add_focus_event(true);
+    }
+    if (e->type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+        simgui_add_focus_event(false);
+    }
 }
 
 void fetch_callback(const sfetch_response_t* response) {
@@ -676,6 +738,7 @@ int main(int argc, char* argv[]) {
     }
 
     state.fmod_system->release();
+    simgui_shutdown();
     sfetch_shutdown();
     sg_shutdown();
     SDL_GL_DestroyContext(ctx);
