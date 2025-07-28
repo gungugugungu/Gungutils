@@ -920,7 +920,9 @@ void _frame() {
     } else {
         for (auto& as : state.audio_sources) {
             as->visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
-            as->update_visualizer_position();
+            if (as->visualizer_mesh_index >= 0 && as->visualizer_mesh_index < all_meshes.size()) {
+                all_meshes[as->visualizer_mesh_index].position = {69420.0f, 69420.0f, 69420.0f};
+            }
         }
     }
     simgui_render();
