@@ -623,11 +623,18 @@ void _frame() {
         ImGui::Begin("Object list");
         for (int i = 0; i < all_meshes.size(); i++) {
             auto& mesh = all_meshes[i];
-            ImGui::Text("Mesh %d", i);
-            ImGui::Text(to_string(mesh.vertex_count).c_str());
+            string label = "Mesh " + to_string(i);
+            if (ImGui::TreeNode(label.c_str())) {
+                ImGui::Text(to_string(mesh.vertex_count).c_str());
 
-            string label = "Position##" + to_string(i);  // ##i makes it unique but invisible
-            ImGui::DragFloat3(label.c_str(), &mesh.position.X, 0.01f);
+                label = "Position##" + to_string(i);  // ##i makes it unique but invisible
+                ImGui::DragFloat3(label.c_str(), &mesh.position.X, 0.01f);
+                label = "Rotation##" + to_string(i);
+                ImGui::DragFloat3(label.c_str(), &mesh.rotation.X, 0.01f);
+                label = "Scale##" + to_string(i);
+                ImGui::DragFloat3(label.c_str(), &mesh.scale.X, 0.01f);
+                ImGui::TreePop();
+            }
         }
         ImGui::End();
     }
