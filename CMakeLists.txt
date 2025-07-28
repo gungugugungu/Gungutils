@@ -16,6 +16,9 @@ file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp)
 add_library(ImGui STATIC ${IMGUI_SOURCES})
 target_include_directories(ImGui PUBLIC ${IMGUI_PATH})
 
+file(GLOB TINYFD_SOURCES include/libtinyfiledialogs/*.c)
+add_library(TinyFD STATIC ${TINYFD_SOURCES})
+
 add_executable(Gungutils main.cpp)
 add_subdirectory(include/SDL)
 
@@ -36,6 +39,7 @@ target_link_libraries(Gungutils
         ${FMOD_STUDIO_LIB}
         ${FMOD_CORE_LIB}
         ImGui
+        TinyFD
         dl
         pthread
 )

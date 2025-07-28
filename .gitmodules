@@ -19,3 +19,6 @@
 [submodule "include/imgui"]
 	path = include/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "include/libtinyfiledialogs"]
+	path = include/libtinyfiledialogs
+	url = https://github.com/native-toolkit/libtinyfiledialogs.git

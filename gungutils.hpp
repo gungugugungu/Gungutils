@@ -32,6 +32,7 @@
 #include "FModStudio/api/core/inc/fmod.hpp"
 #include "FModStudio/api/studio/inc/fmod_studio.hpp"
 #include "FModStudio/api/core/inc/fmod_errors.h"
+#include "libtinyfiledialogs/tinyfiledialogs.h"
 // shaders
 #include <charconv>
 
@@ -52,7 +53,8 @@ struct AppState {
     uint64_t last_time;
     uint64_t delta_time;
     HMM_Vec3 background_color;
-    bool mouse_btn;
+    bool lmb;
+    bool rmb;
     float yaw;
     float pitch;
     float fov;
@@ -619,9 +621,29 @@ void _frame() {
         sg_draw(0, mesh.index_count, 1);
     }
 
+    // input
+    if (state.editor_open) {
+        float camera_speed = 5.f * (float) stm_sec(state.delta_time);
+        if (state.inputs[SDLK_W] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_S] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_A] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_D] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+    }
+
     // imgui and editor
     if (state.editor_open) {
-        ImGui::ShowDemoWindow();
         ImGui::Begin("Object list");
 
         static int selected_mesh_index = -1;
@@ -676,6 +698,56 @@ void _frame() {
         }
         ImGui::EndChild();
 
+        if (ImGui::Button("Load GLTF")) {
+            const char* filter_patterns[] = {"*.glb", "*.gltf"};
+            const char* file_path = tinyfd_openFileDialog(
+                "Select GLTF File",
+                "",
+                2,
+                filter_patterns,
+                "GLTF Files",
+                0
+            );
+
+            if (file_path) {
+                vector<Mesh> loaded_meshes = load_gltf(file_path);
+                for (auto& mesh : loaded_meshes) {
+                    Mesh_To_Buffers(mesh);
+                }
+            }
+        }
+
+        if (ImGui::Button("Load OBJ")) {
+            const char* filter_patterns[] = {"*.obj"};
+            const char* file_path = tinyfd_openFileDialog(
+                "Select OBJ File",
+                "",
+                1,
+                filter_patterns,
+                "OBJ Files",
+                0
+            );
+
+            if (file_path) {
+                float* verts;
+                uint32_t vertex_count;
+                unsigned int* indices;
+                uint32_t index_count;
+
+                if (load_obj(file_path, &verts, &vertex_count, &indices, &index_count)) {
+                    Mesh loaded_mesh = Mesh();
+                    loaded_mesh.vertices = verts;
+                    loaded_mesh.vertex_count = vertex_count;
+                    loaded_mesh.indices = indices;
+                    loaded_mesh.index_count = index_count;
+                    loaded_mesh.position = HMM_V3(0.0f, 0.0f, 0.0f);
+
+                    Mesh_To_Buffers(loaded_mesh);
+                    std::cout << "Loaded OBJ" << std::endl;
+                }
+            }
+        }
+
         ImGui::End();
     }
     simgui_render();
@@ -688,6 +760,28 @@ void _event(SDL_Event* e) {
     if (e->type == SDL_EVENT_QUIT) state.running = false;
     if (e->type == SDL_EVENT_MOUSE_MOTION) {
         simgui_add_mouse_pos_event(e->motion.x, e->motion.y);
+        if (state.editor_open and state.rmb == true) {
+            float sensitivity = 0.1f;
+
+            state.yaw += e->motion.xrel * sensitivity;
+            state.pitch += -e->motion.yrel * sensitivity;
+
+            if(state.pitch > 89.0f) {
+                state.pitch = 89.0f;
+            }
+            else if(state.pitch < -89.0f) {
+                state.pitch = -89.0f;
+            }
+
+            HMM_Vec3 direction;
+            direction.X = cosf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
+            direction.Y = sinf(state.pitch * HMM_PI / 180.0f);
+            direction.Z = sinf(state.yaw * HMM_PI / 180.0f) * cosf(state.pitch * HMM_PI / 180.0f);
+            state.camera_front = HMM_NormV3(direction);
+            HMM_Vec3 world_up = HMM_V3(0.0f, 1.0f, 0.0f);
+            HMM_Vec3 camera_right = HMM_NormV3(HMM_Cross(state.camera_front, world_up));
+            state.camera_up = HMM_NormV3(HMM_Cross(camera_right, state.camera_front));
+        }
     }
     if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         switch (e->button.button) {
@@ -704,6 +798,12 @@ void _event(SDL_Event* e) {
                 simgui_add_mouse_button_event(0, true);
                 break;
         }
+        if (e->button.button == SDL_BUTTON_LEFT) {
+            state.lmb = true;
+        }
+        if (e->button.button == SDL_BUTTON_RIGHT) {
+            state.rmb = true;
+        }
     }
     if (e->type == SDL_EVENT_MOUSE_BUTTON_UP) {
         switch (e->button.button) {
@@ -719,6 +819,12 @@ void _event(SDL_Event* e) {
             default:
                 simgui_add_mouse_button_event(0, false);
                 break;
+        }
+        if (e->button.button == SDL_BUTTON_LEFT) {
+            state.lmb = false;
+        }
+        if (e->button.button == SDL_BUTTON_RIGHT) {
+            state.rmb = false;
         }
     }
     if (e->type == SDL_EVENT_MOUSE_WHEEL) {
