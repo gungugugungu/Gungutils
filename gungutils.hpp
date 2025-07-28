@@ -464,6 +464,8 @@ extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode);
 
+static int selected_mesh_index = -1;
+
 void _init() {
     stbi_set_flip_vertically_on_load(true);
 
@@ -617,25 +619,63 @@ void _frame() {
         sg_draw(0, mesh.index_count, 1);
     }
 
-    // imgui thing I have to call every frame god damn it
+    // imgui and editor
     if (state.editor_open) {
         ImGui::ShowDemoWindow();
         ImGui::Begin("Object list");
+
+        static int selected_mesh_index = -1;
+
+        ImGui::BeginListBox("Objects", ImVec2(256, 512));
+
         for (int i = 0; i < all_meshes.size(); i++) {
             auto& mesh = all_meshes[i];
-            string label = "Mesh " + to_string(i);
-            if (ImGui::TreeNode(label.c_str())) {
-                ImGui::Text(to_string(mesh.vertex_count).c_str());
+            string label = "Mesh " + to_string(i) + " with VC: " + to_string(mesh.vertex_count);
 
-                label = "Position##" + to_string(i);  // ##i makes it unique but invisible
-                ImGui::DragFloat3(label.c_str(), &mesh.position.X, 0.01f);
-                label = "Rotation##" + to_string(i);
-                ImGui::DragFloat3(label.c_str(), &mesh.rotation.X, 0.01f);
-                label = "Scale##" + to_string(i);
-                ImGui::DragFloat3(label.c_str(), &mesh.scale.X, 0.01f);
-                ImGui::TreePop();
+            bool is_selected = (selected_mesh_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_mesh_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
             }
         }
+
+        ImGui::EndListBox();
+
+        ImGui::SameLine();
+        ImGui::BeginChild("Obj settings", ImVec2(300, 512), true);
+        if (selected_mesh_index >= 0 && selected_mesh_index < all_meshes.size()) {
+            ImGui::Text("Object settings");
+            ImGui::Separator();
+
+            auto& selected_mesh = all_meshes[selected_mesh_index];
+
+            ImGui::Text("Selected: Mesh %d", selected_mesh_index);
+
+            ImGui::PushItemWidth(200);
+
+            string label = "Position";
+            ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
+
+            label = "Rotation";
+            ImGui::DragFloat3(label.c_str(), &selected_mesh.rotation.X, 0.01f);
+
+            label = "Scale";
+            ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
+
+            ImGui::PopItemWidth();
+            ImGui::Separator();
+            if (ImGui::Button("Delete Mesh")) {
+                all_meshes.erase(all_meshes.begin() + selected_mesh_index);
+                selected_mesh_index = -1;
+            }
+        } else {
+            ImGui::Text("No mesh selected");
+        }
+        ImGui::EndChild();
+
         ImGui::End();
     }
     simgui_render();
