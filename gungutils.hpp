@@ -469,6 +469,7 @@ class AudioSource3D {
         FMOD::Studio::EventInstance* event_instance;
         HMM_Vec3 position;
         Mesh* visualizer_mesh = nullptr;
+        int visualizer_mesh_index = -1;
 
         void initalize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
             FMOD_RESULT result = desc->createInstance(&event_instance);
@@ -477,6 +478,7 @@ class AudioSource3D {
             position = pos;
 
             // init visualizer mesh
+            visualizer_mesh = new Mesh();
             float* verts = nullptr;
             uint32_t vertex_count = 0;
             uint32_t* indices = nullptr;
@@ -489,13 +491,14 @@ class AudioSource3D {
                 visualizer_mesh->index_count = index_count;
                 visualizer_mesh->position = position;
 
+                visualizer_mesh_index = all_meshes.size();
                 Mesh_To_Buffers(*visualizer_mesh);
             }
         }
 
         void play() {
             FMOD_3D_ATTRIBUTES attributes;
-            attributes.position = {-position.X, -position.Y, -position.Z};
+            attributes.position = {-position.X, position.Y, -position.Z};
             attributes.velocity = {0.0f, 0.0f, 0.0f};
             attributes.up = {0.0f, 1.0f, 0.0f};
             attributes.forward = {0.0f, 0.0f, 1.0f};
@@ -505,8 +508,8 @@ class AudioSource3D {
         }
 
         void update_visualizer_position() {
-            if (visualizer_mesh) {
-                visualizer_mesh->position = position;
+            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < all_meshes.size()) {
+                all_meshes[visualizer_mesh_index].position = position;
             }
         }
 
@@ -529,7 +532,7 @@ class AudioSource3D {
         void set_position(HMM_Vec3 pos) {
             position = pos;
             FMOD_3D_ATTRIBUTES attributes;
-            attributes.position = {-position.X, -position.Y, -position.Z};
+            attributes.position = {-position.X, position.Y, -position.Z};
             attributes.velocity = {0.0f, 0.0f, 0.0f};
             attributes.up = {0.0f, 1.0f, 0.0f};
             attributes.forward = {0.0f, 0.0f, 1.0f};
@@ -734,7 +737,7 @@ void _frame() {
 
         static int selected_mesh_index = -1;
 
-        ImGui::BeginListBox("Objects", ImVec2(256, 512));
+        ImGui::BeginListBox("Objects", ImVec2(256, 300));
 
         for (int i = 0; i < all_meshes.size(); i++) {
             auto& mesh = all_meshes[i];
@@ -753,7 +756,7 @@ void _frame() {
         ImGui::EndListBox();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Obj settings", ImVec2(300, 512), true);
+        ImGui::BeginChild("Obj settings", ImVec2(300, 300), true);
         if (selected_mesh_index >= 0 && selected_mesh_index < all_meshes.size()) {
             ImGui::Text("Object settings");
             ImGui::Separator();
@@ -841,7 +844,7 @@ void _frame() {
 
         static int selected_as_index = -1;
 
-        ImGui::BeginListBox("Sources", ImVec2(256, 512));
+        ImGui::BeginListBox("Sources", ImVec2(256, 300));
 
         for (int i = 0; i < state.audio_sources.size(); i++) {
             string label = "Audio source " + to_string(i);
@@ -859,7 +862,7 @@ void _frame() {
         ImGui::EndListBox();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Src settings", ImVec2(300, 512), true);
+        ImGui::BeginChild("Src settings", ImVec2(300, 300), true);
         if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
             ImGui::Text("Settings");
             ImGui::Separator();
@@ -900,6 +903,7 @@ void _frame() {
             ImGui::PopItemWidth();
             ImGui::Separator();
             if (ImGui::Button("Delete")) {
+                all_meshes.erase(all_meshes.begin() + selected_as->visualizer_mesh_index);
                 state.audio_sources.erase(state.audio_sources.begin() + selected_as_index);
                 selected_as_index = -1;
             }
@@ -916,6 +920,7 @@ void _frame() {
     } else {
         for (auto& as : state.audio_sources) {
             as->visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
+            as->update_visualizer_position();
         }
     }
     simgui_render();
