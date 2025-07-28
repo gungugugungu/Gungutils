@@ -3,7 +3,7 @@
 //
 #include "gungutils.hpp"
 
-bool mouse_btn = false;
+AudioSource3D* audio_source = new AudioSource3D();
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -24,18 +24,8 @@ void init() {
     std::cout << "Created event desc, count: " << event_count << std::endl;
     print_fmod_error(result);
 
-    FMOD::Studio::EventInstance* event_instance = nullptr;
-    result = event_descriptions->createInstance(&event_instance);
-    std::cout << "Created event instance" << std::endl;
-    print_fmod_error(result);
-    FMOD_3D_ATTRIBUTES threeDeezNutsBoi;
-    threeDeezNutsBoi.position = {0.0f, 0.0f, 0.0f};
-    threeDeezNutsBoi.velocity = {0.0f, 0.0f, 0.0f};
-    threeDeezNutsBoi.up = {0.0f, 1.0f, 0.0f};
-    threeDeezNutsBoi.forward = {0.0f, 0.0f, 1.0f};
-    result = event_instance->set3DAttributes(&threeDeezNutsBoi);
-    print_fmod_error(result);
-    event_instance->start();
+    HMM_Vec3 pos = {0.0f, 0.0f, 0.0f};
+    audio_source->initalize(event_descriptions, pos);
 
     /*vector<Mesh> loaded_meshes = load_gltf("test5.glb");
     for (auto& mesh : loaded_meshes) {

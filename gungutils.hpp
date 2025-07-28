@@ -40,6 +40,8 @@
 
 using namespace std;
 
+class AudioSource3D;
+
 struct AppState {
     sg_pipeline pip{};
     sg_bindings bind{};
@@ -62,6 +64,7 @@ struct AppState {
     bool running = true;
     FMOD::Studio::System* fmod_system = NULL;
     bool editor_open = false;
+    vector<AudioSource3D*> audio_sources;
 };
 
 AppState state;
@@ -461,6 +464,90 @@ void print_fmod_error(FMOD_RESULT result) {
     }
 }
 
+class AudioSource3D {
+    public:
+        FMOD::Studio::EventInstance* event_instance;
+        HMM_Vec3 position;
+        Mesh* visualizer_mesh = nullptr;
+
+        void initalize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
+            FMOD_RESULT result = desc->createInstance(&event_instance);
+            print_fmod_error(result);
+            state.audio_sources.push_back(this);
+            position = pos;
+
+            // init visualizer mesh
+            float* verts = nullptr;
+            uint32_t vertex_count = 0;
+            uint32_t* indices = nullptr;
+            uint32_t index_count = 0;
+
+            if (load_obj("speaker.obj", &verts, &vertex_count, &indices, &index_count)) {
+                visualizer_mesh->vertices = verts;
+                visualizer_mesh->vertex_count = vertex_count;
+                visualizer_mesh->indices = indices;
+                visualizer_mesh->index_count = index_count;
+                visualizer_mesh->position = position;
+
+                Mesh_To_Buffers(*visualizer_mesh);
+            }
+        }
+
+        void play() {
+            FMOD_3D_ATTRIBUTES attributes;
+            attributes.position = {-position.X, -position.Y, -position.Z};
+            attributes.velocity = {0.0f, 0.0f, 0.0f};
+            attributes.up = {0.0f, 1.0f, 0.0f};
+            attributes.forward = {0.0f, 0.0f, 1.0f};
+            FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
+            print_fmod_error(result);
+            event_instance->start();
+        }
+
+        void update_visualizer_position() {
+            if (visualizer_mesh) {
+                visualizer_mesh->position = position;
+            }
+        }
+
+        void stop() {
+            event_instance->stop(FMOD_STUDIO_STOP_ALLOWFADEOUT);
+        }
+
+        void pause() {
+            event_instance->setPaused(true);
+        }
+
+        void unpause() {
+            event_instance->setPaused(false);
+        }
+
+        void set_volume(float volume) {
+            event_instance->setVolume(volume);
+        }
+
+        void set_position(HMM_Vec3 pos) {
+            position = pos;
+            FMOD_3D_ATTRIBUTES attributes;
+            attributes.position = {-position.X, -position.Y, -position.Z};
+            attributes.velocity = {0.0f, 0.0f, 0.0f};
+            attributes.up = {0.0f, 1.0f, 0.0f};
+            attributes.forward = {0.0f, 0.0f, 1.0f};
+            FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
+            print_fmod_error(result);
+
+            if (state.editor_open) {
+                update_visualizer_position();
+            } else {
+                visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
+            }
+        }
+
+        void remove() {
+            state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this), state.audio_sources.end());
+        }
+};
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -546,8 +633,6 @@ void _init() {
     request.buffer.size = state.file_buffer.size();
     sfetch_send(&request);
 }
-
-float f = 0.0f;
 
 void _frame() {
     // FMOD
@@ -644,6 +729,7 @@ void _frame() {
 
     // imgui and editor
     if (state.editor_open) {
+        // Mesh editor
         ImGui::Begin("Object list");
 
         static int selected_mesh_index = -1;
@@ -716,7 +802,7 @@ void _frame() {
                 }
             }
         }
-
+        ImGui::SameLine();
         if (ImGui::Button("Load OBJ")) {
             const char* filter_patterns[] = {"*.obj"};
             const char* file_path = tinyfd_openFileDialog(
@@ -749,6 +835,88 @@ void _frame() {
         }
 
         ImGui::End();
+
+        // Audio sources
+        ImGui::Begin("Audio sources");
+
+        static int selected_as_index = -1;
+
+        ImGui::BeginListBox("Sources", ImVec2(256, 512));
+
+        for (int i = 0; i < state.audio_sources.size(); i++) {
+            string label = "Audio source " + to_string(i);
+
+            bool is_selected = (selected_as_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_as_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndListBox();
+
+        ImGui::SameLine();
+        ImGui::BeginChild("Src settings", ImVec2(300, 512), true);
+        if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
+            ImGui::Text("Settings");
+            ImGui::Separator();
+
+            auto& selected_as = state.audio_sources[selected_as_index];
+
+            ImGui::Text("Selected: Mesh %d", selected_as_index);
+
+            ImGui::PushItemWidth(200);
+
+            string label = "Position";
+            if (ImGui::DragFloat3(label.c_str(), &selected_as->position.X, 0.01f)) {
+                selected_as->set_position(selected_as->position);
+            }
+
+            label = "Play";
+            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+                selected_as->play();
+            }
+
+            ImGui::SameLine();
+            label = "Stop";
+            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+                selected_as->stop();
+            }
+
+            label = "Pause";
+            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+                selected_as->pause();
+            }
+
+            ImGui::SameLine();
+            label = "Unpause";
+            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+                selected_as->unpause();
+            }
+
+            ImGui::PopItemWidth();
+            ImGui::Separator();
+            if (ImGui::Button("Delete")) {
+                state.audio_sources.erase(state.audio_sources.begin() + selected_as_index);
+                selected_as_index = -1;
+            }
+        } else {
+            ImGui::Text("No source selected");
+        }
+        ImGui::EndChild();
+
+        if (ImGui::Button("Add Source")) {
+
+        }
+
+        ImGui::End();
+    } else {
+        for (auto& as : state.audio_sources) {
+            as->visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
+        }
     }
     simgui_render();
 
@@ -932,8 +1100,8 @@ int main(int argc, char* argv[]) {
             _event(&e);
             event_callback(&e);
         }
+        if (!state.editor_open) frame_callback();
         _frame();
-        frame_callback();
         SDL_GL_SwapWindow(state.win);
     }
 
