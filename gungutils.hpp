@@ -118,10 +118,11 @@ public:
 };
 
 vector<Mesh> all_meshes;
+vector<Mesh> visualizer_meshes;
 
 // I've been doing this non-stop for a week 12 hours a day
 // and this is still not working
-void Mesh_To_Buffers(Mesh& mesh) {
+void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     // god damn I'm stuck in debugging hell like wtf is this bullshit
     std::cout << "=== Stupid Mesh Debug info ===" << std::endl;
     std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
@@ -175,7 +176,7 @@ void Mesh_To_Buffers(Mesh& mesh) {
     ibuf_desc.usage.immutable = true;
     mesh.index_buffer = sg_make_buffer(&ibuf_desc);
 
-    all_meshes.push_back(std::move(mesh));
+    if (!dontadd) all_meshes.push_back(std::move(mesh));
 }
 
 void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotation, HMM_Vec3& scale) {
@@ -493,8 +494,9 @@ class AudioSource3D {
                 visualizer_mesh->index_count = index_count;
                 visualizer_mesh->position = position;
 
-                visualizer_mesh_index = all_meshes.size();
-                Mesh_To_Buffers(*visualizer_mesh);
+                visualizer_mesh_index = visualizer_meshes.size();
+                Mesh_To_Buffers(*visualizer_mesh, true);
+                visualizer_meshes.push_back(std::move(*visualizer_mesh));
             }
         }
 
@@ -510,8 +512,8 @@ class AudioSource3D {
         }
 
         void update_visualizer_position() {
-            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < all_meshes.size()) {
-                all_meshes[visualizer_mesh_index].position = position;
+            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
+                visualizer_meshes[visualizer_mesh_index].position = position;
             }
         }
 
@@ -541,15 +543,23 @@ class AudioSource3D {
             FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
             print_fmod_error(result);
 
-            if (state.editor_open) {
-                update_visualizer_position();
-            } else {
-                visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
-            }
+            update_visualizer_position();
         }
 
         void remove() {
-            state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this), state.audio_sources.end());
+            state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this),state.audio_sources.end());
+
+            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
+                visualizer_meshes.erase(visualizer_meshes.begin() + visualizer_mesh_index);
+                for (auto* as : state.audio_sources) {
+                    if (as->visualizer_mesh_index > visualizer_mesh_index) {
+                        as->visualizer_mesh_index--;
+                    }
+                }
+            }
+
+            event_instance->release();
+            delete visualizer_mesh;
         }
 };
 
@@ -716,6 +726,24 @@ void _frame() {
         sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
         sg_draw(0, mesh.index_count, 1);
+    }
+
+    // draw visualizer meshes
+    if (state.editor_open) {
+        for (auto& mesh : visualizer_meshes) {
+            state.bind.vertex_buffers[0] = mesh.vertex_buffer;
+            state.bind.index_buffer = mesh.index_buffer;
+            sg_apply_bindings(&state.bind);
+
+            HMM_Mat4 model = HMM_Translate(mesh.position);
+            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+            vs_params.model = model;
+            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+            sg_draw(0, mesh.index_count, 1);
+        }
     }
 
     // input
@@ -912,8 +940,7 @@ void _frame() {
             ImGui::PopItemWidth();
             ImGui::Separator();
             if (ImGui::Button("Delete")) {
-                all_meshes.erase(all_meshes.begin() + selected_as->visualizer_mesh_index);
-                state.audio_sources.erase(state.audio_sources.begin() + selected_as_index);
+                selected_as->remove();
                 selected_as_index = -1;
             }
         } else {
@@ -949,13 +976,6 @@ void _frame() {
         }
 
         ImGui::End();
-    } else {
-        for (auto& as : state.audio_sources) {
-            as->visualizer_mesh->position = {69420.0f, 69420.0f, 69420.0f};
-            if (as->visualizer_mesh_index >= 0 && as->visualizer_mesh_index < all_meshes.size()) {
-                all_meshes[as->visualizer_mesh_index].position = {69420.0f, 69420.0f, 69420.0f};
-            }
-        }
     }
     simgui_render();
 
