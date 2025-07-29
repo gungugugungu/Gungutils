@@ -13,35 +13,23 @@ void init() {
     uint32_t* indices = nullptr;
     uint32_t index_count = 0;*/
 
-    FMOD::Studio::Bank* bank = nullptr;
     FMOD_RESULT result;
-    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &bank);
+    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank); // Use state.bank
     print_fmod_error(result);
 
-    FMOD::Studio::EventDescription* event_descriptions = nullptr;
     int event_count = 0;
-    result = bank->getEventList(&event_descriptions, 1, &event_count);
+    result = state.bank->getEventCount(&event_count);
+    print_fmod_error(result);
+
+    state.event_descriptions.resize(event_count);
+    result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     std::cout << "Created event desc, count: " << event_count << std::endl;
     print_fmod_error(result);
 
     HMM_Vec3 pos = {0.0f, 0.0f, 0.0f};
-    audio_source->initalize(event_descriptions, pos);
-
-    /*vector<Mesh> loaded_meshes = load_gltf("test5.glb");
-    for (auto& mesh : loaded_meshes) {
-        Mesh_To_Buffers(mesh);
-    }*/
-    /*if (load_obj("test.obj", &verts, &vertex_count, &indices, &index_count)) {
-        Mesh loaded_mesh = Mesh();
-        loaded_mesh.vertices = verts;
-        loaded_mesh.vertex_count = vertex_count;
-        loaded_mesh.indices = indices;
-        loaded_mesh.index_count = index_count;
-        loaded_mesh.position = HMM_V3(0.0f, 0.0f, 0.0f);
-
-        Mesh_To_Buffers(loaded_mesh);
-        std::cout << "Loaded OBJ" << std::endl;
-    }*/
+    if (!state.event_descriptions.empty()) {
+        audio_source->initalize(state.event_descriptions[0], pos);
+    }
 }
 
 void frame() {

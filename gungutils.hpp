@@ -64,6 +64,8 @@ struct AppState {
     bool running = true;
     FMOD::Studio::System* fmod_system = NULL;
     bool editor_open = false;
+    FMOD::Studio::Bank* bank = nullptr;
+    std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
 };
 
@@ -452,7 +454,7 @@ bool load_obj(
     *out_indices = new uint32_t[indices.size()];
     memcpy(*out_indices, indices.data(), index_data_size);
     *out_index_count = static_cast<uint32_t>(indices.size());
-
+;
     return true;
 }
 
@@ -551,12 +553,19 @@ class AudioSource3D {
         }
 };
 
+void make_audiosource_by_index(int index) {
+    AudioSource3D* audio_source = new AudioSource3D();
+    audio_source->initalize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode);
 
 static int selected_mesh_index = -1;
+static int selected_as_index = -1;
+string currently_entered_path = "";
 
 void _init() {
     stbi_set_flip_vertically_on_load(true);
@@ -912,8 +921,31 @@ void _frame() {
         }
         ImGui::EndChild();
 
-        if (ImGui::Button("Add Source")) {
+        static int selected_event_index = -1;
 
+        ImGui::BeginListBox("Events", ImVec2(512, 150));
+
+        for (int i = 0; i < state.event_descriptions.size(); i++) {
+            FMOD_GUID eyedeeznuts;
+            FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
+            print_fmod_error(result);
+
+            string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
+
+            bool is_selected = (selected_event_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_event_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndListBox();
+
+        if (ImGui::Button("Add Source")) {
+            make_audiosource_by_index(selected_event_index);
         }
 
         ImGui::End();
@@ -1010,7 +1042,6 @@ void _event(SDL_Event* e) {
     }
     if (e->type == SDL_EVENT_KEY_DOWN) {
         ImGuiKey imgui_key = ImGui_ImplSDL3_KeyEventToImGuiKey(e->key.key, e->key.scancode);
-        printf("Key down: scancode=%d, keycode=%d, imgui_key=%d\n", e->key.scancode, e->key.key, imgui_key);
         simgui_add_key_event(static_cast<int>(imgui_key), true);
 
         if (!ImGui::GetIO().WantCaptureKeyboard) {
