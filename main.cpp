@@ -14,17 +14,16 @@ void init() {
     uint32_t index_count = 0;*/
 
     FMOD_RESULT result;
-    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank); // Use state.bank
+    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank);
     print_fmod_error(result);
-
+    
     int event_count = 0;
     result = state.bank->getEventCount(&event_count);
     print_fmod_error(result);
-
     state.event_descriptions.resize(event_count);
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
-    std::cout << "Created event desc, count: " << event_count << std::endl;
     print_fmod_error(result);
+
 }
 
 void frame() {
