@@ -5,7 +5,7 @@
 			<value>don't you worry babey</value>
 		</property>
 		<property name="outputFormat">
-			<value>1</value>
+			<value>2</value>
 		</property>
 		<relationship name="folder">
 			<destination>{996c5e5a-b0f6-47ec-a63a-dcd5ba713f87}</destination>
@@ -39,7 +39,7 @@
 	</object>
 	<object class="MasterTrack" id="{68adaeeb-b967-4aea-8bf3-cb9e5148a89c}">
 		<relationship name="modules">
-			<destination>{65b2e26a-ef3f-4443-a325-5d0624e35810}</destination>
+			<destination>{2b2b4a8b-c160-47f9-8027-a06c0912f9ad}</destination>
 		</relationship>
 		<relationship name="mixerGroup">
 			<destination>{88ab8299-ff98-4f28-9035-745060c7d48a}</destination>
@@ -60,7 +60,7 @@
 	<object class="MarkerTrack" id="{f75b6a21-7c1f-463e-8227-6f30759b96f1}" />
 	<object class="Timeline" id="{533550d2-e5cc-4386-a605-bfa3ba1902c6}">
 		<relationship name="modules">
-			<destination>{65b2e26a-ef3f-4443-a325-5d0624e35810}</destination>
+			<destination>{2b2b4a8b-c160-47f9-8027-a06c0912f9ad}</destination>
 		</relationship>
 	</object>
 	<object class="EventMixerMaster" id="{88ab8299-ff98-4f28-9035-745060c7d48a}">
@@ -74,12 +74,12 @@
 			<destination>{9762bcca-6c05-4d29-bfb2-d6cf367b5fdd}</destination>
 		</relationship>
 	</object>
-	<object class="SingleSound" id="{65b2e26a-ef3f-4443-a325-5d0624e35810}">
+	<object class="SingleSound" id="{2b2b4a8b-c160-47f9-8027-a06c0912f9ad}">
 		<property name="length">
 			<value>178.20734693877552</value>
 		</property>
 		<relationship name="audioFile">
-			<destination>{de280a1d-6d26-41e2-8fb3-d170ce0434c5}</destination>
+			<destination>{48e8cf0e-ba21-419b-869b-75cdbe82ae7d}</destination>
 		</relationship>
 	</object>
 	<object class="MixerBusEffectChain" id="{c0f5ece8-4bfb-4d6a-996d-0b46e2246750}">
@@ -91,9 +91,15 @@
 	<object class="MixerBusEffectChain" id="{dc8fac1a-7eee-4d98-8869-bd313c8516ff}">
 		<relationship name="effects">
 			<destination>{01589648-7b92-4153-8bc5-88294592d698}</destination>
+			<destination>{44239cf3-ac44-4a78-959d-fdd2c859afbe}</destination>
 		</relationship>
 	</object>
 	<object class="MixerBusPanner" id="{7580db83-d0b2-4db5-8e67-fd67bbecf70e}" />
 	<object class="MixerBusFader" id="{31b8edd6-8fcd-4514-9d5c-f03ecc6be8a6}" />
 	<object class="MixerBusFader" id="{01589648-7b92-4153-8bc5-88294592d698}" />
+	<object class="SpatialiserEffect" id="{44239cf3-ac44-4a78-959d-fdd2c859afbe}">
+		<property name="soundSize">
+			<value>2</value>
+		</property>
+	</object>
 </objects>

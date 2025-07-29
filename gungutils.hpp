@@ -1165,25 +1165,27 @@ void _frame() {
                 selected_as->set_position(selected_as->position);
             }
 
+            ImGui::Separator();
+
             label = "Play";
-            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
                 selected_as->play();
             }
 
             ImGui::SameLine();
             label = "Stop";
-            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
                 selected_as->stop();
             }
 
             label = "Pause";
-            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
                 selected_as->pause();
             }
 
             ImGui::SameLine();
             label = "Unpause";
-            if (ImGui::Button(label.c_str(), ImVec2(50, 25))) {
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
                 selected_as->unpause();
             }
 
