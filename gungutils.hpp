@@ -800,7 +800,7 @@ void _init() {
     pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
-    pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT16;
     pip_desc.depth.write_enabled = true;
@@ -980,6 +980,33 @@ void _frame() {
 
             ImGui::PopItemWidth();
             ImGui::Separator();
+            if (ImGui::Button("Duplicate")) {
+                if (selected_mesh_index >= 0 && selected_mesh_index < all_meshes.size()) {
+                    const Mesh& selected_mesh = all_meshes[selected_mesh_index];
+                    Mesh new_mesh;
+
+                    new_mesh.position = selected_mesh.position;
+                    new_mesh.rotation = selected_mesh.rotation;
+                    new_mesh.scale = selected_mesh.scale;
+                    new_mesh.opacity = selected_mesh.opacity;
+
+                    if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
+                        new_mesh.vertex_count = selected_mesh.vertex_count;
+                        new_mesh.vertices = new float[new_mesh.vertex_count * 8];
+                        memcpy(new_mesh.vertices, selected_mesh.vertices,
+                               new_mesh.vertex_count * 8 * sizeof(float));
+                    }
+
+                    if (selected_mesh.index_count > 0 && selected_mesh.indices) {
+                        new_mesh.index_count = selected_mesh.index_count;
+                        new_mesh.indices = new uint32_t[new_mesh.index_count];
+                        memcpy(new_mesh.indices, selected_mesh.indices,
+                               new_mesh.index_count * sizeof(uint32_t));
+                    }
+
+                    Mesh_To_Buffers(new_mesh);
+                }
+            }
             if (ImGui::Button("Delete Mesh")) {
                 all_meshes.erase(all_meshes.begin() + selected_mesh_index);
                 selected_mesh_index = -1;
