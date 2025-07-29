@@ -22,3 +22,6 @@
 [submodule "include/libtinyfiledialogs"]
 	path = include/libtinyfiledialogs
 	url = https://github.com/native-toolkit/libtinyfiledialogs.git
+[submodule "include/json"]
+	path = include/json
+	url = https://github.com/nlohmann/json.git

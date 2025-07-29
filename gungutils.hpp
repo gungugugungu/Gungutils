@@ -33,6 +33,7 @@
 #include "FModStudio/api/studio/inc/fmod_studio.hpp"
 #include "FModStudio/api/core/inc/fmod_errors.h"
 #include "libtinyfiledialogs/tinyfiledialogs.h"
+#include "json/include/nlohmann/json.hpp"
 // shaders
 #include <charconv>
 
@@ -473,6 +474,7 @@ class AudioSource3D {
         HMM_Vec3 position;
         Mesh* visualizer_mesh = nullptr;
         int visualizer_mesh_index = -1;
+        FMOD_GUID guid;
 
         void initalize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
             FMOD_RESULT result = desc->createInstance(&event_instance);
@@ -498,6 +500,7 @@ class AudioSource3D {
                 Mesh_To_Buffers(*visualizer_mesh, true);
                 visualizer_meshes.push_back(std::move(*visualizer_mesh));
             }
+            desc->getID(&guid);
         }
 
         void play() {
@@ -566,6 +569,168 @@ class AudioSource3D {
 void make_audiosource_by_index(int index) {
     AudioSource3D* audio_source = new AudioSource3D();
     audio_source->initalize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
+}
+
+void save_scene(const string& path) {
+    nlohmann::json j;
+
+    // Save meshes
+    j["meshes"] = nlohmann::json::array();
+    for (size_t i = 0; i < all_meshes.size(); i++) {
+        const auto& mesh = all_meshes[i];
+        nlohmann::json mesh_json;
+
+        mesh_json["position"] = {mesh.position.X, mesh.position.Y, mesh.position.Z};
+        mesh_json["rotation"] = {mesh.rotation.X, mesh.rotation.Y, mesh.rotation.Z, mesh.rotation.W};
+        mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
+        mesh_json["opacity"] = mesh.opacity;
+
+        mesh_json["vertex_count"] = mesh.vertex_count;
+        mesh_json["index_count"] = mesh.index_count;
+
+        mesh_json["vertices"] = nlohmann::json::array();
+        for (size_t v = 0; v < mesh.vertex_count * 8; v++) {
+            mesh_json["vertices"].push_back(mesh.vertices[v]);
+        }
+
+        mesh_json["indices"] = nlohmann::json::array();
+        for (size_t idx = 0; idx < mesh.index_count; idx++) {
+            mesh_json["indices"].push_back(mesh.indices[idx]);
+        }
+
+        j["meshes"].push_back(mesh_json);
+    }
+
+    // Save audio sources
+    j["audio_sources"] = nlohmann::json::array();
+    for (size_t i = 0; i < state.audio_sources.size(); i++) {
+        const auto& as = state.audio_sources[i];
+        nlohmann::json as_json;
+
+        as_json["position"] = {as->position.X, as->position.Y, as->position.Z};
+
+        as_json["guid"] = {
+            as->guid.Data1,
+            as->guid.Data2,
+            as->guid.Data3,
+            nlohmann::json::array()
+        };
+
+        for (int b = 0; b < 8; b++) {
+            as_json["guid"][3].push_back(as->guid.Data4[b]);
+        }
+
+        j["audio_sources"].push_back(as_json);
+    }
+
+    std::ofstream file(path);
+    if (file.is_open()) {
+        file << j.dump(4);
+        file.close();
+        std::cout << "Scene saved to: " << path << std::endl;
+    } else {
+        std::cerr << "Failed to open file for writing: " << path << std::endl;
+    }
+}
+
+void load_scene(const string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file for reading: " << path << std::endl;
+        return;
+    }
+
+    nlohmann::json j;
+    file >> j;
+    file.close();
+
+    all_meshes.clear();
+
+    if (j.contains("meshes")) {
+        for (const auto& mesh_json : j["meshes"]) {
+            Mesh mesh;
+
+            if (mesh_json.contains("position")) {
+                auto pos = mesh_json["position"];
+                mesh.position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (mesh_json.contains("rotation")) {
+                auto rot = mesh_json["rotation"];
+                mesh.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
+            }
+
+            if (mesh_json.contains("scale")) {
+                auto scale = mesh_json["scale"];
+                mesh.scale = HMM_V3(scale[0], scale[1], scale[2]);
+            }
+
+            if (mesh_json.contains("opacity")) {
+                mesh.opacity = mesh_json["opacity"];
+            }
+
+            if (mesh_json.contains("vertex_count") && mesh_json.contains("index_count")) {
+                mesh.vertex_count = mesh_json["vertex_count"];
+                mesh.index_count = mesh_json["index_count"];
+
+                mesh.vertices = new float[mesh.vertex_count * 8];
+                mesh.indices = new uint32_t[mesh.index_count];
+
+                if (mesh_json.contains("vertices")) {
+                    for (size_t i = 0; i < mesh.vertex_count * 8; i++) {
+                        mesh.vertices[i] = mesh_json["vertices"][i];
+                    }
+                }
+
+                if (mesh_json.contains("indices")) {
+                    for (size_t i = 0; i < mesh.index_count; i++) {
+                        mesh.indices[i] = mesh_json["indices"][i];
+                    }
+                }
+
+                Mesh_To_Buffers(mesh);
+            }
+        }
+    }
+
+    for (auto* as : state.audio_sources) {
+        as->remove();
+    }
+    state.audio_sources.clear();
+
+    if (j.contains("audio_sources")) {
+        for (const auto& as_json : j["audio_sources"]) {
+            AudioSource3D* audio_source = new AudioSource3D();
+
+            if (as_json.contains("position")) {
+                auto pos = as_json["position"];
+                audio_source->position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (as_json.contains("guid")) {
+                auto guid_json = as_json["guid"];
+                FMOD_GUID guid;
+                guid.Data1 = guid_json[0];
+                guid.Data2 = guid_json[1];
+                guid.Data3 = guid_json[2];
+                for (int i = 0; i < 8; i++) {
+                    guid.Data4[i] = guid_json[3][i];
+                }
+                audio_source->guid = guid;
+            }
+
+            for (auto& ed : state.event_descriptions) {
+                FMOD_GUID current_id;
+                ed->getID(&current_id);
+                if (current_id.Data1 == audio_source->guid.Data1 && current_id.Data2 == audio_source->guid.Data2 && current_id.Data3 == audio_source->guid.Data3 && memcmp(current_id.Data4, audio_source->guid.Data4, 8) == 0) {
+                    audio_source->initalize(ed, audio_source->position);
+                    break;
+                }
+            }
+        }
+    }
+
+    std::cout << "Scene loaded from: " << path << std::endl;
 }
 
 extern void (*init_callback)();
@@ -976,6 +1141,26 @@ void _frame() {
         }
 
         ImGui::End();
+
+        ImGui::Begin("Scene Management");
+        if (ImGui::Button("Save Scene")) {
+            const char* filter_patterns[] = {"*.gmap"};
+            const char* file_path = tinyfd_saveFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files");
+
+            if (file_path) {
+                save_scene(file_path);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load Scene")) {
+            const char* filter_patterns[] = {"*.gmap"};
+            const char* file_path = tinyfd_openFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files", 0);
+
+            if (file_path) {
+                load_scene(file_path);
+            }
+        }
+        ImGui::End();
     }
     simgui_render();
 
@@ -1079,7 +1264,7 @@ void _event(SDL_Event* e) {
     if (e->type == SDL_EVENT_KEY_UP) {
         state.inputs[e->key.key] = false;
         ImGuiKey imgui_key = ImGui_ImplSDL3_KeyEventToImGuiKey(e->key.key, e->key.scancode);
-        printf("Key down: scancode=%d, keycode=%d, imgui_key=%d\n", e->key.scancode, e->key.key, imgui_key);
+        //printf("Key down: scancode=%d, keycode=%d, imgui_key=%d\n", e->key.scancode, e->key.key, imgui_key);
         simgui_add_key_event(static_cast<int>(imgui_key), false);
     }
     if (e->type == SDL_EVENT_WINDOW_FOCUS_GAINED) {

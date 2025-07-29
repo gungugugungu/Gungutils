@@ -25,11 +25,6 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     std::cout << "Created event desc, count: " << event_count << std::endl;
     print_fmod_error(result);
-
-    HMM_Vec3 pos = {0.0f, 0.0f, 0.0f};
-    if (!state.event_descriptions.empty()) {
-        audio_source->initalize(state.event_descriptions[0], pos);
-    }
 }
 
 void frame() {
