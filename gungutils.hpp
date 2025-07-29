@@ -77,6 +77,51 @@ int num_elements = 0;
 
 void fetch_callback(const sfetch_response_t* response);
 
+HMM_Vec3 QuatToEulerDegrees(const HMM_Quat& q) {
+    HMM_Vec3 euler;
+
+    float sinr_cosp = 2 * (q.W * q.X + q.Y * q.Z);
+    float cosr_cosp = 1 - 2 * (q.X * q.X + q.Y * q.Y);
+    euler.X = atan2f(sinr_cosp, cosr_cosp);
+
+    float sinp = 2 * (q.W * q.Y - q.Z * q.X);
+    if (abs(sinp) >= 1)
+        euler.Y = copysignf(HMM_PI / 2, sinp);
+    else
+        euler.Y = asinf(sinp);
+
+    float siny_cosp = 2 * (q.W * q.Z + q.X * q.Y);
+    float cosy_cosp = 1 - 2 * (q.Y * q.Y + q.Z * q.Z);
+    euler.Z = atan2f(siny_cosp, cosy_cosp);
+
+    euler.X = euler.X * 180.0f / HMM_PI;
+    euler.Y = euler.Y * 180.0f / HMM_PI;
+    euler.Z = euler.Z * 180.0f / HMM_PI;
+
+    return euler;
+}
+
+HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
+    float roll = euler.X * HMM_PI / 180.0f;
+    float pitch = euler.Y * HMM_PI / 180.0f;
+    float yaw = euler.Z * HMM_PI / 180.0f;
+
+    float cr = cosf(roll * 0.5f);
+    float sr = sinf(roll * 0.5f);
+    float cp = cosf(pitch * 0.5f);
+    float sp = sinf(pitch * 0.5f);
+    float cy = cosf(yaw * 0.5f);
+    float sy = sinf(yaw * 0.5f);
+
+    HMM_Quat q;
+    q.W = cr * cp * cy + sr * sp * sy;
+    q.X = sr * cp * cy - cr * sp * sy;
+    q.Y = cr * sp * cy + sr * cp * sy;
+    q.Z = cr * cp * sy - sr * sp * cy;
+
+    return q;
+}
+
 class Mesh {
 public:
     HMM_Vec3 position{0,0,0};
@@ -741,6 +786,8 @@ ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode sca
 static int selected_mesh_index = -1;
 static int selected_as_index = -1;
 string currently_entered_path = "";
+static std::map<int, HMM_Vec3> mesh_euler_rotations;
+static int last_selected_mesh = -1;
 
 void _init() {
     stbi_set_flip_vertically_on_load(true);
@@ -972,8 +1019,19 @@ void _frame() {
             string label = "Position";
             ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
 
+            if (last_selected_mesh != selected_mesh_index) {
+                mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
+                last_selected_mesh = selected_mesh_index;
+            }
+
+            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
+
             label = "Rotation";
-            ImGui::DragFloat3(label.c_str(), &selected_mesh.rotation.X, 0.01f);
+            if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
+                selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
+            }
+            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
+            if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
 
             label = "Scale";
             ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
