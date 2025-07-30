@@ -613,6 +613,64 @@ class AudioSource3D {
         }
 };
 
+class Helper {
+public:
+    HMM_Vec3 position;
+    string name;
+    Mesh* visualizer_mesh;
+    int visualizer_mesh_index = -1;
+    bool operator==(const Helper& other) const { return this == &other; }
+
+    void initalize(const string& name, HMM_Vec3 pos) {
+        this->name = name;
+        position = pos;
+        visualizer_mesh = new Mesh();
+        float* verts = nullptr;
+        uint32_t vertex_count = 0;
+        uint32_t* indices = nullptr;
+        uint32_t index_count = 0;
+
+        if (load_obj("helper.obj", &verts, &vertex_count, &indices, &index_count)) {
+            visualizer_mesh->vertices = verts;
+            visualizer_mesh->vertex_count = vertex_count;
+            visualizer_mesh->indices = indices;
+            visualizer_mesh->index_count = index_count;
+            visualizer_mesh->position = position;
+
+            visualizer_mesh_index = visualizer_meshes.size();
+            Mesh_To_Buffers(*visualizer_mesh, true);
+            visualizer_meshes.push_back(std::move(*visualizer_mesh));
+        }
+        state.helpers.push_back(*this);
+    }
+
+
+    void update_visualizer_position() {
+        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
+            visualizer_meshes[visualizer_mesh_index].position = position;
+        }
+    }
+
+    void set_position(HMM_Vec3 pos) {
+        position = pos;
+        update_visualizer_position();
+    }
+
+    void remove() {
+        state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), *this),state.helpers.end());
+
+        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
+            visualizer_meshes.erase(visualizer_meshes.begin() + visualizer_mesh_index);
+            for (auto hpr : state.helpers) {
+                if (hpr.visualizer_mesh_index > visualizer_mesh_index) {
+                    hpr.visualizer_mesh_index--;
+                }
+            }
+        }
+        delete visualizer_mesh;
+    }
+};
+
 void make_audiosource_by_index(int index) {
     AudioSource3D* audio_source = new AudioSource3D();
     audio_source->initalize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
@@ -668,6 +726,16 @@ void save_scene(const string& path) {
         }
 
         j["audio_sources"].push_back(as_json);
+    }
+
+    j["helpers"] = nlohmann::json::array();
+    for (const Helper& hpr : state.helpers) {
+        nlohmann::json helper_json;
+
+        helper_json["position"] = nlohmann::json::array({hpr.position.X, hpr.position.Y, hpr.position.Z});
+        helper_json["name"] = hpr.name;
+
+        j["helpers"].push_back(helper_json);
     }
 
     std::ofstream file(path);
@@ -777,6 +845,22 @@ void load_scene(const string& path) {
         }
     }
 
+    if (j.contains("helpers")) {
+        for (const auto& helper_json : j["helpers"]) {
+            Helper* helper = new Helper();
+            if (helper_json.contains("position")) {
+                auto pos = helper_json["position"];
+                helper->position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (helper_json.contains("name")) {
+                auto name = helper_json["name"];
+                helper->name = static_cast<string>(name);
+            }
+            helper->initalize(helper->name, helper->position);
+        }
+    }
+
     std::cout << "Scene loaded from: " << path << std::endl;
 }
 
@@ -790,6 +874,10 @@ void clear_scene() {
         mesh.indices = nullptr;
     }
     all_meshes.clear();
+    for (auto& hpr : state.helpers) {
+        hpr.remove();
+    }
+    state.helpers.clear();
 }
 
 extern void (*init_callback)();
@@ -1245,16 +1333,16 @@ void _frame() {
 
         ImGui::Begin("Helpers");
 
-        static int selected_as_index = -1;
+        static int selected_helper_index = -1;
 
         ImGui::BeginListBox("Helpers", ImVec2(256, 300));
 
-        for (int i = 0; i < state.audio_sources.size(); i++) {
-            string label = "Helper " + to_string(i);
+        for (int i = 0; i < state.helpers.size(); i++) {
+            string label = "Helper " + state.helpers[i].name;
 
-            bool is_selected = (selected_as_index == i);
+            bool is_selected = (selected_helper_index == i);
             if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_as_index = i;
+                selected_helper_index = i;
             }
 
             if (is_selected) {
@@ -1265,82 +1353,48 @@ void _frame() {
         ImGui::EndListBox();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Src settings", ImVec2(300, 300), true);
-        if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
+        ImGui::BeginChild("Helper settings", ImVec2(300, 300), true);
+        if (selected_helper_index >= 0 && selected_helper_index < state.helpers.size()) {
             ImGui::Text("Settings");
             ImGui::Separator();
 
-            auto& selected_as = state.audio_sources[selected_as_index];
+            auto& selected_helper = state.helpers[selected_helper_index];
 
-            ImGui::Text("Selected: Mesh %d", selected_as_index);
+            string label = "Selected: Helper "+selected_helper.name;
+            ImGui::Text(label.c_str());
 
             ImGui::PushItemWidth(200);
 
-            string label = "Position";
-            if (ImGui::DragFloat3(label.c_str(), &selected_as->position.X, 0.01f)) {
-                selected_as->set_position(selected_as->position);
+            static char name_buffer[256];
+            static int last_selected_helper = -1;
+
+            if (last_selected_helper != selected_helper_index) {
+                strncpy(name_buffer, selected_helper.name.c_str(), sizeof(name_buffer) - 1);
+                name_buffer[sizeof(name_buffer) - 1] = '\0';
+                last_selected_helper = selected_helper_index;
             }
 
-            ImGui::Separator();
-
-            label = "Play";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->play();
+            if (ImGui::InputText("Name", name_buffer, sizeof(name_buffer))) {
+                selected_helper.name = std::string(name_buffer);
             }
 
-            ImGui::SameLine();
-            label = "Stop";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->stop();
-            }
-
-            label = "Pause";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->pause();
-            }
-
-            ImGui::SameLine();
-            label = "Unpause";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->unpause();
+            if (ImGui::DragFloat3("Position", &selected_helper.position.X, 0.01f)) {
+                selected_helper.set_position(selected_helper.position);
             }
 
             ImGui::PopItemWidth();
             ImGui::Separator();
             if (ImGui::Button("Delete")) {
-                selected_as->remove();
-                selected_as_index = -1;
+                selected_helper.remove();
+                selected_helper_index = -1;
             }
         } else {
-            ImGui::Text("No source selected");
+            ImGui::Text("No helper selected");
         }
         ImGui::EndChild();
-
-        static int selected_event_index = -1;
-
-        ImGui::BeginListBox("Events", ImVec2(512, 150));
-
-        for (int i = 0; i < state.event_descriptions.size(); i++) {
-            FMOD_GUID eyedeeznuts;
-            FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
-            print_fmod_error(result);
-
-            string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
-
-            bool is_selected = (selected_event_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_event_index = i;
-            }
-
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-
-        ImGui::EndListBox();
-
-        if (ImGui::Button("Add Source")) {
-            make_audiosource_by_index(selected_event_index);
+        if (ImGui::Button("Add Helper")) {
+            Helper* helper = new Helper();
+            helper->initalize("New Helper", {0.0f, 0.0f, 0.0f});
         }
 
         ImGui::End();
