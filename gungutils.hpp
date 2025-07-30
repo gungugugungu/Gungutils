@@ -42,6 +42,7 @@
 using namespace std;
 
 class AudioSource3D;
+class Helper;
 
 struct AppState {
     sg_pipeline pip{};
@@ -68,6 +69,7 @@ struct AppState {
     FMOD::Studio::Bank* bank = nullptr;
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
+    vector<Helper> helpers;
 };
 
 AppState state;
@@ -778,6 +780,18 @@ void load_scene(const string& path) {
     std::cout << "Scene loaded from: " << path << std::endl;
 }
 
+void clear_scene() {
+    for (auto* as : state.audio_sources) {
+        as->remove();
+    }
+    state.audio_sources.clear();
+    for (auto& mesh : all_meshes) {
+        mesh.vertices = nullptr;
+        mesh.indices = nullptr;
+    }
+    all_meshes.clear();
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -1229,6 +1243,108 @@ void _frame() {
 
         ImGui::End();
 
+        ImGui::Begin("Helpers");
+
+        static int selected_as_index = -1;
+
+        ImGui::BeginListBox("Helpers", ImVec2(256, 300));
+
+        for (int i = 0; i < state.audio_sources.size(); i++) {
+            string label = "Helper " + to_string(i);
+
+            bool is_selected = (selected_as_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_as_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndListBox();
+
+        ImGui::SameLine();
+        ImGui::BeginChild("Src settings", ImVec2(300, 300), true);
+        if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
+            ImGui::Text("Settings");
+            ImGui::Separator();
+
+            auto& selected_as = state.audio_sources[selected_as_index];
+
+            ImGui::Text("Selected: Mesh %d", selected_as_index);
+
+            ImGui::PushItemWidth(200);
+
+            string label = "Position";
+            if (ImGui::DragFloat3(label.c_str(), &selected_as->position.X, 0.01f)) {
+                selected_as->set_position(selected_as->position);
+            }
+
+            ImGui::Separator();
+
+            label = "Play";
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                selected_as->play();
+            }
+
+            ImGui::SameLine();
+            label = "Stop";
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                selected_as->stop();
+            }
+
+            label = "Pause";
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                selected_as->pause();
+            }
+
+            ImGui::SameLine();
+            label = "Unpause";
+            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                selected_as->unpause();
+            }
+
+            ImGui::PopItemWidth();
+            ImGui::Separator();
+            if (ImGui::Button("Delete")) {
+                selected_as->remove();
+                selected_as_index = -1;
+            }
+        } else {
+            ImGui::Text("No source selected");
+        }
+        ImGui::EndChild();
+
+        static int selected_event_index = -1;
+
+        ImGui::BeginListBox("Events", ImVec2(512, 150));
+
+        for (int i = 0; i < state.event_descriptions.size(); i++) {
+            FMOD_GUID eyedeeznuts;
+            FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
+            print_fmod_error(result);
+
+            string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
+
+            bool is_selected = (selected_event_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_event_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndListBox();
+
+        if (ImGui::Button("Add Source")) {
+            make_audiosource_by_index(selected_event_index);
+        }
+
+        ImGui::End();
+
         ImGui::Begin("Scene Management");
         if (ImGui::Button("Save Scene")) {
             const char* filter_patterns[] = {"*.gmap"};
@@ -1246,6 +1362,10 @@ void _frame() {
             if (file_path) {
                 load_scene(file_path);
             }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Scene")) {
+            clear_scene();
         }
         ImGui::End();
     }
