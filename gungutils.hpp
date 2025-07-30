@@ -880,6 +880,15 @@ void clear_scene() {
     state.helpers.clear();
 }
 
+Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME NAME
+    for (auto& hpr : state.helpers) {
+        if (hpr.name == name) {
+            return &hpr;
+        }
+    }
+    return nullptr;
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
