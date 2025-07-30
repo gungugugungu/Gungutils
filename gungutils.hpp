@@ -69,7 +69,7 @@ struct AppState {
     FMOD::Studio::Bank* bank = nullptr;
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
-    vector<Helper> helpers;
+    vector<Helper*> helpers;
 };
 
 AppState state;
@@ -144,6 +144,14 @@ public:
     ~Mesh() {
         delete[] vertices;
         delete[] indices;
+        if (vertex_buffer.id != SG_INVALID_ID) {
+            sg_destroy_buffer(vertex_buffer);
+            vertex_buffer.id = SG_INVALID_ID;
+        }
+        if (index_buffer.id != SG_INVALID_ID) {
+            sg_destroy_buffer(index_buffer);
+            index_buffer.id = SG_INVALID_ID;
+        }
     }
     // disable copy, allow move
     Mesh(const Mesh&) = delete;
@@ -152,9 +160,9 @@ public:
         *this = std::move(o);
     }
     Mesh& operator=(Mesh&& o) noexcept {
-        std::swap(vertices,    o.vertices);
-        std::swap(vertex_count,o.vertex_count);
-        std::swap(indices,     o.indices);
+        std::swap(vertices, o.vertices);
+        std::swap(vertex_count, o.vertex_count);
+        std::swap(indices, o.indices);
         std::swap(index_count, o.index_count);
         std::swap(vertex_buffer, o.vertex_buffer);
         std::swap(index_buffer, o.index_buffer);
@@ -641,7 +649,7 @@ public:
             Mesh_To_Buffers(*visualizer_mesh, true);
             visualizer_meshes.push_back(std::move(*visualizer_mesh));
         }
-        state.helpers.push_back(*this);
+        state.helpers.push_back(this);
     }
 
 
@@ -657,13 +665,13 @@ public:
     }
 
     void remove() {
-        state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), *this),state.helpers.end());
+        state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), this),state.helpers.end());
 
         if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
             visualizer_meshes.erase(visualizer_meshes.begin() + visualizer_mesh_index);
-            for (auto hpr : state.helpers) {
-                if (hpr.visualizer_mesh_index > visualizer_mesh_index) {
-                    hpr.visualizer_mesh_index--;
+            for (auto* hpr : state.helpers) {
+                if (hpr->visualizer_mesh_index > visualizer_mesh_index) {
+                    hpr->visualizer_mesh_index--;
                 }
             }
         }
@@ -729,11 +737,11 @@ void save_scene(const string& path) {
     }
 
     j["helpers"] = nlohmann::json::array();
-    for (const Helper& hpr : state.helpers) {
+    for (const Helper* hpr : state.helpers) {
         nlohmann::json helper_json;
 
-        helper_json["position"] = nlohmann::json::array({hpr.position.X, hpr.position.Y, hpr.position.Z});
-        helper_json["name"] = hpr.name;
+        helper_json["position"] = nlohmann::json::array({hpr->position.X, hpr->position.Y, hpr->position.Z});
+        helper_json["name"] = hpr->name;
 
         j["helpers"].push_back(helper_json);
     }
@@ -869,21 +877,21 @@ void clear_scene() {
         as->remove();
     }
     state.audio_sources.clear();
-    for (auto& mesh : all_meshes) {
-        mesh.vertices = nullptr;
-        mesh.indices = nullptr;
-    }
+
     all_meshes.clear();
-    for (auto& hpr : state.helpers) {
-        hpr.remove();
+
+    for (auto* hpr : state.helpers) {
+        hpr->remove();
     }
     state.helpers.clear();
+
+    visualizer_meshes.clear();
 }
 
 Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME NAME
     for (auto& hpr : state.helpers) {
-        if (hpr.name == name) {
-            return &hpr;
+        if (hpr->name == name) {
+            return hpr;
         }
     }
     return nullptr;
@@ -1347,7 +1355,7 @@ void _frame() {
         ImGui::BeginListBox("Helpers", ImVec2(256, 300));
 
         for (int i = 0; i < state.helpers.size(); i++) {
-            string label = "Helper " + state.helpers[i].name;
+            string label = "Helper " + state.helpers[i]->name;
 
             bool is_selected = (selected_helper_index == i);
             if (ImGui::Selectable(label.c_str(), is_selected)) {
@@ -1369,7 +1377,7 @@ void _frame() {
 
             auto& selected_helper = state.helpers[selected_helper_index];
 
-            string label = "Selected: Helper "+selected_helper.name;
+            string label = "Selected: Helper "+selected_helper->name;
             ImGui::Text(label.c_str());
 
             ImGui::PushItemWidth(200);
@@ -1378,23 +1386,23 @@ void _frame() {
             static int last_selected_helper = -1;
 
             if (last_selected_helper != selected_helper_index) {
-                strncpy(name_buffer, selected_helper.name.c_str(), sizeof(name_buffer) - 1);
+                strncpy(name_buffer, selected_helper->name.c_str(), sizeof(name_buffer) - 1);
                 name_buffer[sizeof(name_buffer) - 1] = '\0';
                 last_selected_helper = selected_helper_index;
             }
 
             if (ImGui::InputText("Name", name_buffer, sizeof(name_buffer))) {
-                selected_helper.name = std::string(name_buffer);
+                selected_helper->name = std::string(name_buffer);
             }
 
-            if (ImGui::DragFloat3("Position", &selected_helper.position.X, 0.01f)) {
-                selected_helper.set_position(selected_helper.position);
+            if (ImGui::DragFloat3("Position", &selected_helper->position.X, 0.01f)) {
+                selected_helper->set_position(selected_helper->position);
             }
 
             ImGui::PopItemWidth();
             ImGui::Separator();
             if (ImGui::Button("Delete")) {
-                selected_helper.remove();
+                selected_helper->remove();
                 selected_helper_index = -1;
             }
         } else {
