@@ -124,35 +124,35 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
     return q;
 }
 
+vs_params_t vs_params;
+
 class Mesh {
 public:
     HMM_Vec3 position{0,0,0};
     HMM_Quat rotation{0,0,0,1};
     HMM_Vec3 scale{1,1,1};
-
     float opacity = 0.5f;
 
-    float*    vertices = nullptr; // 3 floats for pos, 3 floats for normals and 2 floats for tex coords
+    float*    vertices = nullptr;
     size_t    vertex_count = 0;
     uint32_t* indices  = nullptr;
     size_t    index_count = 0;
 
-    sg_buffer vertex_buffer = {0};
-    sg_buffer index_buffer = {0};
+    // Store pre-computed buffer descriptors instead of actual buffers
+    sg_buffer_desc vertex_buffer_desc = {};
+    sg_buffer_desc index_buffer_desc = {};
+
+    // Optional: pre-converted uint16 indices for efficiency
+    uint16_t* indices16 = nullptr;
+    bool use_uint16_indices = true;
 
     Mesh() = default;
     ~Mesh() {
         delete[] vertices;
         delete[] indices;
-        if (vertex_buffer.id != SG_INVALID_ID) {
-            sg_destroy_buffer(vertex_buffer);
-            vertex_buffer.id = SG_INVALID_ID;
-        }
-        if (index_buffer.id != SG_INVALID_ID) {
-            sg_destroy_buffer(index_buffer);
-            index_buffer.id = SG_INVALID_ID;
-        }
+        delete[] indices16;
     }
+
     // disable copy, allow move
     Mesh(const Mesh&) = delete;
     Mesh& operator=(const Mesh&) = delete;
@@ -164,11 +164,14 @@ public:
         std::swap(vertex_count, o.vertex_count);
         std::swap(indices, o.indices);
         std::swap(index_count, o.index_count);
-        std::swap(vertex_buffer, o.vertex_buffer);
-        std::swap(index_buffer, o.index_buffer);
+        std::swap(indices16, o.indices16);
+        std::swap(use_uint16_indices, o.use_uint16_indices);
+        vertex_buffer_desc = o.vertex_buffer_desc;
+        index_buffer_desc = o.index_buffer_desc;
         position = o.position;
         rotation = o.rotation;
-        scale    = o.scale;
+        scale = o.scale;
+        opacity = o.opacity;
         return *this;
     }
 };
@@ -176,63 +179,202 @@ public:
 vector<Mesh> all_meshes;
 vector<Mesh> visualizer_meshes;
 
-// I've been doing this non-stop for a week 12 hours a day
-// and this is still not working
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
-    // god damn I'm stuck in debugging hell like wtf is this bullshit
-    std::cout << "=== Stupid Mesh Debug info ===" << std::endl;
+    std::cout << "=== Preparing Mesh Buffer Descriptors ===" << std::endl;
     std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
     std::cout << "Index count: " << mesh.index_count << std::endl;
-    std::cout << "Vertices pointer: " << (void*)mesh.vertices << std::endl;
-    std::cout << "Indices pointer: " << (void*)mesh.indices << std::endl;
 
-    if (mesh.vertices != nullptr && mesh.vertex_count > 0) {
-        std::cout << "First few vertices:" << std::endl;
-        for (size_t i = 0; i < std::min((size_t)3, mesh.vertex_count); i++) {
-            std::cout << "  Vertex " << i << ": pos("
-                      << mesh.vertices[i*8+0] << ", " << mesh.vertices[i*8+1] << ", " << mesh.vertices[i*8+2]
-                      << ") tex(" << mesh.vertices[i*8+6] << ", " << mesh.vertices[i*8+7] << ")" << std::endl;
-        }
+    if (!mesh.vertices || mesh.vertex_count == 0) {
+        std::cerr << "ERROR: Invalid vertex data!" << std::endl;
+        return;
     }
 
-    // vbuf
-    sg_buffer_desc vbuf_desc = {};
-    vbuf_desc.size = mesh.vertex_count * 8 * sizeof(float);
-    vbuf_desc.data.ptr = mesh.vertices;
-    vbuf_desc.data.size = vbuf_desc.size;
-    vbuf_desc.usage.immutable = true;
-    cout << "vbuf size: " << vbuf_desc.size << endl;
-    mesh.vertex_buffer = sg_make_buffer(&vbuf_desc);
+    if (!mesh.indices || mesh.index_count == 0) {
+        std::cerr << "ERROR: Invalid index data!" << std::endl;
+        return;
+    }
 
-    auto* indices16 = new uint16_t[mesh.index_count];
-    bool can_use_uint16 = true;
+    mesh.vertex_buffer_desc = {};
+    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
+    mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
+    mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
+    mesh.vertex_buffer_desc.usage.immutable = true;
+    mesh.vertex_buffer_desc.usage.vertex_buffer = true;
+
+    mesh.use_uint16_indices = true;
     for (size_t i = 0; i < mesh.index_count; i++) {
         if (mesh.indices[i] > 65535) {
-            can_use_uint16 = false;
+            mesh.use_uint16_indices = false;
             break;
         }
-        indices16[i] = static_cast<uint16_t>(mesh.indices[i]);
     }
 
-    sg_buffer_desc ibuf_desc = {};
-    if (can_use_uint16) {
-        ibuf_desc.size = mesh.index_count * sizeof(uint16_t);
-        ibuf_desc.data.ptr = indices16;
-        ibuf_desc.data.size = ibuf_desc.size;
+    if (mesh.use_uint16_indices) {
+        mesh.indices16 = new uint16_t[mesh.index_count];
+        for (size_t i = 0; i < mesh.index_count; i++) {
+            mesh.indices16[i] = static_cast<uint16_t>(mesh.indices[i]);
+        }
+    }
+
+    mesh.index_buffer_desc = {};
+    mesh.index_buffer_desc.usage.immutable = true;
+    mesh.index_buffer_desc.usage.vertex_buffer = false;
+    mesh.index_buffer_desc.usage.index_buffer = true;
+
+    if (mesh.use_uint16_indices) {
+        mesh.index_buffer_desc.size = mesh.index_count * sizeof(uint16_t);
+        mesh.index_buffer_desc.data.ptr = mesh.indices16;
+        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
     } else {
-        ibuf_desc.size = mesh.index_count * sizeof(uint32_t);
-        ibuf_desc.data.ptr = mesh.indices;
-        ibuf_desc.data.size = ibuf_desc.size;
-        std::cout << "Warning: Using uint32 indices" << std::endl;
+        mesh.index_buffer_desc.size = mesh.index_count * sizeof(uint32_t);
+        mesh.index_buffer_desc.data.ptr = mesh.indices;
+        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
     }
 
-    // ibuf
-    ibuf_desc.usage.vertex_buffer = true;
-    ibuf_desc.usage.index_buffer = true;
-    ibuf_desc.usage.immutable = true;
-    mesh.index_buffer = sg_make_buffer(&ibuf_desc);
+    if (!dontadd) {
+        all_meshes.push_back(std::move(mesh));
+    }
+}
 
-    if (!dontadd) all_meshes.push_back(std::move(mesh));
+void render_meshes_streaming() {
+    for (auto& mesh : all_meshes) {
+        sg_buffer vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
+        sg_buffer index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
+
+        if (vertex_buffer.id == SG_INVALID_ID || index_buffer.id == SG_INVALID_ID) {
+            if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+            if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
+            continue;
+        }
+
+        state.bind.vertex_buffers[0] = vertex_buffer;
+        state.bind.index_buffer = index_buffer;
+        sg_apply_bindings(&state.bind);
+
+        HMM_Mat4 model = HMM_Translate(mesh.position);
+        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+        HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+        model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+        vs_params.model = model;
+        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+        sg_draw(0, mesh.index_count, 1);
+
+        sg_destroy_buffer(vertex_buffer);
+        sg_destroy_buffer(index_buffer);
+    }
+    // visualizers
+    if (state.editor_open) {
+        for (auto& mesh : visualizer_meshes) {
+            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
+            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+            if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
+                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
+                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
+                continue;
+            }
+
+            state.bind.vertex_buffers[0] = vb;
+            state.bind.index_buffer     = ib;
+            sg_apply_bindings(&state.bind);
+
+            HMM_Mat4 model     = HMM_Translate(mesh.position);
+            HMM_Mat4 rot_mat   = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+
+            vs_params.model = model;
+            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+            sg_draw(0, mesh.index_count, 1);
+
+            sg_destroy_buffer(vb);
+            sg_destroy_buffer(ib);
+        }
+    }
+
+}
+
+void render_meshes_batched_streaming(size_t batch_size = 10) {
+    std::vector<sg_buffer> vertex_buffers;
+    std::vector<sg_buffer> index_buffers;
+    vertex_buffers.reserve(batch_size);
+    index_buffers.reserve(batch_size);
+
+    for (size_t start = 0; start < all_meshes.size(); start += batch_size) {
+        size_t end = std::min(start + batch_size, all_meshes.size());
+
+        vertex_buffers.clear();
+        index_buffers.clear();
+
+        for (size_t i = start; i < end; i++) {
+            auto& mesh = all_meshes[i];
+            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
+            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+
+            if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
+                vertex_buffers.push_back(vb);
+                index_buffers.push_back(ib);
+            } else {
+                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
+                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
+                std::cerr << "Failed to create buffers for mesh " << i << std::endl;
+            }
+        }
+
+        for (size_t i = 0; i < vertex_buffers.size(); i++) {
+            size_t mesh_idx = start + i;
+            auto& mesh = all_meshes[mesh_idx];
+
+            state.bind.vertex_buffers[0] = vertex_buffers[i];
+            state.bind.index_buffer = index_buffers[i];
+            sg_apply_bindings(&state.bind);
+
+            HMM_Mat4 model = HMM_Translate(mesh.position);
+            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+            vs_params.model = model;
+            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+            sg_draw(0, mesh.index_count, 1);
+        }
+
+        for (auto& vb : vertex_buffers) {
+            sg_destroy_buffer(vb);
+        }
+        for (auto& ib : index_buffers) {
+            sg_destroy_buffer(ib);
+        }
+    }
+    // visualizers
+    if (state.editor_open) {
+        for (auto& mesh : visualizer_meshes) {
+            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
+            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+            if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
+                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
+                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
+                continue;
+            }
+            state.bind.vertex_buffers[0] = vb;
+            state.bind.index_buffer     = ib;
+            sg_apply_bindings(&state.bind);
+
+            HMM_Mat4 model     = HMM_Translate(mesh.position);
+            HMM_Mat4 rot_mat   = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+
+            vs_params.model = model;
+            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+            sg_draw(0, mesh.index_count, 1);
+
+            sg_destroy_buffer(vb);
+            sg_destroy_buffer(ib);
+        }
+    }
 }
 
 void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotation, HMM_Vec3& scale) {
@@ -246,7 +388,15 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     scale.Y = HMM_LenV3(col1);
     scale.Z = HMM_LenV3(col2);
 
-    if (scale.X < 0.0001f) scale.X = 1.0f;
+    float det = m.Elements[0][0] * (m.Elements[1][1] * m.Elements[2][2] - m.Elements[2][1] * m.Elements[1][2]) -
+                m.Elements[0][1] * (m.Elements[1][0] * m.Elements[2][2] - m.Elements[1][2] * m.Elements[2][0]) +
+                m.Elements[0][2] * (m.Elements[1][0] * m.Elements[2][1] - m.Elements[1][1] * m.Elements[2][0]);
+
+    if (det < 0) {
+        scale.X = -scale.X;
+    }
+
+    if (scale.X < 0.0001f) scale.X = (scale.X < 0) ? -1.0f : 1.0f;
     if (scale.Y < 0.0001f) scale.Y = 1.0f;
     if (scale.Z < 0.0001f) scale.Z = 1.0f;
 
@@ -255,9 +405,9 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     col2 = col2 * (1.0f / scale.Z);
 
     HMM_Mat4 rot_mat = HMM_M4D(1.0f);
-    rot_mat.Elements[0][0] = col0.X; rot_mat.Elements[0][1] = col1.X; rot_mat.Elements[0][2] = col2.X;
-    rot_mat.Elements[1][0] = col0.Y; rot_mat.Elements[1][1] = col1.Y; rot_mat.Elements[1][2] = col2.Y;
-    rot_mat.Elements[2][0] = col0.Z; rot_mat.Elements[2][1] = col1.Z; rot_mat.Elements[2][2] = col2.Z;
+    rot_mat.Elements[0][0] = col0.X; rot_mat.Elements[0][1] = col0.Y; rot_mat.Elements[0][2] = col0.Z;
+    rot_mat.Elements[1][0] = col1.X; rot_mat.Elements[1][1] = col1.Y; rot_mat.Elements[1][2] = col1.Z;
+    rot_mat.Elements[2][0] = col2.X; rot_mat.Elements[2][1] = col2.Y; rot_mat.Elements[2][2] = col2.Z;
 
     rotation = HMM_M4ToQ_RH(rot_mat);
 }
@@ -267,7 +417,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
     tinygltf::Model model;
     std::string err, warn;
     bool ok = loader.LoadBinaryFromFile(&model, &err, &warn, path);
-    if (!warn.empty())  std::cout << "WARN: " << warn << "\n";
+    if (!warn.empty()) std::cout << "WARN: " << warn << "\n";
     if (!ok) {
         std::cerr << "ERROR: " << err << "\n";
         return {};
@@ -278,8 +428,11 @@ std::vector<Mesh> load_gltf(const std::string& path) {
     std::function<void(int, const HMM_Mat4&)> processNode = [&](int nodeIndex, const HMM_Mat4& parentTransform) {
         if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) return;
         const auto& node = model.nodes[nodeIndex];
+
         HMM_Mat4 localTransform = HMM_M4D(1.0f);
+
         if (node.matrix.size() == 16) {
+            // GLTF uses column-major matrices
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     localTransform.Elements[i][j] = (float)node.matrix[j * 4 + i];
@@ -287,7 +440,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
             }
         } else {
             HMM_Vec3 translation = {0, 0, 0};
-            HMM_Quat rotation = {0, 0, 0, 1};
+            HMM_Quat rotation = {0, 0, 0, 1}; // Identity quaternion
             HMM_Vec3 scale = {1, 1, 1};
 
             if (node.translation.size() == 3) {
@@ -302,51 +455,85 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 scale = {(float)node.scale[0], (float)node.scale[1], (float)node.scale[2]};
             }
 
+            // Build transformation matrix: T * R * S
             HMM_Mat4 T = HMM_Translate(translation);
             HMM_Mat4 R = HMM_QToM4(rotation);
             HMM_Mat4 S = HMM_Scale(scale);
-            localTransform = HMM_MulM4(HMM_MulM4(T, R), S);
+            localTransform = HMM_MulM4(T, HMM_MulM4(R, S));
         }
+
         HMM_Mat4 worldTransform = HMM_MulM4(parentTransform, localTransform);
+
         if (node.mesh >= 0 && node.mesh < model.meshes.size()) {
             const auto& meshDef = model.meshes[node.mesh];
             for (const auto& prim : meshDef.primitives) {
-                // vertex count
+                // Check if required attributes exist
+                if (prim.attributes.find("POSITION") == prim.attributes.end() ||
+                    prim.attributes.find("NORMAL") == prim.attributes.end() ||
+                    prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
+                    std::cout << "Warning: Primitive missing required attributes, skipping..." << std::endl;
+                    continue;
+                }
+
                 const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
                 const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
                 const auto& uvAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
                 size_t vcount = posAcc.count;
 
                 auto* verts = new float[vcount * 8];
-                const auto* posBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[posAcc.bufferView].buffer].data.data()+model.bufferViews[posAcc.bufferView].byteOffset+posAcc.byteOffset);
-                const auto* normBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[normAcc.bufferView].buffer].data.data()+model.bufferViews[normAcc.bufferView].byteOffset+normAcc.byteOffset);
-                const auto* uvBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[uvAcc.bufferView].buffer].data.data()+model.bufferViews[uvAcc.bufferView].byteOffset+uvAcc.byteOffset);
+
+                const auto& posView = model.bufferViews[posAcc.bufferView];
+                const auto& normView = model.bufferViews[normAcc.bufferView];
+                const auto& uvView = model.bufferViews[uvAcc.bufferView];
+
+                const auto* posBuf = reinterpret_cast<const float*>(
+                    model.buffers[posView.buffer].data.data() + posView.byteOffset + posAcc.byteOffset);
+                const auto* normBuf = reinterpret_cast<const float*>(
+                    model.buffers[normView.buffer].data.data() + normView.byteOffset + normAcc.byteOffset);
+                const auto* uvBuf = reinterpret_cast<const float*>(
+                    model.buffers[uvView.buffer].data.data() + uvView.byteOffset + uvAcc.byteOffset);
+
+                size_t posStride = posView.byteStride ? posView.byteStride / sizeof(float) : 3;
+                size_t normStride = normView.byteStride ? normView.byteStride / sizeof(float) : 3;
+                size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
 
                 for (size_t i = 0; i < vcount; i++) {
-                    // position
-                    verts[i*8 + 0] = posBuf[i*3 + 0];
-                    verts[i*8 + 1] = posBuf[i*3 + 1];
-                    verts[i*8 + 2] = posBuf[i*3 + 2];
-                    // normal
-                    verts[i*8 + 3] = normBuf[i*3 + 0];
-                    verts[i*8 + 4] = normBuf[i*3 + 1];
-                    verts[i*8 + 5] = normBuf[i*3 + 2];
-                    // texcoord
-                    verts[i*8 + 6] = uvBuf[i*2 + 0];
-                    verts[i*8 + 7] = uvBuf[i*2 + 1];
+                    // Position
+                    verts[i*8 + 0] = posBuf[i*posStride + 0];
+                    verts[i*8 + 1] = posBuf[i*posStride + 1];
+                    verts[i*8 + 2] = posBuf[i*posStride + 2];
+                    // Normal
+                    verts[i*8 + 3] = normBuf[i*normStride + 0];
+                    verts[i*8 + 4] = normBuf[i*normStride + 1];
+                    verts[i*8 + 5] = normBuf[i*normStride + 2];
+                    // Texture coordinates
+                    verts[i*8 + 6] = uvBuf[i*uvStride + 0];
+                    verts[i*8 + 7] = uvBuf[i*uvStride + 1];
                 }
 
-                // indices
                 const auto& idxAcc = model.accessors[prim.indices];
                 size_t icount = idxAcc.count;
                 auto* idxs = new uint32_t[icount];
-                const auto* idxBuf = reinterpret_cast<const uint16_t*>(
-                    model.buffers[ model.bufferViews[idxAcc.bufferView].buffer ].data.data()
-                    + model.bufferViews[idxAcc.bufferView].byteOffset
-                    + idxAcc.byteOffset
-                );
-                for (size_t i = 0; i < icount; i++) {
-                    idxs[i] = idxBuf[i];
+
+                const auto& idxView = model.bufferViews[idxAcc.bufferView];
+                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data() +
+                                      idxView.byteOffset + idxAcc.byteOffset;
+
+                if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                    const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices16[i];
+                    }
+                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                    const uint32_t* indices32 = reinterpret_cast<const uint32_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices32[i];
+                    }
+                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+                    const uint8_t* indices8 = reinterpret_cast<const uint8_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices8[i];
+                    }
                 }
 
                 Mesh mesh;
@@ -354,10 +541,8 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.vertex_count = vcount;
                 mesh.indices = idxs;
                 mesh.index_count = icount;
-                // extract transforms
-                decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
 
-                mesh.rotation.Y = -mesh.rotation.Y; // Fuck this
+                decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
 
                 meshes.push_back(std::move(mesh));
             }
@@ -385,44 +570,73 @@ std::vector<Mesh> load_gltf(const std::string& path) {
     }
 
     if (meshes.empty()) {
+        std::cout << "No node hierarchy found, processing meshes directly..." << std::endl;
+
         for (const auto& meshDef : model.meshes) {
             for (const auto& prim : meshDef.primitives) {
-                // vertex count
-                const auto& posAcc  = model.accessors[prim.attributes.at("POSITION")];
+                // Same mesh processing code as above, but without transforms
+                if (prim.attributes.find("POSITION") == prim.attributes.end() ||
+                    prim.attributes.find("NORMAL") == prim.attributes.end() ||
+                    prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
+                    continue;
+                }
+
+                const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
                 const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
-                const auto& uvAcc   = model.accessors[prim.attributes.at("TEXCOORD_0")];
+                const auto& uvAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
                 size_t vcount = posAcc.count;
 
                 auto* verts = new float[vcount * 8];
-                const auto* posBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[posAcc.bufferView].buffer].data.data()+model.bufferViews[posAcc.bufferView].byteOffset+posAcc.byteOffset);
-                const auto* normBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[normAcc.bufferView].buffer].data.data()+model.bufferViews[normAcc.bufferView].byteOffset+normAcc.byteOffset);
-                const auto* uvBuf = reinterpret_cast<const float*>(model.buffers[model.bufferViews[uvAcc.bufferView].buffer].data.data()+model.bufferViews[uvAcc.bufferView].byteOffset+uvAcc.byteOffset);
+
+                const auto& posView = model.bufferViews[posAcc.bufferView];
+                const auto& normView = model.bufferViews[normAcc.bufferView];
+                const auto& uvView = model.bufferViews[uvAcc.bufferView];
+
+                const auto* posBuf = reinterpret_cast<const float*>(
+                    model.buffers[posView.buffer].data.data() + posView.byteOffset + posAcc.byteOffset);
+                const auto* normBuf = reinterpret_cast<const float*>(
+                    model.buffers[normView.buffer].data.data() + normView.byteOffset + normAcc.byteOffset);
+                const auto* uvBuf = reinterpret_cast<const float*>(
+                    model.buffers[uvView.buffer].data.data() + uvView.byteOffset + uvAcc.byteOffset);
+
+                size_t posStride = posView.byteStride ? posView.byteStride / sizeof(float) : 3;
+                size_t normStride = normView.byteStride ? normView.byteStride / sizeof(float) : 3;
+                size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
 
                 for (size_t i = 0; i < vcount; i++) {
-                    // position
-                    verts[i*8 + 0] = posBuf[i*3 + 0];
-                    verts[i*8 + 1] = posBuf[i*3 + 1];
-                    verts[i*8 + 2] = posBuf[i*3 + 2];
-                    // normal
-                    verts[i*8 + 3] = normBuf[i*3 + 0];
-                    verts[i*8 + 4] = normBuf[i*3 + 1];
-                    verts[i*8 + 5] = normBuf[i*3 + 2];
-                    // texcoord
-                    verts[i*8 + 6] = uvBuf[i*2 + 0];
-                    verts[i*8 + 7] = uvBuf[i*2 + 1];
+                    verts[i*8 + 0] = posBuf[i*posStride + 0];
+                    verts[i*8 + 1] = posBuf[i*posStride + 1];
+                    verts[i*8 + 2] = posBuf[i*posStride + 2];
+                    verts[i*8 + 3] = normBuf[i*normStride + 0];
+                    verts[i*8 + 4] = normBuf[i*normStride + 1];
+                    verts[i*8 + 5] = normBuf[i*normStride + 2];
+                    verts[i*8 + 6] = uvBuf[i*uvStride + 0];
+                    verts[i*8 + 7] = uvBuf[i*uvStride + 1];
                 }
 
-                // indices
                 const auto& idxAcc = model.accessors[prim.indices];
                 size_t icount = idxAcc.count;
                 auto* idxs = new uint32_t[icount];
-                const auto* idxBuf = reinterpret_cast<const uint16_t*>(
-                    model.buffers[ model.bufferViews[idxAcc.bufferView].buffer ].data.data()
-                    + model.bufferViews[idxAcc.bufferView].byteOffset
-                    + idxAcc.byteOffset
-                );
-                for (size_t i = 0; i < icount; i++) {
-                    idxs[i] = idxBuf[i];
+
+                const auto& idxView = model.bufferViews[idxAcc.bufferView];
+                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data() +
+                                      idxView.byteOffset + idxAcc.byteOffset;
+
+                if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                    const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices16[i];
+                    }
+                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                    const uint32_t* indices32 = reinterpret_cast<const uint32_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices32[i];
+                    }
+                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+                    const uint8_t* indices8 = reinterpret_cast<const uint8_t*>(idxBuf);
+                    for (size_t i = 0; i < icount; i++) {
+                        idxs[i] = indices8[i];
+                    }
                 }
 
                 Mesh mesh;
@@ -430,6 +644,10 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.vertex_count = vcount;
                 mesh.indices = idxs;
                 mesh.index_count = icount;
+                mesh.position = {0, 0, 0};
+                mesh.rotation = {0, 0, 0, 1};
+                mesh.scale = {1, 1, 1};
+
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -1029,38 +1247,15 @@ void _frame() {
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 100.0f);
 
-    vs_params_t vs_params = {
+    vs_params = {
         .view = view,
         .projection = projection
     };
 
-    for (auto& mesh : all_meshes) {
-        state.bind.vertex_buffers[0] = mesh.vertex_buffer;
-        state.bind.index_buffer = mesh.index_buffer;
-        sg_apply_bindings(&state.bind);
-        /*std::cout << "Model vertices: " << mesh.vertex_count << std::endl;
-        for (int i = 0; i < mesh.vertex_count; i++) {
-            std::cout << "----------------------------------------" << std::endl;
-            std::cout << "Positions: " << mesh.vertices[i*8 + 0] << " " << mesh.vertices[i*8 + 1] << " " << mesh.vertices[i*8 + 2] << std::endl;
-            std::cout << "Normals: " << mesh.vertices[i*8 + 3] << " " << mesh.vertices[i*8 + 4] << " " << mesh.vertices[i*8 + 5] << std::endl;
-            std::cout << "Texture coordinates: " << mesh.vertices[i*8 + 6] << " " << mesh.vertices[i*8 + 7] << std::endl;
-            std::cout << "Camera pos: " << state.camera_pos.X << ", " << state.camera_pos.Y << ", " << state.camera_pos.Z << std::endl;
-            std::cout << "Mesh pos: " << mesh.position.X << ", " << mesh.position.Y << ", " << mesh.position.Z << std::endl;
-            std::cout << "Index count: " << mesh.index_count << std::endl;
-        }*/
-
-        HMM_Mat4 model = HMM_Translate(mesh.position);
-        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-        HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-        model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
-        vs_params.model = model;
-        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-        sg_draw(0, mesh.index_count, 1);
-    }
+    render_meshes_batched_streaming();
 
     // draw visualizer meshes
-    if (state.editor_open) {
+    /*if (state.editor_open) {
         for (auto& mesh : visualizer_meshes) {
             state.bind.vertex_buffers[0] = mesh.vertex_buffer;
             state.bind.index_buffer = mesh.index_buffer;
@@ -1075,7 +1270,7 @@ void _frame() {
 
             sg_draw(0, mesh.index_count, 1);
         }
-    }
+    }*/
 
     // input
     if (state.editor_open) {
