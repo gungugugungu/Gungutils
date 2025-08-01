@@ -70,9 +70,6 @@ struct AppState {
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
-    std::vector<sg_image> loaded_textures;
-    sg_image default_texture; // palette.png
-    int next_texture_id = 1;
 };
 
 AppState state;
@@ -146,8 +143,6 @@ public:
 
     uint16_t* indices16 = nullptr;
     bool use_uint16_indices = true;
-
-    int texture_id = 0;
 
     Mesh() = default;
     ~Mesh() {
@@ -253,12 +248,6 @@ void render_meshes_streaming() {
         state.bind.vertex_buffers[0] = vertex_buffer;
         state.bind.index_buffer = index_buffer;
 
-        if (mesh.texture_id > 0 && mesh.texture_id <= state.loaded_textures.size()) {
-            state.bind.images[0] = state.loaded_textures[mesh.texture_id - 1];
-        } else {
-            state.bind.images[0] = state.default_texture; // palette.png
-        }
-
         sg_apply_bindings(&state.bind);
 
         HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -286,7 +275,6 @@ void render_meshes_streaming() {
 
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
-            state.bind.images[0] = state.default_texture; // visaualizers use default texture
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -339,12 +327,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             state.bind.vertex_buffers[0] = vertex_buffers[i];
             state.bind.index_buffer = index_buffers[i];
 
-            if (mesh.texture_id > 0 && mesh.texture_id <= state.loaded_textures.size()) {
-                state.bind.images[0] = state.loaded_textures[mesh.texture_id - 1];
-            } else {
-                state.bind.images[0] = state.default_texture; // palette.png
-            }
-
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -376,7 +358,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             }
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
-            state.bind.images[0] = state.default_texture;
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -428,69 +409,6 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     rot_mat.Elements[2][0] = col2.X; rot_mat.Elements[2][1] = col2.Y; rot_mat.Elements[2][2] = col2.Z;
 
     rotation = HMM_M4ToQ_RH(rot_mat);
-}
-
-sg_image load_texture_from_gltf_image(const tinygltf::Image& image) {
-    if (image.image.empty()) {
-        std::cout << "Warning: Empty image data" << std::endl;
-        return state.default_texture;
-    }
-
-    int img_width = image.width;
-    int img_height = image.height;
-    int num_channels = image.component;
-
-    std::vector<uint8_t> rgba_data;
-    if (num_channels == 3) {
-        // convert RGB to RGBA
-        rgba_data.reserve(img_width * img_height * 4);
-        for (int i = 0; i < img_width * img_height; i++) {
-            rgba_data.push_back(image.image[i * 3 + 0]);
-            rgba_data.push_back(image.image[i * 3 + 1]);
-            rgba_data.push_back(image.image[i * 3 + 2]);
-            rgba_data.push_back(255);
-        }
-    } else if (num_channels == 4) {
-        rgba_data = image.image;
-    } else {
-        std::cout << "Warning: Unsupported image format with " << num_channels << " channels" << std::endl;
-        return state.default_texture;
-    }
-
-    sg_image_desc img_desc = {};
-    img_desc.width = img_width;
-    img_desc.height = img_height;
-    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    img_desc.data.subimage[0][0].ptr = rgba_data.data();
-    img_desc.data.subimage[0][0].size = rgba_data.size();
-
-    return sg_make_image(&img_desc);
-}
-
-int get_or_load_texture(const tinygltf::Model& model, int texture_index) {
-    if (texture_index < 0 || texture_index >= model.textures.size()) {
-        return 0;
-    }
-
-    const auto& texture = model.textures[texture_index];
-    if (texture.source < 0 || texture.source >= model.images.size()) {
-        return 0;
-    }
-
-    const auto& image = model.images[texture.source];
-    sg_image loaded_texture = load_texture_from_gltf_image(image);
-
-    if (loaded_texture.id == SG_INVALID_ID) {
-        return 0;
-    }
-
-    state.loaded_textures.push_back(loaded_texture);
-    int texture_id = state.next_texture_id++;
-
-    std::cout << "Loaded texture " << texture_id << " from GLTF (size: "
-              << image.width << "x" << image.height << ")" << std::endl;
-
-    return texture_id;
 }
 
 std::vector<Mesh> load_gltf(const std::string& path) {
@@ -624,15 +542,6 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
                 decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
 
-                mesh.texture_id = 0; // Default to palette.png
-                if (prim.material >= 0 && prim.material < model.materials.size()) {
-                    const auto& material = model.materials[prim.material];
-                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-                        mesh.texture_id = get_or_load_texture(model, material.pbrMetallicRoughness.baseColorTexture.index);
-                        std::cout << "Mesh assigned texture ID: " << mesh.texture_id << std::endl;
-                    }
-                }
-
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -736,15 +645,6 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.position = {0, 0, 0};
                 mesh.rotation = {0, 0, 0, 1};
                 mesh.scale = {1, 1, 1};
-
-                mesh.texture_id = 0; // default to palette.png
-                if (prim.material >= 0 && prim.material < model.materials.size()) {
-                    const auto& material = model.materials[prim.material];
-                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-                        mesh.texture_id = get_or_load_texture(model, material.pbrMetallicRoughness.baseColorTexture.index);
-                        std::cout << "Mesh assigned texture ID: " << mesh.texture_id << std::endl;
-                    }
-                }
 
                 meshes.push_back(std::move(mesh));
             }
@@ -1359,24 +1259,6 @@ void _frame() {
 
     render_meshes_batched_streaming();
 
-    // draw visualizer meshes
-    /*if (state.editor_open) {
-        for (auto& mesh : visualizer_meshes) {
-            state.bind.vertex_buffers[0] = mesh.vertex_buffer;
-            state.bind.index_buffer = mesh.index_buffer;
-            sg_apply_bindings(&state.bind);
-
-            HMM_Mat4 model = HMM_Translate(mesh.position);
-            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
-            vs_params.model = model;
-            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-            sg_draw(0, mesh.index_count, 1);
-        }
-    }*/
-
     // input
     if (state.editor_open) {
         float camera_speed = 5.f * (float) stm_sec(state.delta_time);
@@ -1862,23 +1744,24 @@ void fetch_callback(const sfetch_response_t* response) {
             &num_channels, desired_channels);
 
         if (pixels) {
-            sg_destroy_image(state.default_texture);
+            // yay, memory safety!
+            sg_destroy_image(state.bind.images[texture_index]);
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
             img_desc.height = img_height;
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
-            state.default_texture = sg_make_image(&img_desc);
+            state.bind.images[texture_index] = sg_make_image(&img_desc);
 
-            std::cout << "Default texture (palette.png) loaded successfully" << std::endl;
             stbi_image_free(pixels);
         }
     } else if (response->failed) {
         state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
         state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
-        std::cout << "Failed to fetch the default texture" << std::endl;
+        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
     }
+    texture_index++;
 }
 
 /*sapp_desc sokol_main(int argc, char* argv[]) {
