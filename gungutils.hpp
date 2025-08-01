@@ -70,6 +70,9 @@ struct AppState {
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
+    std::vector<sg_image> loaded_textures;
+    sg_image default_texture; // palette.png
+    int next_texture_id = 1;
 };
 
 AppState state;
@@ -138,13 +141,13 @@ public:
     uint32_t* indices  = nullptr;
     size_t    index_count = 0;
 
-    // Store pre-computed buffer descriptors instead of actual buffers
     sg_buffer_desc vertex_buffer_desc = {};
     sg_buffer_desc index_buffer_desc = {};
 
-    // Optional: pre-converted uint16 indices for efficiency
     uint16_t* indices16 = nullptr;
     bool use_uint16_indices = true;
+
+    int texture_id = 0;
 
     Mesh() = default;
     ~Mesh() {
@@ -249,12 +252,19 @@ void render_meshes_streaming() {
 
         state.bind.vertex_buffers[0] = vertex_buffer;
         state.bind.index_buffer = index_buffer;
+
+        if (mesh.texture_id > 0 && mesh.texture_id <= state.loaded_textures.size()) {
+            state.bind.images[0] = state.loaded_textures[mesh.texture_id - 1];
+        } else {
+            state.bind.images[0] = state.default_texture; // palette.png
+        }
+
         sg_apply_bindings(&state.bind);
 
-        HMM_Mat4 model = HMM_Translate(mesh.position);
-        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
         HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-        model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+        HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+        HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
         vs_params.model = model;
         sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
@@ -263,7 +273,7 @@ void render_meshes_streaming() {
         sg_destroy_buffer(vertex_buffer);
         sg_destroy_buffer(index_buffer);
     }
-    // visualizers
+
     if (state.editor_open) {
         for (auto& mesh : visualizer_meshes) {
             sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
@@ -275,13 +285,14 @@ void render_meshes_streaming() {
             }
 
             state.bind.vertex_buffers[0] = vb;
-            state.bind.index_buffer     = ib;
+            state.bind.index_buffer = ib;
+            state.bind.images[0] = state.default_texture; // visaualizers use default texture
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 model     = HMM_Translate(mesh.position);
-            HMM_Mat4 rot_mat   = HMM_QToM4(mesh.rotation);
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
@@ -292,7 +303,6 @@ void render_meshes_streaming() {
             sg_destroy_buffer(ib);
         }
     }
-
 }
 
 void render_meshes_batched_streaming(size_t batch_size = 10) {
@@ -328,12 +338,19 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
             state.bind.vertex_buffers[0] = vertex_buffers[i];
             state.bind.index_buffer = index_buffers[i];
+
+            if (mesh.texture_id > 0 && mesh.texture_id <= state.loaded_textures.size()) {
+                state.bind.images[0] = state.loaded_textures[mesh.texture_id - 1];
+            } else {
+                state.bind.images[0] = state.default_texture; // palette.png
+            }
+
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 model = HMM_Translate(mesh.position);
-            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
             vs_params.model = model;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
@@ -347,7 +364,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             sg_destroy_buffer(ib);
         }
     }
-    // visualizers
+
     if (state.editor_open) {
         for (auto& mesh : visualizer_meshes) {
             sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
@@ -358,13 +375,14 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                 continue;
             }
             state.bind.vertex_buffers[0] = vb;
-            state.bind.index_buffer     = ib;
+            state.bind.index_buffer = ib;
+            state.bind.images[0] = state.default_texture;
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 model     = HMM_Translate(mesh.position);
-            HMM_Mat4 rot_mat   = HMM_QToM4(mesh.rotation);
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            model = HMM_MulM4(model, HMM_MulM4(scale_mat, rot_mat));
+            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
@@ -412,6 +430,69 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     rotation = HMM_M4ToQ_RH(rot_mat);
 }
 
+sg_image load_texture_from_gltf_image(const tinygltf::Image& image) {
+    if (image.image.empty()) {
+        std::cout << "Warning: Empty image data" << std::endl;
+        return state.default_texture;
+    }
+
+    int img_width = image.width;
+    int img_height = image.height;
+    int num_channels = image.component;
+
+    std::vector<uint8_t> rgba_data;
+    if (num_channels == 3) {
+        // convert RGB to RGBA
+        rgba_data.reserve(img_width * img_height * 4);
+        for (int i = 0; i < img_width * img_height; i++) {
+            rgba_data.push_back(image.image[i * 3 + 0]);
+            rgba_data.push_back(image.image[i * 3 + 1]);
+            rgba_data.push_back(image.image[i * 3 + 2]);
+            rgba_data.push_back(255);
+        }
+    } else if (num_channels == 4) {
+        rgba_data = image.image;
+    } else {
+        std::cout << "Warning: Unsupported image format with " << num_channels << " channels" << std::endl;
+        return state.default_texture;
+    }
+
+    sg_image_desc img_desc = {};
+    img_desc.width = img_width;
+    img_desc.height = img_height;
+    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    img_desc.data.subimage[0][0].ptr = rgba_data.data();
+    img_desc.data.subimage[0][0].size = rgba_data.size();
+
+    return sg_make_image(&img_desc);
+}
+
+int get_or_load_texture(const tinygltf::Model& model, int texture_index) {
+    if (texture_index < 0 || texture_index >= model.textures.size()) {
+        return 0;
+    }
+
+    const auto& texture = model.textures[texture_index];
+    if (texture.source < 0 || texture.source >= model.images.size()) {
+        return 0;
+    }
+
+    const auto& image = model.images[texture.source];
+    sg_image loaded_texture = load_texture_from_gltf_image(image);
+
+    if (loaded_texture.id == SG_INVALID_ID) {
+        return 0;
+    }
+
+    state.loaded_textures.push_back(loaded_texture);
+    int texture_id = state.next_texture_id++;
+
+    std::cout << "Loaded texture " << texture_id << " from GLTF (size: "
+              << image.width << "x" << image.height << ")" << std::endl;
+
+    return texture_id;
+}
+
 std::vector<Mesh> load_gltf(const std::string& path) {
     tinygltf::TinyGLTF loader;
     tinygltf::Model model;
@@ -432,7 +513,6 @@ std::vector<Mesh> load_gltf(const std::string& path) {
         HMM_Mat4 localTransform = HMM_M4D(1.0f);
 
         if (node.matrix.size() == 16) {
-            // GLTF uses column-major matrices
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 4; j++) {
                     localTransform.Elements[i][j] = (float)node.matrix[j * 4 + i];
@@ -455,7 +535,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 scale = {(float)node.scale[0], (float)node.scale[1], (float)node.scale[2]};
             }
 
-            // Build transformation matrix: T * R * S
+            // transformation matrix: T * R * S
             HMM_Mat4 T = HMM_Translate(translation);
             HMM_Mat4 R = HMM_QToM4(rotation);
             HMM_Mat4 S = HMM_Scale(scale);
@@ -498,15 +578,15 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
 
                 for (size_t i = 0; i < vcount; i++) {
-                    // Position
+                    // position
                     verts[i*8 + 0] = posBuf[i*posStride + 0];
                     verts[i*8 + 1] = posBuf[i*posStride + 1];
                     verts[i*8 + 2] = posBuf[i*posStride + 2];
-                    // Normal
+                    // normal
                     verts[i*8 + 3] = normBuf[i*normStride + 0];
                     verts[i*8 + 4] = normBuf[i*normStride + 1];
                     verts[i*8 + 5] = normBuf[i*normStride + 2];
-                    // Texture coordinates
+                    // texture coordinates
                     verts[i*8 + 6] = uvBuf[i*uvStride + 0];
                     verts[i*8 + 7] = uvBuf[i*uvStride + 1];
                 }
@@ -543,6 +623,15 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.index_count = icount;
 
                 decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
+
+                mesh.texture_id = 0; // Default to palette.png
+                if (prim.material >= 0 && prim.material < model.materials.size()) {
+                    const auto& material = model.materials[prim.material];
+                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
+                        mesh.texture_id = get_or_load_texture(model, material.pbrMetallicRoughness.baseColorTexture.index);
+                        std::cout << "Mesh assigned texture ID: " << mesh.texture_id << std::endl;
+                    }
+                }
 
                 meshes.push_back(std::move(mesh));
             }
@@ -648,6 +737,15 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.rotation = {0, 0, 0, 1};
                 mesh.scale = {1, 1, 1};
 
+                mesh.texture_id = 0; // default to palette.png
+                if (prim.material >= 0 && prim.material < model.materials.size()) {
+                    const auto& material = model.materials[prim.material];
+                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
+                        mesh.texture_id = get_or_load_texture(model, material.pbrMetallicRoughness.baseColorTexture.index);
+                        std::cout << "Mesh assigned texture ID: " << mesh.texture_id << std::endl;
+                    }
+                }
+
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -655,6 +753,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
     return meshes;
 }
+
 
 bool load_obj(
     const std::string& filename,
@@ -772,6 +871,9 @@ class AudioSource3D {
                 visualizer_mesh_index = visualizer_meshes.size();
                 Mesh_To_Buffers(*visualizer_mesh, true);
                 visualizer_meshes.push_back(std::move(*visualizer_mesh));
+
+                delete visualizer_mesh;
+                visualizer_mesh = nullptr;
             }
             desc->getID(&guid);
         }
@@ -866,6 +968,9 @@ public:
             visualizer_mesh_index = visualizer_meshes.size();
             Mesh_To_Buffers(*visualizer_mesh, true);
             visualizer_meshes.push_back(std::move(*visualizer_mesh));
+
+            delete visualizer_mesh;
+            visualizer_mesh = nullptr;
         }
         state.helpers.push_back(this);
     }
@@ -1300,7 +1405,7 @@ void _frame() {
 
         static int selected_mesh_index = -1;
 
-        ImGui::BeginListBox("Objects", ImVec2(256, 300));
+        ImGui::BeginChild("Objects", ImVec2(256, 300), true);
 
         for (int i = 0; i < all_meshes.size(); i++) {
             auto& mesh = all_meshes[i];
@@ -1316,7 +1421,7 @@ void _frame() {
             }
         }
 
-        ImGui::EndListBox();
+        ImGui::EndChild();
 
         ImGui::SameLine();
         ImGui::BeginChild("Obj settings", ImVec2(300, 300), true);
@@ -1445,7 +1550,7 @@ void _frame() {
 
         static int selected_as_index = -1;
 
-        ImGui::BeginListBox("Sources", ImVec2(256, 300));
+        ImGui::BeginChild("Sources", ImVec2(256, 300), true);
 
         for (int i = 0; i < state.audio_sources.size(); i++) {
             string label = "Audio source " + to_string(i);
@@ -1460,7 +1565,7 @@ void _frame() {
             }
         }
 
-        ImGui::EndListBox();
+        ImGui::EndChild();
 
         ImGui::SameLine();
         ImGui::BeginChild("Src settings", ImVec2(300, 300), true);
@@ -1516,7 +1621,7 @@ void _frame() {
 
         static int selected_event_index = -1;
 
-        ImGui::BeginListBox("Events", ImVec2(512, 150));
+        ImGui::BeginChild("Events", ImVec2(512, 150), true);
 
         for (int i = 0; i < state.event_descriptions.size(); i++) {
             FMOD_GUID eyedeeznuts;
@@ -1535,7 +1640,7 @@ void _frame() {
             }
         }
 
-        ImGui::EndListBox();
+        ImGui::EndChild();
 
         if (ImGui::Button("Add Source")) {
             make_audiosource_by_index(selected_event_index);
@@ -1547,8 +1652,7 @@ void _frame() {
 
         static int selected_helper_index = -1;
 
-        ImGui::BeginListBox("Helpers", ImVec2(256, 300));
-
+        ImGui::BeginChild("Helper list", ImVec2(256, 300), true);
         for (int i = 0; i < state.helpers.size(); i++) {
             string label = "Helper " + state.helpers[i]->name;
 
@@ -1561,8 +1665,7 @@ void _frame() {
                 ImGui::SetItemDefaultFocus();
             }
         }
-
-        ImGui::EndListBox();
+        ImGui::EndChild();
 
         ImGui::SameLine();
         ImGui::BeginChild("Helper settings", ImVec2(300, 300), true);
@@ -1759,24 +1862,23 @@ void fetch_callback(const sfetch_response_t* response) {
             &num_channels, desired_channels);
 
         if (pixels) {
-            // yay, memory safety!
-            sg_destroy_image(state.bind.images[texture_index]);
+            sg_destroy_image(state.default_texture);
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
             img_desc.height = img_height;
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
-            state.bind.images[texture_index] = sg_make_image(&img_desc);
+            state.default_texture = sg_make_image(&img_desc);
 
+            std::cout << "Default texture (palette.png) loaded successfully" << std::endl;
             stbi_image_free(pixels);
         }
     } else if (response->failed) {
         state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
         state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
-        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
+        std::cout << "Failed to fetch the default texture" << std::endl;
     }
-    texture_index++;
 }
 
 /*sapp_desc sokol_main(int argc, char* argv[]) {
@@ -1808,9 +1910,15 @@ int main(int argc, char* argv[]) {
     sg_setup(&desc);
     stm_setup();
     _init();
-    init_callback();
+    //init_callback();
 
     while (state.running) {
+        static bool first_frame = true;
+        if (first_frame) {
+            init_callback();
+            first_frame = false;
+        }
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             _event(&e);
