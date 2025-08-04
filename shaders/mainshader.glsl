@@ -34,4 +34,4 @@ void main() {
 }
 @end
 
-@program simple vs fs
+@program main vs fs

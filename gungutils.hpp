@@ -11,6 +11,8 @@
 #include <tuple>
 #include <map>
 #include <ranges>
+#include <charconv>
+#include <memory>
 #include "imgui/imgui.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
@@ -35,8 +37,6 @@
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
 // shaders
-#include <charconv>
-
 #include "shaders/mainshader.glsl.h"
 
 using namespace std;
@@ -174,8 +174,26 @@ public:
     }
 };
 
+class VisGroup;
+
+vector<VisGroup> vis_groups;
+
+class VisGroup {
+public:
+    string name;
+    vector<std::shared_ptr<Mesh>> meshes;
+    bool enabled = true;
+    float opacity = 1.0f;
+    VisGroup(string name, std::shared_ptr<Mesh> mesh) {
+        this->name = name;
+        meshes.push_back(mesh);
+        vis_groups.push_back(*this);
+    }
+};
+
 vector<Mesh> all_meshes;
 vector<Mesh> visualizer_meshes;
+VisGroup visualizers = VisGroup("visualizers", {});
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     std::cout << "=== Preparing Mesh Buffer Descriptors ===" << std::endl;
@@ -568,11 +586,8 @@ std::vector<Mesh> load_gltf(const std::string& path) {
     }
 
     if (meshes.empty()) {
-        std::cout << "No node hierarchy found, processing meshes directly..." << std::endl;
-
         for (const auto& meshDef : model.meshes) {
             for (const auto& prim : meshDef.primitives) {
-                // Same mesh processing code as above, but without transforms
                 if (prim.attributes.find("POSITION") == prim.attributes.end() ||
                     prim.attributes.find("NORMAL") == prim.attributes.end() ||
                     prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
@@ -617,8 +632,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 auto* idxs = new uint32_t[icount];
 
                 const auto& idxView = model.bufferViews[idxAcc.bufferView];
-                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data() +
-                                      idxView.byteOffset + idxAcc.byteOffset;
+                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data()+idxView.byteOffset + idxAcc.byteOffset;
 
                 if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                     const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(idxBuf);
@@ -1127,6 +1141,7 @@ ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode sca
 
 static int selected_mesh_index = -1;
 static int selected_as_index = -1;
+static int selected_visgroup_index = -1;
 string currently_entered_path = "";
 static std::map<int, HMM_Vec3> mesh_euler_rotations;
 static int last_selected_mesh = -1;
@@ -1173,7 +1188,7 @@ void _init() {
     sampler_desc.wrap_v = SG_WRAP_REPEAT;
     state.bind.samplers[0] = sg_make_sampler(&sampler_desc);
 
-    sg_shader shd = sg_make_shader(simple_shader_desc(sg_query_backend()));
+    sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
 
     sg_pipeline_desc pip_desc = {};
     pip_desc.shader = shd;
@@ -1186,9 +1201,9 @@ void _init() {
     pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
     pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
-    pip_desc.layout.attrs[ATTR_simple_aPos].format = SG_VERTEXFORMAT_FLOAT3;
-    pip_desc.layout.attrs[ATTR_simple_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
-    pip_desc.layout.attrs[ATTR_simple_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
+    pip_desc.layout.attrs[ATTR_main_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_main_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_main_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
     pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT16;
@@ -1596,7 +1611,7 @@ void _frame() {
 
         ImGui::End();
 
-        ImGui::Begin("Scene Management");
+        ImGui::Begin("General settings");
         if (ImGui::Button("Save Scene")) {
             const char* filter_patterns[] = {"*.gmap"};
             const char* file_path = tinyfd_saveFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files");
@@ -1617,6 +1632,45 @@ void _frame() {
         ImGui::SameLine();
         if (ImGui::Button("Clear Scene")) {
             clear_scene();
+        }
+
+        ImGui::Separator();
+        ImGui::BeginChild("VisGroups", ImVec2(150, 75), true);
+        for (int i = 0; i < vis_groups.size(); i++) {
+            string label = vis_groups[i].name;
+
+            bool is_selected = (selected_visgroup_index == i);
+            if (ImGui::Selectable(label.c_str(), is_selected)) {
+                selected_visgroup_index = i;
+            }
+
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("VisGroup settings", ImVec2(150, 75), true);
+        if (selected_visgroup_index >= 0 && selected_visgroup_index < vis_groups.size()) {
+            static char visgroup_name_buffer[256];
+            static int last_selected_visgroup = -1;
+            VisGroup* selected_visgroup = &vis_groups[selected_visgroup_index];
+
+            if (last_selected_visgroup != selected_visgroup_index) {
+                strncpy(visgroup_name_buffer, selected_visgroup->name.c_str(), sizeof(visgroup_name_buffer) - 1);
+                visgroup_name_buffer[sizeof(visgroup_name_buffer) - 1] = '\0';
+                last_selected_visgroup = selected_visgroup_index;
+            }
+
+            if (ImGui::InputText("Name", visgroup_name_buffer, sizeof(visgroup_name_buffer))) {
+                selected_visgroup->name = string(visgroup_name_buffer);
+            }
+        } else {
+            ImGui::Text("No VisGroup selected");
+        }
+        ImGui::EndChild();
+        if (ImGui::Button("Add VisGroup")) {
+            VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
         }
         ImGui::End();
     }
@@ -1763,19 +1817,6 @@ void fetch_callback(const sfetch_response_t* response) {
     }
     texture_index++;
 }
-
-/*sapp_desc sokol_main(int argc, char* argv[]) {
-    sapp_desc desc = {};
-    desc.init_cb = init;
-    desc.frame_cb = frame;
-    desc.cleanup_cb = cleanup;
-    desc.event_cb = event;
-    desc.width = 800;
-    desc.height = 600;
-    desc.high_dpi = true;
-    desc.window_title = "Gungutils";
-    return desc;
-}*/
 
 int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);

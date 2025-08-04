@@ -9,14 +9,14 @@
 
     Overview:
     =========
-    Shader program: 'simple':
-        Get shader desc: simple_shader_desc(sg_query_backend());
+    Shader program: 'main':
+        Get shader desc: main_shader_desc(sg_query_backend());
         Vertex Shader: vs
         Fragment Shader: fs
         Attributes:
-            ATTR_simple_aPos => 0
-            ATTR_simple_aNormal => 1
-            ATTR_simple_aTexCoord => 2
+            ATTR_main_aPos => 0
+            ATTR_main_aNormal => 1
+            ATTR_main_aTexCoord => 2
     Bindings:
         Uniform block 'vs_params':
             C struct: vs_params_t
@@ -40,9 +40,9 @@
 #define SOKOL_SHDC_ALIGN(a) __attribute__((aligned(a)))
 #endif
 #endif
-#define ATTR_simple_aPos (0)
-#define ATTR_simple_aNormal (1)
-#define ATTR_simple_aTexCoord (2)
+#define ATTR_main_aPos (0)
+#define ATTR_main_aNormal (1)
+#define ATTR_main_aTexCoord (2)
 #define UB_vs_params (0)
 #define IMG__palette2D (0)
 #define SMP_palette_smp (0)
@@ -132,7 +132,7 @@ static const uint8_t fs_source_glsl430[236] = {
     0x70,0x61,0x6c,0x65,0x74,0x74,0x65,0x5f,0x73,0x6d,0x70,0x2c,0x20,0x54,0x65,0x78,
     0x43,0x6f,0x6f,0x72,0x64,0x29,0x3b,0x0a,0x7d,0x0a,0x0a,0x00,
 };
-static inline const sg_shader_desc* simple_shader_desc(sg_backend backend) {
+static inline const sg_shader_desc* main_shader_desc(sg_backend backend) {
     if (backend == SG_BACKEND_GLCORE) {
         static sg_shader_desc desc;
         static bool valid;
@@ -164,7 +164,7 @@ static inline const sg_shader_desc* simple_shader_desc(sg_backend backend) {
             desc.image_sampler_pairs[0].image_slot = 0;
             desc.image_sampler_pairs[0].sampler_slot = 0;
             desc.image_sampler_pairs[0].glsl_name = "_palette2D_palette_smp";
-            desc.label = "simple_shader";
+            desc.label = "main_shader";
         }
         return &desc;
     }
