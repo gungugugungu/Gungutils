@@ -214,18 +214,24 @@ public:
         delete[] indices;
         delete[] indices16;
 
-        std::swap(vertices, o.vertices);
-        std::swap(vertex_count, o.vertex_count);
-        std::swap(indices, o.indices);
-        std::swap(index_count, o.index_count);
-        std::swap(indices16, o.indices16);
-        std::swap(use_uint16_indices, o.use_uint16_indices);
-        vertex_buffer_desc = o.vertex_buffer_desc;
-        index_buffer_desc = o.index_buffer_desc;
+        vertices = o.vertices;
+        vertex_count = o.vertex_count;
+        indices = o.indices;
+        index_count = o.index_count;
+        indices16 = o.indices16;
+        use_uint16_indices = o.use_uint16_indices;
         position = o.position;
         rotation = o.rotation;
         scale = o.scale;
         opacity = o.opacity;
+        vertex_count = o.vertex_count;
+        index_count = o.index_count;
+        vertex_buffer_desc = o.vertex_buffer_desc;
+        index_buffer_desc = o.index_buffer_desc;
+
+        o.vertices = nullptr;
+        o.indices = nullptr;
+        o.indices16 = nullptr;
 
         return *this;
     }
@@ -1027,7 +1033,6 @@ void save_scene(const string& path) {
             mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
             mesh_json["opacity"] = mesh.opacity;
 
-            // Only save mesh data if it's not a visualizer mesh
             if (mesh.vertex_count > 0 && mesh.vertices) {
                 mesh_json["vertex_count"] = mesh.vertex_count;
                 mesh_json["vertices"] = nlohmann::json::array();
@@ -1507,6 +1512,7 @@ void _frame() {
             if (ImGui::Button("Delete Mesh")) {
                 vis_groups[selected_mesh_visgroup].meshes.erase(vis_groups[selected_mesh_visgroup].meshes.begin() + selected_mesh_index);
                 selected_mesh_index = -1;
+                selected_mesh_visgroup = -1;
             }
         } else {
             ImGui::Text("No mesh selected");
@@ -1672,7 +1678,7 @@ void _frame() {
 
         static int selected_helper_index = -1;
 
-        ImGui::BeginChild("Helper list", ImVec2(256, 300), true);
+        ImGui::BeginChild("Helper list", ImVec2(256, 150), true);
         for (int i = 0; i < state.helpers.size(); i++) {
             string label = "Helper " + state.helpers[i]->name;
 
@@ -1688,7 +1694,7 @@ void _frame() {
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Helper settings", ImVec2(300, 300), true);
+        ImGui::BeginChild("Helper settings", ImVec2(300, 150), true);
         if (selected_helper_index >= 0 && selected_helper_index < state.helpers.size()) {
             ImGui::Text("Settings");
             ImGui::Separator();
