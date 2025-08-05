@@ -1232,6 +1232,7 @@ extern void (*event_callback)(SDL_Event* e);
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode);
 
 static int selected_mesh_index = -1;
+static int selected_mesh_visgroup = -1;
 static int selected_as_index = -1;
 static int selected_visgroup_index = -1;
 string currently_entered_path = "";
@@ -1399,14 +1400,16 @@ void _frame() {
 
         ImGui::BeginChild("Objects", ImVec2(256, 300), true);
 
-        for (auto& visgroup : vis_groups) {
+        for (int v = 0; v < vis_groups.size(); v++) {
+            VisGroup visgroup = vis_groups[v];
             for (int i = 0; i < visgroup.meshes.size(); i++) {
                 auto& mesh = visgroup.meshes[i];
-                string label = "Mesh " + to_string(i) + " with VC: " + to_string(mesh.vertex_count);
+                string label = "Mesh " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh.vertex_count);
 
                 bool is_selected = (selected_mesh_index == i);
                 if (ImGui::Selectable(label.c_str(), is_selected)) {
                     selected_mesh_index = i;
+                    selected_mesh_visgroup = v;
                 }
 
                 if (is_selected) {
@@ -1419,89 +1422,91 @@ void _frame() {
 
         ImGui::SameLine();
         ImGui::BeginChild("Obj settings", ImVec2(300, 300), true);
-        for (auto& visgroup : vis_groups) {
-            if (selected_mesh_index >= 0 && selected_mesh_index < visgroup.meshes.size()) {
-                ImGui::Text("Object settings");
-                ImGui::Separator();
+        if (selected_mesh_index != -1) {
+            ImGui::Text("Object settings");
+            ImGui::Separator();
 
-                auto& selected_mesh = visgroup.meshes[selected_mesh_index];
+            auto& selected_mesh = vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index];
 
-                ImGui::Text("Selected: Mesh %d", selected_mesh_index);
+            ImGui::Text("Selected: Mesh %d", selected_mesh_index);
 
-                ImGui::PushItemWidth(200);
+            ImGui::PushItemWidth(200);
 
-                string label = "Position";
-                ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
+            string label = "Position";
+            ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
 
-                if (last_selected_mesh != selected_mesh_index) {
-                    mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
-                    last_selected_mesh = selected_mesh_index;
-                }
-
-                HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
-
-                label = "Rotation";
-                if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
-                    selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
-                }
-                HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
-                if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
-
-                label = "Scale";
-                ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
-
-                ImGui::PopItemWidth();
-
-                if (ImGui::BeginCombo("VisGroup", visgroup.name.c_str())) {
-                    for (int i = 0; i < vis_groups.size(); i++) {
-                        bool is_selected = (selected_selectable_visgroup_index == i);
-                        if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
-                            selected_selectable_visgroup_index = i;
-                        }
-
-                        if (is_selected) {
-                            ImGui::SetItemDefaultFocus();
-                            visgroup.meshes.erase(visgroup.meshes.begin() + selected_mesh_index);
-                            vis_groups[i].meshes.push_back(selected_mesh);
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-
-                ImGui::Separator();
-                if (ImGui::Button("Duplicate")) {
-                    if (selected_mesh_index >= 0 && selected_mesh_index < visgroup.meshes.size()) {
-                        const auto& selected_mesh = visgroup.meshes[selected_mesh_index];
-                        Mesh new_mesh;
-
-                        new_mesh.position = selected_mesh.position;
-                        new_mesh.rotation = selected_mesh.rotation;
-                        new_mesh.scale = selected_mesh.scale;
-                        new_mesh.opacity = selected_mesh.opacity;
-
-                        if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
-                            new_mesh.vertex_count = selected_mesh.vertex_count;
-                            new_mesh.vertices = new float[new_mesh.vertex_count * 8];
-                            memcpy(new_mesh.vertices, selected_mesh.vertices,new_mesh.vertex_count * 8 * sizeof(float));
-                        }
-
-                        if (selected_mesh.index_count > 0 && selected_mesh.indices) {
-                            new_mesh.index_count = selected_mesh.index_count;
-                            new_mesh.indices = new uint32_t[new_mesh.index_count];
-                            memcpy(new_mesh.indices, selected_mesh.indices,
-                                   new_mesh.index_count * sizeof(uint32_t));
-                        }
-
-                        Mesh_To_Buffers(new_mesh);
-                    }
-                }
-                if (ImGui::Button("Delete Mesh")) {
-                    visgroup.meshes.erase(visgroup.meshes.begin() + selected_mesh_index);
-                    selected_mesh_index = -1;
-                }
-            } else {
-                ImGui::Text("No mesh selected");
+            if (last_selected_mesh != selected_mesh_index) {
+                mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
+                last_selected_mesh = selected_mesh_index;
             }
+
+            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
+
+            label = "Rotation";
+            if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
+                selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
+            }
+            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
+            if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
+
+            label = "Scale";
+            ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
+
+            ImGui::PopItemWidth();
+
+            if (ImGui::BeginCombo("VisGroup", vis_groups[selected_mesh_visgroup].name.c_str())) {
+                for (int i = 0; i < vis_groups.size(); i++) {
+                    bool is_selected = (selected_selectable_visgroup_index == i);
+                    if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
+                        selected_selectable_visgroup_index = i;
+                        if (selected_mesh_index >= 0 && selected_mesh_index < vis_groups[selected_mesh_visgroup].meshes.size()) {
+                            Mesh mesh_to_move = std::move(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index]);
+                            vis_groups[selected_mesh_visgroup].meshes.erase(vis_groups[selected_mesh_visgroup].meshes.begin() + selected_mesh_index);
+                            vis_groups[i].meshes.push_back(std::move(mesh_to_move));
+                            selected_mesh_index = -1;
+                        }
+                    }
+
+                    if (is_selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::Separator();
+            if (ImGui::Button("Duplicate")) {
+                if (selected_mesh_index >= 0 && selected_mesh_index < vis_groups[selected_mesh_visgroup].meshes.size()) {
+                    const auto& selected_mesh = vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index];
+                    Mesh new_mesh;
+
+                    new_mesh.position = selected_mesh.position;
+                    new_mesh.rotation = selected_mesh.rotation;
+                    new_mesh.scale = selected_mesh.scale;
+                    new_mesh.opacity = selected_mesh.opacity;
+
+                    if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
+                        new_mesh.vertex_count = selected_mesh.vertex_count;
+                        new_mesh.vertices = new float[new_mesh.vertex_count * 8];
+                        memcpy(new_mesh.vertices, selected_mesh.vertices,new_mesh.vertex_count * 8 * sizeof(float));
+                    }
+
+                    if (selected_mesh.index_count > 0 && selected_mesh.indices) {
+                        new_mesh.index_count = selected_mesh.index_count;
+                        new_mesh.indices = new uint32_t[new_mesh.index_count];
+                        memcpy(new_mesh.indices, selected_mesh.indices,
+                               new_mesh.index_count * sizeof(uint32_t));
+                    }
+
+                    Mesh_To_Buffers(new_mesh);
+                }
+            }
+            if (ImGui::Button("Delete Mesh")) {
+                vis_groups[selected_mesh_visgroup].meshes.erase(vis_groups[selected_mesh_visgroup].meshes.begin() + selected_mesh_index);
+                selected_mesh_index = -1;
+            }
+        } else {
+            ImGui::Text("No mesh selected");
         }
         ImGui::EndChild();
 
@@ -1788,6 +1793,8 @@ void _frame() {
                 }
                 vis_groups.erase(vis_groups.begin() + selected_visgroup_index);
                 selected_visgroup_index = -1;
+                selected_mesh_index = -1;
+                selected_mesh_visgroup = -1;
             }
         } else {
             ImGui::Text("No VisGroup selected");

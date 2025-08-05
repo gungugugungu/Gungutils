@@ -39170,6 +39170,12 @@
             ],
             "name": "default",
             "opacity": 1.0
+        },
+        {
+            "enabled": true,
+            "meshes": [],
+            "name": "tester",
+            "opacity": 1.0
         }
     ]
 }
