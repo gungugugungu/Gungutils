@@ -131,7 +131,7 @@ public:
     HMM_Vec3 position{0,0,0};
     HMM_Quat rotation{0,0,0,1};
     HMM_Vec3 scale{1,1,1};
-    float opacity = 0.5f;
+    float opacity = 1.0f;
 
     float*    vertices = nullptr;
     size_t    vertex_count = 0;
@@ -329,6 +329,7 @@ void render_meshes_streaming() {
                 HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
                 HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                 vs_params.model = model;
+                vs_params.opacity = mesh.opacity*visgroup.opacity;
                 sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
                 sg_draw(0, mesh.index_count, 1);
@@ -359,6 +360,7 @@ void render_meshes_streaming() {
             HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
+            vs_params.opacity = mesh.opacity;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, mesh.index_count, 1);
@@ -412,6 +414,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
                     HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                     vs_params.model = model;
+                    vs_params.opacity = mesh.opacity*visgroup.opacity;
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
                     sg_draw(0, mesh.index_count, 1);
@@ -446,6 +449,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
+            vs_params.opacity = mesh.opacity;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, mesh.index_count, 1);
@@ -1432,8 +1436,7 @@ void _frame() {
 
             ImGui::PushItemWidth(200);
 
-            string label = "Position";
-            ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
+            ImGui::DragFloat3("Positon", &selected_mesh.position.X, 0.01f);
 
             if (last_selected_mesh != selected_mesh_index) {
                 mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
@@ -1442,15 +1445,15 @@ void _frame() {
 
             HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
 
-            label = "Rotation";
-            if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
+            if (ImGui::DragFloat3("Rotation", &euler_rotation.X, 0.5f)) {
                 selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
             }
             HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
             if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
 
-            label = "Scale";
-            ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
+            ImGui::DragFloat3("Scale", &selected_mesh.scale.X, 0.01f);
+
+            ImGui::SliderFloat("Opacity", &selected_mesh.opacity, 0.0f, 1.0f);
 
             ImGui::PopItemWidth();
 
@@ -1567,7 +1570,7 @@ void _frame() {
 
         static int selected_as_index = -1;
 
-        ImGui::BeginChild("Sources", ImVec2(256, 300), true);
+        ImGui::BeginChild("Sources", ImVec2(256, 150), true);
 
         for (int i = 0; i < state.audio_sources.size(); i++) {
             string label = "Audio source " + to_string(i);
@@ -1585,7 +1588,7 @@ void _frame() {
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Src settings", ImVec2(300, 300), true);
+        ImGui::BeginChild("Src settings", ImVec2(300, 150), true);
         if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
             ImGui::Text("Settings");
             ImGui::Separator();
