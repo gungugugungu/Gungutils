@@ -145,19 +145,75 @@ public:
     bool use_uint16_indices = true;
 
     Mesh() = default;
+
     ~Mesh() {
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
     }
+    Mesh(const Mesh& other) : vertices(nullptr), indices(nullptr), indices16(nullptr) {
+        *this = other;
+    }
 
-    // disable copy, allow move
-    Mesh(const Mesh&) = delete;
-    Mesh& operator=(const Mesh&) = delete;
+    Mesh& operator=(const Mesh& other) {
+        if (this == &other) return *this;
+
+        delete[] vertices;
+        delete[] indices;
+        delete[] indices16;
+
+        position = other.position;
+        rotation = other.rotation;
+        scale = other.scale;
+        opacity = other.opacity;
+        vertex_count = other.vertex_count;
+        index_count = other.index_count;
+        vertex_buffer_desc = other.vertex_buffer_desc;
+        index_buffer_desc = other.index_buffer_desc;
+        use_uint16_indices = other.use_uint16_indices;
+
+        // Deep copy vertex data
+        if (other.vertices && vertex_count > 0) {
+            vertices = new float[vertex_count * 8];
+            memcpy(vertices, other.vertices, vertex_count * 8 * sizeof(float));
+            vertex_buffer_desc.data.ptr = vertices;
+        } else {
+            vertices = nullptr;
+        }
+
+        if (other.indices && index_count > 0) {
+            indices = new uint32_t[index_count];
+            memcpy(indices, other.indices, index_count * sizeof(uint32_t));
+
+            if (!use_uint16_indices) {
+                index_buffer_desc.data.ptr = indices;
+            }
+        } else {
+            indices = nullptr;
+        }
+
+        if (other.indices16 && index_count > 0 && use_uint16_indices) {
+            indices16 = new uint16_t[index_count];
+            memcpy(indices16, other.indices16, index_count * sizeof(uint16_t));
+            index_buffer_desc.data.ptr = indices16;
+        } else {
+            indices16 = nullptr;
+        }
+
+        return *this;
+    }
+
     Mesh(Mesh&& o) noexcept {
         *this = std::move(o);
     }
+
     Mesh& operator=(Mesh&& o) noexcept {
+        if (this == &o) return *this;
+
+        delete[] vertices;
+        delete[] indices;
+        delete[] indices16;
+
         std::swap(vertices, o.vertices);
         std::swap(vertex_count, o.vertex_count);
         std::swap(indices, o.indices);
@@ -170,6 +226,7 @@ public:
         rotation = o.rotation;
         scale = o.scale;
         opacity = o.opacity;
+
         return *this;
     }
 };
@@ -181,19 +238,16 @@ vector<VisGroup> vis_groups;
 class VisGroup {
 public:
     string name;
-    vector<std::shared_ptr<Mesh>> meshes;
+    vector<Mesh> meshes;
     bool enabled = true;
     float opacity = 1.0f;
-    VisGroup(string name, std::shared_ptr<Mesh> mesh) {
+    VisGroup(string name, vector<Mesh> new_meshes) {
         this->name = name;
-        meshes.push_back(mesh);
-        vis_groups.push_back(*this);
+        this->meshes = std::move(new_meshes);
     }
 };
 
-vector<Mesh> all_meshes;
 vector<Mesh> visualizer_meshes;
-VisGroup visualizers = VisGroup("visualizers", {});
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     std::cout << "=== Preparing Mesh Buffer Descriptors ===" << std::endl;
@@ -248,37 +302,41 @@ void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     }
 
     if (!dontadd) {
-        all_meshes.push_back(std::move(mesh));
+        vis_groups[0].meshes.push_back(std::move(mesh));
     }
 }
 
 void render_meshes_streaming() {
-    for (auto& mesh : all_meshes) {
-        sg_buffer vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
-        sg_buffer index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
+    for (auto& visgroup : vis_groups) {
+        if (visgroup.enabled) {
+            for (auto& mesh : visgroup.meshes) {
+                sg_buffer vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
+                sg_buffer index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
 
-        if (vertex_buffer.id == SG_INVALID_ID || index_buffer.id == SG_INVALID_ID) {
-            if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
-            if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
-            continue;
+                if (vertex_buffer.id == SG_INVALID_ID || index_buffer.id == SG_INVALID_ID) {
+                    if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+                    if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
+                    continue;
+                }
+
+                state.bind.vertex_buffers[0] = vertex_buffer;
+                state.bind.index_buffer = index_buffer;
+
+                sg_apply_bindings(&state.bind);
+
+                HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+                HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+                HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+                HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+                vs_params.model = model;
+                sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+                sg_draw(0, mesh.index_count, 1);
+
+                sg_destroy_buffer(vertex_buffer);
+                sg_destroy_buffer(index_buffer);
+            }
         }
-
-        state.bind.vertex_buffers[0] = vertex_buffer;
-        state.bind.index_buffer = index_buffer;
-
-        sg_apply_bindings(&state.bind);
-
-        HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-        HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-        HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
-        HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-        vs_params.model = model;
-        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-        sg_draw(0, mesh.index_count, 1);
-
-        sg_destroy_buffer(vertex_buffer);
-        sg_destroy_buffer(index_buffer);
     }
 
     if (state.editor_open) {
@@ -317,51 +375,55 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
     vertex_buffers.reserve(batch_size);
     index_buffers.reserve(batch_size);
 
-    for (size_t start = 0; start < all_meshes.size(); start += batch_size) {
-        size_t end = std::min(start + batch_size, all_meshes.size());
+    for (auto& visgroup : vis_groups) {
+        if (visgroup.enabled) {
+            for (size_t start = 0; start < visgroup.meshes.size(); start += batch_size) {
+                size_t end = std::min(start + batch_size, visgroup.meshes.size());
 
-        vertex_buffers.clear();
-        index_buffers.clear();
+                vertex_buffers.clear();
+                index_buffers.clear();
 
-        for (size_t i = start; i < end; i++) {
-            auto& mesh = all_meshes[i];
-            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
-            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+                for (size_t i = start; i < end; i++) {
+                    auto& mesh = visgroup.meshes[i];
+                    sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
+                    sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
 
-            if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
-                vertex_buffers.push_back(vb);
-                index_buffers.push_back(ib);
-            } else {
-                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
-                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
-                std::cerr << "Failed to create buffers for mesh " << i << std::endl;
+                    if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
+                        vertex_buffers.push_back(vb);
+                        index_buffers.push_back(ib);
+                    } else {
+                        if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
+                        if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
+                        std::cerr << "Failed to create buffers for mesh " << i << std::endl;
+                    }
+                }
+
+                for (size_t i = 0; i < vertex_buffers.size(); i++) {
+                    size_t mesh_idx = start + i;
+                    auto& mesh = visgroup.meshes[mesh_idx];
+
+                    state.bind.vertex_buffers[0] = vertex_buffers[i];
+                    state.bind.index_buffer = index_buffers[i];
+
+                    sg_apply_bindings(&state.bind);
+
+                    HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+                    HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+                    HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+                    HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+                    vs_params.model = model;
+                    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+                    sg_draw(0, mesh.index_count, 1);
+                }
+
+                for (auto& vb : vertex_buffers) {
+                    sg_destroy_buffer(vb);
+                }
+                for (auto& ib : index_buffers) {
+                    sg_destroy_buffer(ib);
+                }
             }
-        }
-
-        for (size_t i = 0; i < vertex_buffers.size(); i++) {
-            size_t mesh_idx = start + i;
-            auto& mesh = all_meshes[mesh_idx];
-
-            state.bind.vertex_buffers[0] = vertex_buffers[i];
-            state.bind.index_buffer = index_buffers[i];
-
-            sg_apply_bindings(&state.bind);
-
-            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
-            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-            vs_params.model = model;
-            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-            sg_draw(0, mesh.index_count, 1);
-        }
-
-        for (auto& vb : vertex_buffers) {
-            sg_destroy_buffer(vb);
-        }
-        for (auto& ib : index_buffers) {
-            sg_destroy_buffer(ib);
         }
     }
 
@@ -921,34 +983,67 @@ void make_audiosource_by_index(int index) {
     audio_source->initalize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
 }
 
+void clear_scene() {
+    for (auto* as : state.audio_sources) {
+        as->remove();
+    }
+    state.audio_sources.clear();
+
+    for (auto& visgroup : vis_groups) {
+        visgroup.meshes.clear();
+    }
+    vis_groups.clear();
+
+    for (auto* hpr : state.helpers) {
+        hpr->remove();
+    }
+    state.helpers.clear();
+
+    visualizer_meshes.clear();
+}
+
 void save_scene(const string& path) {
     nlohmann::json j;
 
     // Save meshes
-    j["meshes"] = nlohmann::json::array();
-    for (size_t i = 0; i < all_meshes.size(); i++) {
-        const auto& mesh = all_meshes[i];
-        nlohmann::json mesh_json;
+    j["visgroups"] = nlohmann::json::array();
+    for (auto& visgroup : vis_groups) {
+        nlohmann::json vg_json;
+        vg_json["name"] = visgroup.name;
+        vg_json["enabled"] = visgroup.enabled;
+        vg_json["opacity"] = visgroup.opacity;
 
-        mesh_json["position"] = {mesh.position.X, mesh.position.Y, mesh.position.Z};
-        mesh_json["rotation"] = {mesh.rotation.X, mesh.rotation.Y, mesh.rotation.Z, mesh.rotation.W};
-        mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
-        mesh_json["opacity"] = mesh.opacity;
+        vg_json["meshes"] = nlohmann::json::array();
+        for (const auto& mesh_ptr : visgroup.meshes) {
+            const auto& mesh = mesh_ptr;
+            nlohmann::json mesh_json;
 
-        mesh_json["vertex_count"] = mesh.vertex_count;
-        mesh_json["index_count"] = mesh.index_count;
+            mesh_json["position"] = {mesh.position.X, mesh.position.Y, mesh.position.Z};
+            mesh_json["rotation"] = {mesh.rotation.X, mesh.rotation.Y, mesh.rotation.Z, mesh.rotation.W};
+            mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
+            mesh_json["opacity"] = mesh.opacity;
 
-        mesh_json["vertices"] = nlohmann::json::array();
-        for (size_t v = 0; v < mesh.vertex_count * 8; v++) {
-            mesh_json["vertices"].push_back(mesh.vertices[v]);
+            // Only save mesh data if it's not a visualizer mesh
+            if (mesh.vertex_count > 0 && mesh.vertices) {
+                mesh_json["vertex_count"] = mesh.vertex_count;
+                mesh_json["vertices"] = nlohmann::json::array();
+                for (size_t v = 0; v < mesh.vertex_count * 8; v++) {
+                    mesh_json["vertices"].push_back(mesh.vertices[v]);
+                }
+            }
+
+            if (mesh.index_count > 0 && mesh.indices) {
+                mesh_json["index_count"] = mesh.index_count;
+                mesh_json["indices"] = nlohmann::json::array();
+                for (size_t idx = 0; idx < mesh.index_count; idx++) {
+                    mesh_json["indices"].push_back(mesh.indices[idx]);
+                }
+            }
+
+            vg_json["meshes"].push_back(mesh_json);
         }
 
-        mesh_json["indices"] = nlohmann::json::array();
-        for (size_t idx = 0; idx < mesh.index_count; idx++) {
-            mesh_json["indices"].push_back(mesh.indices[idx]);
-        }
-
-        j["meshes"].push_back(mesh_json);
+        j["visgroups"].push_back(vg_json);
     }
 
     // Save audio sources
@@ -1004,52 +1099,65 @@ void load_scene(const string& path) {
     file >> j;
     file.close();
 
-    all_meshes.clear();
+    clear_scene();
 
-    if (j.contains("meshes")) {
-        for (const auto& mesh_json : j["meshes"]) {
-            Mesh mesh;
+    if (j.contains("visgroups")) {
+        for (const auto& vg_json : j["visgroups"]) {
+            VisGroup new_visgroup = {"placeholder name", {}};
+            new_visgroup.name = vg_json["name"];
+            new_visgroup.enabled = vg_json["enabled"];
+            new_visgroup.opacity = vg_json["opacity"];
 
-            if (mesh_json.contains("position")) {
-                auto pos = mesh_json["position"];
-                mesh.position = HMM_V3(pos[0], pos[1], pos[2]);
-            }
+            if (vg_json.contains("meshes")) {
+                for (const auto& mesh_json : vg_json["meshes"]) {
+                    Mesh mesh;
 
-            if (mesh_json.contains("rotation")) {
-                auto rot = mesh_json["rotation"];
-                mesh.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
-            }
-
-            if (mesh_json.contains("scale")) {
-                auto scale = mesh_json["scale"];
-                mesh.scale = HMM_V3(scale[0], scale[1], scale[2]);
-            }
-
-            if (mesh_json.contains("opacity")) {
-                mesh.opacity = mesh_json["opacity"];
-            }
-
-            if (mesh_json.contains("vertex_count") && mesh_json.contains("index_count")) {
-                mesh.vertex_count = mesh_json["vertex_count"];
-                mesh.index_count = mesh_json["index_count"];
-
-                mesh.vertices = new float[mesh.vertex_count * 8];
-                mesh.indices = new uint32_t[mesh.index_count];
-
-                if (mesh_json.contains("vertices")) {
-                    for (size_t i = 0; i < mesh.vertex_count * 8; i++) {
-                        mesh.vertices[i] = mesh_json["vertices"][i];
+                    if (mesh_json.contains("position")) {
+                        auto pos = mesh_json["position"];
+                        mesh.position = HMM_V3(pos[0], pos[1], pos[2]);
                     }
-                }
 
-                if (mesh_json.contains("indices")) {
-                    for (size_t i = 0; i < mesh.index_count; i++) {
-                        mesh.indices[i] = mesh_json["indices"][i];
+                    if (mesh_json.contains("rotation")) {
+                        auto rot = mesh_json["rotation"];
+                        mesh.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
                     }
-                }
 
-                Mesh_To_Buffers(mesh);
+                    if (mesh_json.contains("scale")) {
+                        auto scale = mesh_json["scale"];
+                        mesh.scale = HMM_V3(scale[0], scale[1], scale[2]);
+                    }
+
+                    if (mesh_json.contains("opacity")) {
+                        mesh.opacity = mesh_json["opacity"];
+                    }
+
+                    if (mesh_json.contains("vertex_count") &&
+                        mesh_json.contains("index_count") &&
+                        mesh_json.contains("vertices") &&
+                        mesh_json.contains("indices")) {
+
+                        mesh.vertex_count = mesh_json["vertex_count"];
+                        mesh.index_count = mesh_json["index_count"];
+
+                        mesh.vertices = new float[mesh.vertex_count * 8];
+                        mesh.indices = new uint32_t[mesh.index_count];
+
+                        for (size_t i = 0; i < mesh.vertex_count * 8; i++) {
+                            mesh.vertices[i] = mesh_json["vertices"][i];
+                        }
+
+                        for (size_t i = 0; i < mesh.index_count; i++) {
+                            mesh.indices[i] = mesh_json["indices"][i];
+                        }
+
+                        Mesh_To_Buffers(mesh, true);
+                    }
+
+                    new_visgroup.meshes.push_back(std::move(mesh));
+                }
             }
+
+            vis_groups.push_back(std::move(new_visgroup));
         }
     }
 
@@ -1109,22 +1217,6 @@ void load_scene(const string& path) {
     std::cout << "Scene loaded from: " << path << std::endl;
 }
 
-void clear_scene() {
-    for (auto* as : state.audio_sources) {
-        as->remove();
-    }
-    state.audio_sources.clear();
-
-    all_meshes.clear();
-
-    for (auto* hpr : state.helpers) {
-        hpr->remove();
-    }
-    state.helpers.clear();
-
-    visualizer_meshes.clear();
-}
-
 Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME NAME
     for (auto& hpr : state.helpers) {
         if (hpr->name == name) {
@@ -1145,8 +1237,11 @@ static int selected_visgroup_index = -1;
 string currently_entered_path = "";
 static std::map<int, HMM_Vec3> mesh_euler_rotations;
 static int last_selected_mesh = -1;
+static int selected_selectable_visgroup_index = -1;
 
 void _init() {
+    VisGroup* default_visgroup = new VisGroup("default", {});
+    vis_groups.push_back(*default_visgroup);
     stbi_set_flip_vertically_on_load(true);
 
     simgui_desc_t imgui_desc = {};
@@ -1304,17 +1399,19 @@ void _frame() {
 
         ImGui::BeginChild("Objects", ImVec2(256, 300), true);
 
-        for (int i = 0; i < all_meshes.size(); i++) {
-            auto& mesh = all_meshes[i];
-            string label = "Mesh " + to_string(i) + " with VC: " + to_string(mesh.vertex_count);
+        for (auto& visgroup : vis_groups) {
+            for (int i = 0; i < visgroup.meshes.size(); i++) {
+                auto& mesh = visgroup.meshes[i];
+                string label = "Mesh " + to_string(i) + " with VC: " + to_string(mesh.vertex_count);
 
-            bool is_selected = (selected_mesh_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_mesh_index = i;
-            }
+                bool is_selected = (selected_mesh_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_mesh_index = i;
+                }
 
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
             }
         }
 
@@ -1322,71 +1419,89 @@ void _frame() {
 
         ImGui::SameLine();
         ImGui::BeginChild("Obj settings", ImVec2(300, 300), true);
-        if (selected_mesh_index >= 0 && selected_mesh_index < all_meshes.size()) {
-            ImGui::Text("Object settings");
-            ImGui::Separator();
+        for (auto& visgroup : vis_groups) {
+            if (selected_mesh_index >= 0 && selected_mesh_index < visgroup.meshes.size()) {
+                ImGui::Text("Object settings");
+                ImGui::Separator();
 
-            auto& selected_mesh = all_meshes[selected_mesh_index];
+                auto& selected_mesh = visgroup.meshes[selected_mesh_index];
 
-            ImGui::Text("Selected: Mesh %d", selected_mesh_index);
+                ImGui::Text("Selected: Mesh %d", selected_mesh_index);
 
-            ImGui::PushItemWidth(200);
+                ImGui::PushItemWidth(200);
 
-            string label = "Position";
-            ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
+                string label = "Position";
+                ImGui::DragFloat3(label.c_str(), &selected_mesh.position.X, 0.01f);
 
-            if (last_selected_mesh != selected_mesh_index) {
-                mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
-                last_selected_mesh = selected_mesh_index;
-            }
-
-            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
-
-            label = "Rotation";
-            if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
-                selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
-            }
-            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
-            if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
-
-            label = "Scale";
-            ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
-
-            ImGui::PopItemWidth();
-            ImGui::Separator();
-            if (ImGui::Button("Duplicate")) {
-                if (selected_mesh_index >= 0 && selected_mesh_index < all_meshes.size()) {
-                    const Mesh& selected_mesh = all_meshes[selected_mesh_index];
-                    Mesh new_mesh;
-
-                    new_mesh.position = selected_mesh.position;
-                    new_mesh.rotation = selected_mesh.rotation;
-                    new_mesh.scale = selected_mesh.scale;
-                    new_mesh.opacity = selected_mesh.opacity;
-
-                    if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
-                        new_mesh.vertex_count = selected_mesh.vertex_count;
-                        new_mesh.vertices = new float[new_mesh.vertex_count * 8];
-                        memcpy(new_mesh.vertices, selected_mesh.vertices,
-                               new_mesh.vertex_count * 8 * sizeof(float));
-                    }
-
-                    if (selected_mesh.index_count > 0 && selected_mesh.indices) {
-                        new_mesh.index_count = selected_mesh.index_count;
-                        new_mesh.indices = new uint32_t[new_mesh.index_count];
-                        memcpy(new_mesh.indices, selected_mesh.indices,
-                               new_mesh.index_count * sizeof(uint32_t));
-                    }
-
-                    Mesh_To_Buffers(new_mesh);
+                if (last_selected_mesh != selected_mesh_index) {
+                    mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
+                    last_selected_mesh = selected_mesh_index;
                 }
+
+                HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
+
+                label = "Rotation";
+                if (ImGui::DragFloat3(label.c_str(), &euler_rotation.X, 0.5f)) {
+                    selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
+                }
+                HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
+                if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
+
+                label = "Scale";
+                ImGui::DragFloat3(label.c_str(), &selected_mesh.scale.X, 0.01f);
+
+                ImGui::PopItemWidth();
+
+                if (ImGui::BeginCombo("VisGroup", visgroup.name.c_str())) {
+                    for (int i = 0; i < vis_groups.size(); i++) {
+                        bool is_selected = (selected_selectable_visgroup_index == i);
+                        if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
+                            selected_selectable_visgroup_index = i;
+                        }
+
+                        if (is_selected) {
+                            ImGui::SetItemDefaultFocus();
+                            visgroup.meshes.erase(visgroup.meshes.begin() + selected_mesh_index);
+                            vis_groups[i].meshes.push_back(selected_mesh);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::Separator();
+                if (ImGui::Button("Duplicate")) {
+                    if (selected_mesh_index >= 0 && selected_mesh_index < visgroup.meshes.size()) {
+                        const auto& selected_mesh = visgroup.meshes[selected_mesh_index];
+                        Mesh new_mesh;
+
+                        new_mesh.position = selected_mesh.position;
+                        new_mesh.rotation = selected_mesh.rotation;
+                        new_mesh.scale = selected_mesh.scale;
+                        new_mesh.opacity = selected_mesh.opacity;
+
+                        if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
+                            new_mesh.vertex_count = selected_mesh.vertex_count;
+                            new_mesh.vertices = new float[new_mesh.vertex_count * 8];
+                            memcpy(new_mesh.vertices, selected_mesh.vertices,new_mesh.vertex_count * 8 * sizeof(float));
+                        }
+
+                        if (selected_mesh.index_count > 0 && selected_mesh.indices) {
+                            new_mesh.index_count = selected_mesh.index_count;
+                            new_mesh.indices = new uint32_t[new_mesh.index_count];
+                            memcpy(new_mesh.indices, selected_mesh.indices,
+                                   new_mesh.index_count * sizeof(uint32_t));
+                        }
+
+                        Mesh_To_Buffers(new_mesh);
+                    }
+                }
+                if (ImGui::Button("Delete Mesh")) {
+                    visgroup.meshes.erase(visgroup.meshes.begin() + selected_mesh_index);
+                    selected_mesh_index = -1;
+                }
+            } else {
+                ImGui::Text("No mesh selected");
             }
-            if (ImGui::Button("Delete Mesh")) {
-                all_meshes.erase(all_meshes.begin() + selected_mesh_index);
-                selected_mesh_index = -1;
-            }
-        } else {
-            ImGui::Text("No mesh selected");
         }
         ImGui::EndChild();
 
@@ -1665,12 +1780,22 @@ void _frame() {
             if (ImGui::InputText("Name", visgroup_name_buffer, sizeof(visgroup_name_buffer))) {
                 selected_visgroup->name = string(visgroup_name_buffer);
             }
+            ImGui::Checkbox("Enabled", &selected_visgroup->enabled);
+            ImGui::DragFloat("Opacity", &selected_visgroup->opacity, 0.01f, 0.0f, 1.0f);
+            if (ImGui::Button("Delete VisGroup")) {
+                for (auto& mesh : selected_visgroup->meshes) {
+                    vis_groups[0].meshes.push_back(std::move(mesh));
+                }
+                vis_groups.erase(vis_groups.begin() + selected_visgroup_index);
+                selected_visgroup_index = -1;
+            }
         } else {
             ImGui::Text("No VisGroup selected");
         }
         ImGui::EndChild();
         if (ImGui::Button("Add VisGroup")) {
             VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
+            vis_groups.push_back(*new_visgroup);
         }
         ImGui::End();
     }
