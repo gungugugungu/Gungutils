@@ -1541,8 +1541,6 @@ void _frame() {
         // Mesh editor
         ImGui::Begin("Object list");
 
-        static int selected_mesh_index = -1;
-
         ImGui::BeginChild("Objects", ImVec2(256, 300), true);
 
         for (int v = 0; v < vis_groups.size(); v++) {
@@ -2005,6 +2003,9 @@ void _event(SDL_Event* e) {
                 std::cout << "Raycasting for selection" << std::endl;
                 RaycastResult result = raycast_from_screen(e->button.x, e->button.y);
                 if (result.hit) {
+                    selected_mesh_index = -1;
+                    selected_mesh_visgroup = -1;
+
                     for (int vg_idx = 0; vg_idx < vis_groups.size(); vg_idx++) {
                         auto& visgroup = vis_groups[vg_idx];
                         for (int m_idx = 0; m_idx < visgroup.meshes.size(); m_idx++) {
