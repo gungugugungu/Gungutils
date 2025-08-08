@@ -21,6 +21,7 @@ add_library(TinyFD STATIC ${TINYFD_SOURCES})
 
 add_executable(Gungutils main.cpp)
 add_subdirectory(include/SDL)
+add_subdirectory(include/ozz-animation)
 
 set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
 set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
@@ -32,6 +33,7 @@ set(FMOD_INCLUDE_DIRS
 target_link_libraries(Gungutils
     PRIVATE
         SDL3::SDL3
+        ozz_animation
         OpenGL::GL
         X11::Xi
         ${X11_LIBRARIES}

@@ -36,6 +36,8 @@
 #include "FModStudio/api/core/inc/fmod_errors.h"
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
+#include "ozz/animation/runtime/animation.h"
+#include "ozz/animation/runtime/animation.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 
@@ -256,18 +258,14 @@ public:
 vector<Mesh> visualizer_meshes;
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
-    std::cout << "=== Preparing Mesh Buffer Descriptors ===" << std::endl;
-    std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
-    std::cout << "Index count: " << mesh.index_count << std::endl;
-
     if (!mesh.vertices || mesh.vertex_count == 0) {
         std::cerr << "ERROR: Invalid vertex data!" << std::endl;
-        return;
+        exit(-1);
     }
 
     if (!mesh.indices || mesh.index_count == 0) {
         std::cerr << "ERROR: Invalid index data!" << std::endl;
-        return;
+        exit(-1);
     }
 
     mesh.vertex_buffer_desc = {};
