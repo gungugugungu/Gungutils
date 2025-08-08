@@ -336,6 +336,13 @@ void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
         mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
     }
 
+    if (!mesh.has_texture) {
+        mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+        mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+        mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+    }
+
     if (!dontadd) {
         vis_groups[0].meshes.push_back(std::move(mesh));
     }
@@ -354,8 +361,22 @@ void render_meshes_streaming() {
                     continue;
                 }
 
+                sg_image texture;
+                sg_sampler sampler;
+
+                if (mesh.has_texture && mesh.texture_data) {
+                    texture = sg_make_image(&mesh.texture_desc);
+                    sampler = sg_make_sampler(&mesh.sampler_desc);
+                } else {
+                    // use default palette texture and sampler
+                    texture = state.bind.images[0];
+                    sampler = state.bind.samplers[0];
+                }
+
                 state.bind.vertex_buffers[0] = vertex_buffer;
                 state.bind.index_buffer = index_buffer;
+                state.bind.images[0] = texture;
+                state.bind.samplers[0] = sampler;
 
                 sg_apply_bindings(&state.bind);
 
@@ -371,6 +392,12 @@ void render_meshes_streaming() {
 
                 sg_destroy_buffer(vertex_buffer);
                 sg_destroy_buffer(index_buffer);
+
+                // only destroy if we created them god damn it
+                if (mesh.has_texture && mesh.texture_data) {
+                    sg_destroy_image(texture);
+                    sg_destroy_sampler(sampler);
+                }
             }
         }
     }
@@ -385,8 +412,11 @@ void render_meshes_streaming() {
                 continue;
             }
 
+            // visualizer meshes use default palette texture
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
+            state.bind.images[0] = state.bind.images[0]; // keep default palette
+            state.bind.samplers[0] = state.bind.samplers[0]; // keep default sampler
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -409,8 +439,15 @@ void render_meshes_streaming() {
 void render_meshes_batched_streaming(size_t batch_size = 10) {
     std::vector<sg_buffer> vertex_buffers;
     std::vector<sg_buffer> index_buffers;
+    std::vector<sg_image> textures;
+    std::vector<sg_sampler> samplers;
+    std::vector<bool> created_textures;
+
     vertex_buffers.reserve(batch_size);
     index_buffers.reserve(batch_size);
+    textures.reserve(batch_size);
+    samplers.reserve(batch_size);
+    created_textures.reserve(batch_size);
 
     for (auto& visgroup : vis_groups) {
         if (visgroup.enabled) {
@@ -419,6 +456,9 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                 vertex_buffers.clear();
                 index_buffers.clear();
+                textures.clear();
+                samplers.clear();
+                created_textures.clear();
 
                 for (size_t i = start; i < end; i++) {
                     auto& mesh = visgroup.meshes[i];
@@ -428,6 +468,20 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
                         vertex_buffers.push_back(vb);
                         index_buffers.push_back(ib);
+
+                        // handle texture
+                        if (mesh.has_texture && mesh.texture_data) {
+                            sg_image texture = sg_make_image(&mesh.texture_desc);
+                            sg_sampler sampler = sg_make_sampler(&mesh.sampler_desc);
+                            textures.push_back(texture);
+                            samplers.push_back(sampler);
+                            created_textures.push_back(true);
+                        } else {
+                            // use default palette texture
+                            textures.push_back(state.bind.images[0]);
+                            samplers.push_back(state.bind.samplers[0]);
+                            created_textures.push_back(false);
+                        }
                     } else {
                         if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
                         if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
@@ -441,6 +495,8 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                     state.bind.vertex_buffers[0] = vertex_buffers[i];
                     state.bind.index_buffer = index_buffers[i];
+                    state.bind.images[0] = textures[i];
+                    state.bind.samplers[0] = samplers[i];
 
                     sg_apply_bindings(&state.bind);
 
@@ -455,11 +511,18 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     sg_draw(0, mesh.index_count, 1);
                 }
 
+                // cleanup
                 for (auto& vb : vertex_buffers) {
                     sg_destroy_buffer(vb);
                 }
                 for (auto& ib : index_buffers) {
                     sg_destroy_buffer(ib);
+                }
+                for (size_t i = 0; i < textures.size(); i++) {
+                    if (created_textures[i]) {
+                        sg_destroy_image(textures[i]);
+                        sg_destroy_sampler(samplers[i]);
+                    }
                 }
             }
         }
@@ -474,6 +537,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                 if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
                 continue;
             }
+
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
             sg_apply_bindings(&state.bind);
@@ -1355,6 +1419,30 @@ void save_scene(const string& path) {
                 }
             }
 
+            // save texture information
+            mesh_json["has_texture"] = mesh.has_texture;
+            if (mesh.has_texture && mesh.texture_data && mesh.texture_data_size > 0) {
+                mesh_json["texture_width"] = mesh.texture_desc.width;
+                mesh_json["texture_height"] = mesh.texture_desc.height;
+                mesh_json["texture_format"] = static_cast<int>(mesh.texture_desc.pixel_format);
+
+                // encode texture data as base64
+                std::string texture_base64;
+                // store as hex string for simplicity
+                std::ostringstream hex_stream;
+                hex_stream << std::hex << std::setfill('0');
+                for (size_t i = 0; i < mesh.texture_data_size; i++) {
+                    hex_stream << std::setw(2) << static_cast<int>(mesh.texture_data[i]);
+                }
+                mesh_json["texture_data"] = hex_stream.str();
+                mesh_json["texture_data_size"] = mesh.texture_data_size;
+
+                mesh_json["sampler_min_filter"] = static_cast<int>(mesh.sampler_desc.min_filter);
+                mesh_json["sampler_mag_filter"] = static_cast<int>(mesh.sampler_desc.mag_filter);
+                mesh_json["sampler_wrap_u"] = static_cast<int>(mesh.sampler_desc.wrap_u);
+                mesh_json["sampler_wrap_v"] = static_cast<int>(mesh.sampler_desc.wrap_v);
+            }
+
             vg_json["meshes"].push_back(mesh_json);
         }
 
@@ -1464,10 +1552,58 @@ void load_scene(const string& path) {
                         for (size_t i = 0; i < mesh.index_count; i++) {
                             mesh.indices[i] = mesh_json["indices"][i];
                         }
-
-                        Mesh_To_Buffers(mesh, true);
                     }
 
+                    // load texture information
+                    if (mesh_json.contains("has_texture") && mesh_json["has_texture"]) {
+                        mesh.has_texture = true;
+
+                        if (mesh_json.contains("texture_width") &&
+                            mesh_json.contains("texture_height") &&
+                            mesh_json.contains("texture_data") &&
+                            mesh_json.contains("texture_data_size")) {
+
+                            mesh.texture_desc.width = mesh_json["texture_width"];
+                            mesh.texture_desc.height = mesh_json["texture_height"];
+                            mesh.texture_desc.pixel_format = static_cast<sg_pixel_format>(mesh_json["texture_format"]);
+                            mesh.texture_data_size = mesh_json["texture_data_size"];
+
+                            // decode hex string back to binary data
+                            std::string hex_data = mesh_json["texture_data"];
+                            mesh.texture_data = new uint8_t[mesh.texture_data_size];
+
+                            for (size_t i = 0; i < mesh.texture_data_size; i++) {
+                                std::string byte_string = hex_data.substr(i * 2, 2);
+                                mesh.texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                            }
+
+                            mesh.texture_desc.data.subimage[0][0].ptr = mesh.texture_data;
+                            mesh.texture_desc.data.subimage[0][0].size = mesh.texture_data_size;
+
+                            // load sampler settings
+                            if (mesh_json.contains("sampler_min_filter")) {
+                                mesh.sampler_desc.min_filter = static_cast<sg_filter>(mesh_json["sampler_min_filter"]);
+                                mesh.sampler_desc.mag_filter = static_cast<sg_filter>(mesh_json["sampler_mag_filter"]);
+                                mesh.sampler_desc.wrap_u = static_cast<sg_wrap>(mesh_json["sampler_wrap_u"]);
+                                mesh.sampler_desc.wrap_v = static_cast<sg_wrap>(mesh_json["sampler_wrap_v"]);
+                            } else {
+                                // default sampler settings
+                                mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            }
+                        }
+                    } else {
+                        mesh.has_texture = false;
+                        // set up default sampler for palette.png
+                        mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                        mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                        mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                        mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                    }
+
+                    Mesh_To_Buffers(mesh, true);
                     new_visgroup.meshes.push_back(std::move(mesh));
                 }
             }
