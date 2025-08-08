@@ -39,6 +39,7 @@
 #include "ozz/animation/runtime/animation.h"
 #include "ozz/animation/runtime/animation.h"
 // shaders
+#include "ozz/animation/runtime/skeleton.h"
 #include "shaders/mainshader.glsl.h"
 
 using namespace std;
@@ -146,14 +147,22 @@ public:
     uint16_t* indices16 = nullptr;
     bool use_uint16_indices = true;
 
+    sg_image_desc texture_desc = {};
+    sg_sampler_desc sampler_desc = {};
+    bool has_texture = false;
+    uint8_t* texture_data = nullptr;
+    size_t texture_data_size = 0;
+
     Mesh() = default;
 
     ~Mesh() {
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
+        delete[] texture_data;
     }
-    Mesh(const Mesh& other) : vertices(nullptr), indices(nullptr), indices16(nullptr) {
+
+    Mesh(const Mesh& other) : vertices(nullptr), indices(nullptr), indices16(nullptr), texture_data(nullptr) {
         *this = other;
     }
 
@@ -163,6 +172,7 @@ public:
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
+        delete[] texture_data;
 
         position = other.position;
         rotation = other.rotation;
@@ -174,7 +184,11 @@ public:
         index_buffer_desc = other.index_buffer_desc;
         use_uint16_indices = other.use_uint16_indices;
 
-        // Deep copy vertex data
+        texture_desc = other.texture_desc;
+        sampler_desc = other.sampler_desc;
+        has_texture = other.has_texture;
+        texture_data_size = other.texture_data_size;
+
         if (other.vertices && vertex_count > 0) {
             vertices = new float[vertex_count * 8];
             memcpy(vertices, other.vertices, vertex_count * 8 * sizeof(float));
@@ -202,6 +216,14 @@ public:
             indices16 = nullptr;
         }
 
+        if (other.texture_data && texture_data_size > 0) {
+            texture_data = new uint8_t[texture_data_size];
+            memcpy(texture_data, other.texture_data, texture_data_size);
+            texture_desc.data.subimage[0][0].ptr = texture_data;
+        } else {
+            texture_data = nullptr;
+        }
+
         return *this;
     }
 
@@ -215,6 +237,7 @@ public:
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
+        delete[] texture_data;
 
         vertices = o.vertices;
         vertex_count = o.vertex_count;
@@ -231,9 +254,17 @@ public:
         vertex_buffer_desc = o.vertex_buffer_desc;
         index_buffer_desc = o.index_buffer_desc;
 
+        // Move texture data
+        texture_desc = o.texture_desc;
+        sampler_desc = o.sampler_desc;
+        has_texture = o.has_texture;
+        texture_data = o.texture_data;
+        texture_data_size = o.texture_data_size;
+
         o.vertices = nullptr;
         o.indices = nullptr;
         o.indices16 = nullptr;
+        o.texture_data = nullptr;
 
         return *this;
     }
@@ -650,6 +681,88 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
     std::vector<Mesh> meshes;
 
+    // Helper function to load texture from GLTF model
+    auto loadTexture = [&](int textureIndex) -> std::pair<uint8_t*, sg_image_desc> {
+        if (textureIndex < 0 || textureIndex >= model.textures.size()) {
+            return {nullptr, {}};
+        }
+
+        const auto& texture = model.textures[textureIndex];
+        if (texture.source < 0 || texture.source >= model.images.size()) {
+            return {nullptr, {}};
+        }
+
+        const auto& image = model.images[texture.source];
+
+        sg_image_desc img_desc = {};
+        uint8_t* texture_data = nullptr;
+
+        if (!image.image.empty()) {
+            // image data is already decoded
+            img_desc.width = image.width;
+            img_desc.height = image.height;
+            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+
+            size_t data_size = image.image.size();
+            texture_data = new uint8_t[data_size];
+            memcpy(texture_data, image.image.data(), data_size);
+
+            img_desc.data.subimage[0][0].ptr = texture_data;
+            img_desc.data.subimage[0][0].size = data_size;
+        } else if (!image.uri.empty()) {
+            // load from file (relative to GLTF file)
+            std::string base_dir = path.substr(0, path.find_last_of("/\\") + 1);
+            std::string full_path = base_dir + image.uri;
+
+            int img_width, img_height, num_channels;
+            const int desired_channels = 4;
+            stbi_uc* pixels = stbi_load(full_path.c_str(), &img_width, &img_height, &num_channels, desired_channels);
+
+            if (pixels) {
+                img_desc.width = img_width;
+                img_desc.height = img_height;
+                img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+
+                size_t data_size = img_width * img_height * desired_channels;
+                texture_data = new uint8_t[data_size];
+                memcpy(texture_data, pixels, data_size);
+
+                img_desc.data.subimage[0][0].ptr = texture_data;
+                img_desc.data.subimage[0][0].size = data_size;
+
+                stbi_image_free(pixels);
+            }
+        } else if (image.bufferView >= 0) {
+            const auto& bufferView = model.bufferViews[image.bufferView];
+            const auto& buffer = model.buffers[bufferView.buffer];
+
+            const uint8_t* data = buffer.data.data() + bufferView.byteOffset;
+            size_t data_size = bufferView.byteLength;
+
+            int img_width, img_height, num_channels;
+            const int desired_channels = 4;
+            stbi_uc* pixels = stbi_load_from_memory(data, static_cast<int>(data_size),
+                                                  &img_width, &img_height, &num_channels, desired_channels);
+
+            if (pixels) {
+                img_desc.width = img_width;
+                img_desc.height = img_height;
+                img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+
+                size_t pixel_data_size = img_width * img_height * desired_channels;
+                texture_data = new uint8_t[pixel_data_size];
+                memcpy(texture_data, pixels, pixel_data_size);
+
+                img_desc.data.subimage[0][0].ptr = texture_data;
+                img_desc.data.subimage[0][0].size = pixel_data_size;
+
+                stbi_image_free(pixels);
+            }
+        }
+
+        return {texture_data, img_desc};
+    };
+
     std::function<void(int, const HMM_Mat4&)> processNode = [&](int nodeIndex, const HMM_Mat4& parentTransform) {
         if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) return;
         const auto& node = model.nodes[nodeIndex];
@@ -768,6 +881,35 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
                 decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
 
+                if (prim.material >= 0 && prim.material < model.materials.size()) {
+                    const auto& material = model.materials[prim.material];
+
+                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
+                        auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
+
+                        if (texture_data && img_desc.width > 0) {
+                            mesh.texture_data = texture_data;
+                            mesh.texture_desc = img_desc;
+                            mesh.texture_data_size = img_desc.data.subimage[0][0].size;
+                            mesh.has_texture = true;
+
+                            mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                        }
+                    }
+                }
+
+                // if no texture was loaded, set up for default palette.png
+                if (!mesh.has_texture) {
+                    mesh.has_texture = false;
+                    mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                }
+
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -868,6 +1010,35 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 mesh.rotation = {0, 0, 0, 1};
                 mesh.scale = {1, 1, 1};
 
+                // load texture if material has one
+                if (prim.material >= 0 && prim.material < model.materials.size()) {
+                    const auto& material = model.materials[prim.material];
+
+                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
+                        auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
+
+                        if (texture_data && img_desc.width > 0) {
+                            mesh.texture_data = texture_data;
+                            mesh.texture_desc = img_desc;
+                            mesh.texture_data_size = img_desc.data.subimage[0][0].size;
+                            mesh.has_texture = true;
+
+                            mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                        }
+                    }
+                }
+
+                if (!mesh.has_texture) {
+                    mesh.has_texture = false;
+                    mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                }
+
                 meshes.push_back(std::move(mesh));
             }
         }
@@ -875,7 +1046,6 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
     return meshes;
 }
-
 
 bool load_obj(
     const std::string& filename,
