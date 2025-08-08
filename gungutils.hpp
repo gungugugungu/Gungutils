@@ -464,6 +464,144 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
     }
 }
 
+// using the Möller-Trumbore by the way
+bool ray_triangle_intersect(const HMM_Vec3& ray_origin, const HMM_Vec3& ray_direction, const HMM_Vec3& v0, const HMM_Vec3& v1, const HMM_Vec3& v2, float& distance) {
+    const float EPSILON = 0.0000001f;
+
+    HMM_Vec3 edge1 = HMM_SubV3(v1, v0);
+    HMM_Vec3 edge2 = HMM_SubV3(v2, v0);
+    HMM_Vec3 h = HMM_Cross(ray_direction, edge2);
+    float a = HMM_DotV3(edge1, h);
+
+    if (a > -EPSILON && a < EPSILON) {
+        return false;
+    }
+
+    float f = 1.0f / a;
+    HMM_Vec3 s = HMM_SubV3(ray_origin, v0);
+    float u = f * HMM_DotV3(s, h);
+
+    if (u < 0.0f || u > 1.0f) {
+        return false;
+    }
+
+    HMM_Vec3 q = HMM_Cross(s, edge1);
+    float v = f * HMM_DotV3(ray_direction, q);
+
+    if (v < 0.0f || u + v > 1.0f) {
+        return false;
+    }
+
+    float t = f * HMM_DotV3(edge2, q);
+
+    if (t > EPSILON) {
+        distance = t;
+        return true;
+    }
+
+    return false;
+}
+
+// helper function for raycasting
+HMM_Vec3 transform_vertex(const HMM_Vec3& vertex, const Mesh& mesh) {
+    HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
+    HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
+    HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+    HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+
+    HMM_Vec4 transformed = HMM_MulM4V4(model, HMM_V4V(vertex, 1.0f));
+    return HMM_V3(transformed.X, transformed.Y, transformed.Z);
+}
+
+struct RaycastResult {
+    bool hit;
+    HMM_Vec3 point;
+    const Mesh* mesh;
+};
+
+RaycastResult raycast_from_screen(float screen_x, float screen_y) {
+    int window_width, window_height;
+    SDL_GetWindowSize(state.win, &window_width, &window_height);
+    float ndc_x = (2.0f * screen_x) / window_width - 1.0f;
+    float ndc_y = 1.0f - (2.0f * screen_y) / window_height;
+
+    HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)window_width / (float)window_height, 0.1f, 100.0f);
+    HMM_Mat4 view_proj = HMM_MulM4(projection, view);
+    HMM_Mat4 inv_view_proj = HMM_InvGeneralM4(view_proj);
+    HMM_Vec4 near_point_ndc = HMM_V4(ndc_x, ndc_y, -1.0f, 1.0f);
+    HMM_Vec4 far_point_ndc = HMM_V4(ndc_x, ndc_y, 1.0f, 1.0f);
+    HMM_Vec4 near_point_world = HMM_MulM4V4(inv_view_proj, near_point_ndc);
+    HMM_Vec4 far_point_world = HMM_MulM4V4(inv_view_proj, far_point_ndc);
+    near_point_world = HMM_DivV4F(near_point_world, near_point_world.W);
+    far_point_world = HMM_DivV4F(far_point_world, far_point_world.W);
+
+    HMM_Vec3 ray_origin = HMM_V3(near_point_world.X, near_point_world.Y, near_point_world.Z);
+    HMM_Vec3 ray_end = HMM_V3(far_point_world.X, far_point_world.Y, far_point_world.Z);
+    HMM_Vec3 ray_direction = HMM_NormV3(HMM_SubV3(ray_end, ray_origin));
+
+    float closest_distance = FLT_MAX;
+    HMM_Vec3 closest_point = HMM_V3(0, 0, 0);
+    const Mesh* hit_mesh = nullptr;
+    bool hit_found = false;
+
+    for (const auto& visgroup : vis_groups) {
+        if (!visgroup.enabled) continue;
+
+        for (const auto& mesh : visgroup.meshes) {
+            if (!mesh.vertices || !mesh.indices || mesh.vertex_count == 0 || mesh.index_count == 0) {
+                continue;
+            }
+
+            for (size_t i = 0; i < mesh.index_count; i += 3) {
+                if (i + 2 >= mesh.index_count) break;
+
+                uint32_t idx0, idx1, idx2;
+                if (mesh.use_uint16_indices && mesh.indices16) {
+                    idx0 = mesh.indices16[i];
+                    idx1 = mesh.indices16[i + 1];
+                    idx2 = mesh.indices16[i + 2];
+                } else {
+                    idx0 = mesh.indices[i];
+                    idx1 = mesh.indices[i + 1];
+                    idx2 = mesh.indices[i + 2];
+                }
+
+                if (idx0 >= mesh.vertex_count || idx1 >= mesh.vertex_count || idx2 >= mesh.vertex_count) {
+                    continue;
+                }
+
+                HMM_Vec3 v0 = HMM_V3(mesh.vertices[idx0 * 8], mesh.vertices[idx0 * 8 + 1], mesh.vertices[idx0 * 8 + 2]);
+                HMM_Vec3 v1 = HMM_V3(mesh.vertices[idx1 * 8], mesh.vertices[idx1 * 8 + 1], mesh.vertices[idx1 * 8 + 2]);
+                HMM_Vec3 v2 = HMM_V3(mesh.vertices[idx2 * 8], mesh.vertices[idx2 * 8 + 1], mesh.vertices[idx2 * 8 + 2]);
+
+                v0 = transform_vertex(v0, mesh);
+                v1 = transform_vertex(v1, mesh);
+                v2 = transform_vertex(v2, mesh);
+
+                float distance;
+                if (ray_triangle_intersect(ray_origin, ray_direction, v0, v1, v2, distance)) {
+                    if (distance < closest_distance) {
+                        closest_distance = distance;
+                        closest_point = HMM_AddV3(ray_origin, HMM_MulV3F(ray_direction, distance));
+                        hit_mesh = &mesh;
+                        hit_found = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (hit_found) {
+        std::cout << "raycast at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
+        return {true, closest_point, hit_mesh};
+    } else {
+        std::cout << "raycast missed" << std::endl;
+        return {false, HMM_V3(0, 0, 0), nullptr};
+    }
+}
+
+// helper function for gltf loading
 void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotation, HMM_Vec3& scale) {
     translation = { m.Elements[3][0], m.Elements[3][1], m.Elements[3][2] };
 
@@ -1863,6 +2001,28 @@ void _event(SDL_Event* e) {
         }
         if (e->button.button == SDL_BUTTON_LEFT) {
             state.lmb = true;
+            if (state.editor_open && !ImGui::GetIO().WantCaptureMouse) {
+                std::cout << "Raycasting for selection" << std::endl;
+                RaycastResult result = raycast_from_screen(e->button.x, e->button.y);
+                if (result.hit) {
+                    for (int vg_idx = 0; vg_idx < vis_groups.size(); vg_idx++) {
+                        auto& visgroup = vis_groups[vg_idx];
+                        for (int m_idx = 0; m_idx < visgroup.meshes.size(); m_idx++) {
+                            if (&visgroup.meshes[m_idx] == result.mesh) {
+                                selected_mesh_index = m_idx;
+                                selected_mesh_visgroup = vg_idx;
+                                break;
+                            }
+                        }
+                        if (selected_mesh_index != -1) break;
+                    }
+
+                    if (selected_mesh_index != -1) {
+                        std::cout << "Selected mesh: VisGroup " << selected_mesh_visgroup << ", Mesh " << selected_mesh_index << std::endl;
+                    }
+
+                }
+            }
         }
         if (e->button.button == SDL_BUTTON_RIGHT) {
             state.rmb = true;
