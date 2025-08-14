@@ -1954,6 +1954,12 @@ void _frame() {
                 selected_mesh_index = -1;
                 selected_mesh_visgroup = -1;
             }
+            if (selected_mesh.has_texture) {
+                sg_image editor_display_image = sg_make_image(selected_mesh.texture_desc);
+                sg_sampler editor_display_sampler = sg_make_sampler(selected_mesh.sampler_desc);
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
+                ImGui::Image(imtex_id, ImVec2(256, 256));
+            }
         } else {
             ImGui::Text("No mesh selected");
         }
