@@ -1690,6 +1690,8 @@ string currently_entered_path = "";
 static std::map<int, HMM_Vec3> mesh_euler_rotations;
 static int last_selected_mesh = -1;
 static int selected_selectable_visgroup_index = -1;
+sg_image editor_display_image;
+sg_sampler editor_display_sampler;
 
 void _init() {
     VisGroup* default_visgroup = new VisGroup("default", {});
@@ -1859,6 +1861,10 @@ void _frame() {
                 if (ImGui::Selectable(label.c_str(), is_selected)) {
                     selected_mesh_index = i;
                     selected_mesh_visgroup = v;
+                    if (vis_groups[v].meshes[i].has_texture) {
+                        editor_display_image = sg_make_image(vis_groups[v].meshes[i].texture_desc);
+                        editor_display_sampler = sg_make_sampler(vis_groups[v].meshes[i].sampler_desc);
+                    }
                 }
 
                 if (is_selected) {
@@ -1954,11 +1960,9 @@ void _frame() {
                 selected_mesh_index = -1;
                 selected_mesh_visgroup = -1;
             }
-            if (selected_mesh.has_texture) {
-                sg_image editor_display_image = sg_make_image(selected_mesh.texture_desc);
-                sg_sampler editor_display_sampler = sg_make_sampler(selected_mesh.sampler_desc);
+            if (selected_mesh.has_texture) { // texture display
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
-                ImGui::Image(imtex_id, ImVec2(256, 256));
+                ImGui::Image(imtex_id, ImVec2(128, 128));
             }
         } else {
             ImGui::Text("No mesh selected");
