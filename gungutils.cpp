@@ -130,7 +130,7 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 vs_params_t vs_params;
 
 vector<VisGroup> vis_groups;
-vector<Mesh> visualizer_meshes;
+vector<Mesh> visualizer_meshes; // TODO: Fix visualizers
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     if (!mesh.vertices || mesh.vertex_count == 0) {
@@ -2112,7 +2112,11 @@ void _frame() {
             vis_groups.push_back(*new_visgroup);
         }
         ImGui::End();
-    }
+    } /*else {
+        ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs);
+        ImGui::Text("Press 0 to open the dev UI");
+        ImGui::End();
+    }*/ // This is just for the DEMO, feel free to remove it later.
     simgui_render();
 
     sg_end_pass();
