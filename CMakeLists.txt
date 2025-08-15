@@ -21,12 +21,16 @@ add_executable(Gungutils main.cpp)
 add_subdirectory(include/SDL)
 add_subdirectory(include/ozz-animation)
 
+# FMOD
 set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
 set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
 set(FMOD_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/inc
         ${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/inc
 )
+
+# Jolt
+set(JOLT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/include/JoltPhysics/)
 
 target_link_libraries(Gungutils
     PRIVATE
@@ -47,7 +51,9 @@ target_link_libraries(Gungutils
 target_include_directories(Gungutils
     PRIVATE
         include
+        src
         ${FMOD_INCLUDE_DIRS}
         ${X11_INCLUDE_DIR}
         ${XCURSOR_INCLUDE_DIRS}
+        ${JOLT_SOURCE_DIR}
 )
