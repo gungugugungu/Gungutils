@@ -43,6 +43,7 @@
 #include "shaders/mainshader.glsl.h"
 // sources
 #include "src/rendering/Mesh.h"
+#include "src/rendering/VisGroup.h"
 
 using namespace std;
 
@@ -131,22 +132,7 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 
 vs_params_t vs_params;
 
-class VisGroup;
-
 vector<VisGroup> vis_groups;
-
-class VisGroup {
-public:
-    string name;
-    vector<Mesh> meshes;
-    bool enabled = true;
-    float opacity = 1.0f;
-    VisGroup(string name, vector<Mesh> new_meshes) {
-        this->name = name;
-        this->meshes = std::move(new_meshes);
-    }
-};
-
 vector<Mesh> visualizer_meshes;
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
