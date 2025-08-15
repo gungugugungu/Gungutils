@@ -24,6 +24,7 @@
 #endif
 #include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
 #include "tinygltf/tiny_gltf.h"
 #define TINYOBJLOADER_IMPLEMENTATION
