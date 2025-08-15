@@ -18,8 +18,8 @@ file(GLOB TINYFD_SOURCES include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
 
 add_executable(Gungutils main.cpp)
-add_subdirectory(include/SDL)
-add_subdirectory(include/ozz-animation)
+add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
+add_subdirectory(${CMAKE_SOURCE_DIR}/include/ozz-animation)
 
 # FMOD
 set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
@@ -29,8 +29,8 @@ set(FMOD_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/inc
 )
 
-# Jolt
-set(JOLT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/include/JoltPhysics/)
+# ReactPhysics3D
+find_package(ReactPhysics3D REQUIRED)
 
 target_link_libraries(Gungutils
     PRIVATE
@@ -46,6 +46,7 @@ target_link_libraries(Gungutils
         TinyFD
         dl
         pthread
+        ReactPhysics3D::ReactPhysics3D
 )
 
 target_include_directories(Gungutils
@@ -56,4 +57,5 @@ target_include_directories(Gungutils
         ${X11_INCLUDE_DIR}
         ${XCURSOR_INCLUDE_DIRS}
         ${JOLT_SOURCE_DIR}
+
 )

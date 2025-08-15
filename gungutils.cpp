@@ -35,7 +35,7 @@
 #include "FModStudio/api/core/inc/fmod_errors.h"
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
-#include "JoltPhysics/Jolt/Jolt.h"
+#include <reactphysics3d/reactphysics3d.h>
 // shaders
 #include "shaders/mainshader.glsl.h"
 // sources
