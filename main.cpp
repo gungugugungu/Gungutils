@@ -5,6 +5,7 @@
 
 AudioSource3D* audio_source = new AudioSource3D();
 Helper* campos_helper;
+std::vector<PhysicsHolder*> physics_holders;
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -22,6 +23,11 @@ void init() {
     print_fmod_error(result);
 
     load_scene("maps/physicstest.gmap");
+    for (auto& mesh : vis_groups[0].meshes) {
+        PhysicsHolder cur_mesh_phys_holder;
+        cur_mesh_phys_holder.assign_mesh(&mesh);
+        physics_holders.push_back(&cur_mesh_phys_holder);
+    }
 }
 
 void frame() {

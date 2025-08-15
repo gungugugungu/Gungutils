@@ -1623,6 +1623,7 @@ void _init() {
 }
 
 void _frame() {
+    state.delta_time = stm_laptime(&state.last_time);
     // FMOD
     FMOD_RESULT result;
     state.fmod_system->update();
@@ -1634,7 +1635,9 @@ void _frame() {
     result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
     print_fmod_error(result);
 
-    state.delta_time = stm_laptime(&state.last_time);
+    // Physics
+    world->update(state.delta_time);
+
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
     sg_pass pass = {};

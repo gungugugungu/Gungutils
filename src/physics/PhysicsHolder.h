@@ -39,11 +39,19 @@ public:
             std::vector<Vector3> vertices;
             vertices.reserve(mesh->vertex_count);
 
+            HMM_Mat4 scale_matrix = HMM_Scale(mesh->scale);
+            HMM_Mat4 rotation_matrix = HMM_QToM4(mesh->rotation);
+            HMM_Mat4 transform_matrix = HMM_MulM4(rotation_matrix, scale_matrix);
+
             for (size_t i = 0; i < mesh->vertex_count; i++) {
                 float x = mesh->vertices[i * 8 + 0];
                 float y = mesh->vertices[i * 8 + 1];
                 float z = mesh->vertices[i * 8 + 2];
-                vertices.emplace_back(x, y, z);
+
+                HMM_Vec4 vertex = {x, y, z, 1.0f};
+                HMM_Vec4 transformed = HMM_MulM4V4(transform_matrix, vertex);
+
+                vertices.emplace_back(transformed.X, transformed.Y, transformed.Z);
             }
 
             std::vector<uint32_t> indices_vec;
@@ -77,6 +85,7 @@ public:
                 delete[] faces;
             }
         }
+        body = world->createRigidBody(transform);
     }
 
     void update() {
