@@ -3,11 +3,9 @@ project(Gungutils)
 
 set(CMAKE_CXX_STANDARD 20)
 
-# Find required packages
 find_package(OpenGL REQUIRED)
 find_package(X11 REQUIRED COMPONENTS Xi)
 
-# Find additional X11 components
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCURSOR REQUIRED xcursor)
 

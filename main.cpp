@@ -1,7 +1,7 @@
 //
 // Created by gungu on 7/23/25.
 //
-#include "gungutils.hpp"
+#include "gungutils.cpp"
 
 AudioSource3D* audio_source = new AudioSource3D();
 Helper* campos_helper;
@@ -9,10 +9,6 @@ Helper* campos_helper;
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
-    /*float* verts = nullptr;
-    uint32_t vertex_count = 0;
-    uint32_t* indices = nullptr;
-    uint32_t index_count = 0;*/
 
     FMOD_RESULT result;
     result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank);
