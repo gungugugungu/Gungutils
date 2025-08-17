@@ -5,7 +5,8 @@
 
 AudioSource3D* audio_source = new AudioSource3D();
 Helper* campos_helper;
-std::vector<PhysicsHolder*> physics_holders;
+std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
+
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -24,10 +25,15 @@ void init() {
 
     load_scene("maps/physicstest.gmap");
     for (auto& mesh : vis_groups[0].meshes) {
-        PhysicsHolder cur_mesh_phys_holder;
-        cur_mesh_phys_holder.assign_mesh(&mesh);
-        physics_holders.push_back(&cur_mesh_phys_holder);
+        std::cout << "Started looping" << std::endl;
+        auto& holder = physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
+        std::cout << "created holder" << std::endl;
+        holder->assign_mesh(&mesh);
+        std::cout << "assigned mesh" << std::endl;
+        std::cout << "pushed holder" << std::endl;
     }
+    std::cout << "Finished looping" << std::endl;
+    physics_holders[2]->body->enableGravity(false);
 }
 
 void frame() {
@@ -36,6 +42,9 @@ void frame() {
     SDL_GetWindowSize(state.win, &w_width, &w_height);
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
+    }
+    for (auto& holder : physics_holders) {
+        holder->update();
     }
 }
 

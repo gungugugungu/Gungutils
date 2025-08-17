@@ -13,7 +13,7 @@ inline PhysicsWorld* world = physicsCommon.createPhysicsWorld();
 
 class PhysicsHolder {
 public:
-    Mesh* assigned_mesh{};
+    Mesh* assigned_mesh;
     Vector3 position;
     Quaternion orientation;
     Transform transform;
@@ -85,11 +85,18 @@ public:
                 delete[] faces;
             }
         }
-        body = world->createRigidBody(transform);
+        body->setTransform(transform);
     }
 
     void update() {
-        if (assigned_mesh) {
+        if (assigned_mesh != nullptr && body != nullptr) {
+            assigned_mesh->position.X = body->getTransform().getPosition().x;
+            assigned_mesh->position.Y = body->getTransform().getPosition().y;
+            assigned_mesh->position.Z = body->getTransform().getPosition().z;
+            assigned_mesh->rotation.X = body->getTransform().getOrientation().x;
+            assigned_mesh->rotation.Y = body->getTransform().getOrientation().y;
+            assigned_mesh->rotation.Z = body->getTransform().getOrientation().z;
+            assigned_mesh->rotation.W = body->getTransform().getOrientation().w;
         }
     }
 };
