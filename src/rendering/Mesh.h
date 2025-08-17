@@ -12,7 +12,7 @@ public:
     HMM_Vec3 scale{1,1,1};
     float opacity = 1.0f;
 
-    float*    vertices = nullptr;
+    float*    vertices = nullptr; // 3 floats for position, 3 floats for normals, and 2 floats for vertex coords
     size_t    vertex_count = 0;
     uint32_t* indices  = nullptr;
     size_t    index_count = 0;

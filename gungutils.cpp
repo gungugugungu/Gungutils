@@ -73,6 +73,7 @@ struct AppState {
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
+    std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
 };
 
 AppState state;
@@ -1523,6 +1524,39 @@ Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME
     return nullptr;
 }
 
+struct TimeState {
+    Uint64 freq = 0;
+    Uint64 last = 0;
+    float dt = 1.0f / 60.0f; // safe initial value
+    float fps = 60.0f;
+};
+
+TimeState time_state;
+
+void Time_Init(TimeState& t) {
+    t.freq = SDL_GetPerformanceFrequency();
+    t.last = SDL_GetPerformanceCounter();
+}
+
+void Time_BeginFrame(TimeState& t) {
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 diff = now - t.last;
+    t.last = now;
+
+    double dt = (double)diff / (double)t.freq;
+
+    // keep it valid and friendly for ImGui
+    if (!std::isfinite(dt) || dt <= 0.0) {
+        dt = 1.0 / 60.0;
+    } else if (dt > 0.25) {
+        // clamp huge spikes
+        dt = 0.016;
+    }
+
+    t.dt = static_cast<float>(dt);
+    t.fps = 1.0f / t.dt;
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -1623,7 +1657,7 @@ void _init() {
 }
 
 void _frame() {
-    state.delta_time = stm_laptime(&state.last_time);
+    Time_BeginFrame(time_state);
     // FMOD
     FMOD_RESULT result;
     state.fmod_system->update();
@@ -1636,7 +1670,10 @@ void _frame() {
     print_fmod_error(result);
 
     // Physics
-    world->update(state.delta_time);
+    //if (!state.editor_open) world->update(time_state.dt);
+    for (auto& holder : state.physics_holders) {
+        holder->update();
+    }
 
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
@@ -1659,7 +1696,8 @@ void _frame() {
     simgui_frame_desc_t imgui_frame_desc = {};
     imgui_frame_desc.width = w_width;
     imgui_frame_desc.height = w_height;
-    imgui_frame_desc.delta_time = state.delta_time;
+    cout << time_state.dt << endl;
+    imgui_frame_desc.delta_time = time_state.dt;
     imgui_frame_desc.dpi_scale = 1.0f;
     simgui_new_frame(imgui_frame_desc);
 
@@ -1676,7 +1714,7 @@ void _frame() {
 
     // input
     if (state.editor_open) {
-        float camera_speed = 5.f * (float) stm_sec(state.delta_time);
+        float camera_speed = 5.f * time_state.dt;
         if (state.inputs[SDLK_W] == true) {
             HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
             state.camera_pos = HMM_AddV3(state.camera_pos, offset);
@@ -2243,6 +2281,9 @@ void _event(SDL_Event* e) {
                 SDL_HideCursor();
             }
         }
+        if (e->key.key == SDLK_SPACE && state.editor_open) {
+            world->update(time_state.dt);
+        }
     }
     if (e->type == SDL_EVENT_KEY_UP) {
         state.inputs[e->key.key] = false;
@@ -2304,6 +2345,7 @@ int main(int argc, char* argv[]) {
     desc.environment = env;
     sg_setup(&desc);
     stm_setup();
+    Time_Init(time_state);
     _init();
     //init_callback();
 

@@ -5,12 +5,13 @@
 
 AudioSource3D* audio_source = new AudioSource3D();
 Helper* campos_helper;
-std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
 
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
+
+    world->setGravity({0.0f, -9.81f, 0.0f});
 
     FMOD_RESULT result;
     result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank);
@@ -25,15 +26,11 @@ void init() {
 
     load_scene("maps/physicstest.gmap");
     for (auto& mesh : vis_groups[0].meshes) {
-        std::cout << "Started looping" << std::endl;
-        auto& holder = physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
-        std::cout << "created holder" << std::endl;
+        auto& holder = state.physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
         holder->assign_mesh(&mesh);
-        std::cout << "assigned mesh" << std::endl;
-        std::cout << "pushed holder" << std::endl;
     }
-    std::cout << "Finished looping" << std::endl;
-    physics_holders[2]->body->enableGravity(false);
+    state.physics_holders[2]->body->setLinearLockAxisFactor({0.0f, 0.0f, 0.0f});
+    state.physics_holders[2]->body->setAngularLockAxisFactor({0.0f, 0.0f, 0.0f});
 }
 
 void frame() {
@@ -43,9 +40,8 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
-    for (auto& holder : physics_holders) {
-        holder->update();
-    }
+    state.physics_holders[2]->body->setLinearVelocity({0, 0, 0});
+    state.physics_holders[2]->body->setAngularVelocity({0, 0, 0});
 }
 
 void event(SDL_Event* e) {
