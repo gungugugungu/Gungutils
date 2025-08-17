@@ -4,39 +4,37 @@
 
 #ifndef PHYSICSHOLDER_H
 #define PHYSICSHOLDER_H
-#include "JoltPhysics/Jolt/Jolt.h"
-
-// Jolt includes
-#include "JoltPhysics/Jolt/RegisterTypes.h"
-#include "JoltPhysics/Jolt/Core/Factory.h"
-#include "JoltPhysics/Jolt/Core/TempAllocator.h"
-#include "JoltPhysics/Jolt/Core/JobSystemThreadPool.h"
-#include "JoltPhysics/Jolt/Physics/PhysicsSettings.h"
-#include "JoltPhysics/Jolt/Physics/PhysicsSystem.h"
-#include "JoltPhysics/Jolt/Physics/Collision/Shape/ConvexShape.h"
-#include "JoltPhysics/Jolt/Physics/Body/BodyCreationSettings.h"
-#include "JoltPhysics/Jolt/Physics/Body/BodyInterface.h"
-#include "JoltPhysics/Jolt/Math/Vec3.h"
-#include "JoltPhysics/Jolt/Math/Quat.h"
+#include <reactphysics3d/reactphysics3d.h>
 #include "rendering/Mesh.h"
 
-inline Factory physicsFactory;
-inline PhysicsSystem physicsSys;
-inline BodyInterface& bodyInterface = physicsSys.GetBodyInterface();
+using namespace reactphysics3d;
+
+inline PhysicsCommon physicsCommon;
+inline PhysicsWorld* world = physicsCommon.createPhysicsWorld();
 
 class PhysicsHolder {
 public:
     Mesh* assigned_mesh;
-    Vec3 position;
-    Quat orientation;
-    Body* body;
+    Vector3 position;
+    Quaternion orientation;
+    Transform transform;
+    RigidBody* body = world->createRigidBody(transform);
 
     void assign_mesh(Mesh* mesh) {
         assigned_mesh = mesh;
-        position = {mesh->position.X, mesh->position.Y, mesh->position.Z};
-        orientation = {mesh->rotation.X, mesh->rotation.Y, mesh->rotation.Z, mesh->rotation.W};
+        position.x = mesh->position.X;
+        position.y = mesh->position.Y;
+        position.z = mesh->position.Z;
+        orientation.x = mesh->rotation.X;
+        orientation.y = mesh->rotation.Y;
+        orientation.z = mesh->rotation.Z;
+        orientation.w = mesh->rotation.W;
+        transform = Transform(position, orientation);
 
-        ConvexShapeSettings shape_settings = ConvexShapeSettings()
+        if (body) {
+            world->destroyRigidBody(body);
+        }
+        body = world->createRigidBody(transform);
 
         if (mesh->vertices && mesh->vertex_count > 0) {
             std::vector<Vector3> vertices;

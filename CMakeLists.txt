@@ -29,8 +29,8 @@ set(FMOD_INCLUDE_DIRS
         ${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/inc
 )
 
-# Jolt
-set(JOLT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/JoltPhysics/Jolt)
+# ReactPhysics3D
+find_package(ReactPhysics3D REQUIRED)
 
 target_link_libraries(Gungutils
     PRIVATE
@@ -46,6 +46,7 @@ target_link_libraries(Gungutils
         TinyFD
         dl
         pthread
+        ReactPhysics3D::ReactPhysics3D
 )
 
 target_include_directories(Gungutils
@@ -56,4 +57,5 @@ target_include_directories(Gungutils
         ${X11_INCLUDE_DIR}
         ${XCURSOR_INCLUDE_DIRS}
         ${JOLT_SOURCE_DIR}
+
 )

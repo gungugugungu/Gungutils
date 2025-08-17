@@ -27,7 +27,4 @@
 	url = https://github.com/nlohmann/json.git
 [submodule "include/ozz-animation"]
 	path = include/ozz-animation
-	url = https://github.com/guillaumeblanc/ozz-animation.git
-[submodule "include/JoltPhysics"]
-	path = include/JoltPhysics
-	url = https://github.com/jrouwe/JoltPhysics.git
+	url = https://github.com/guillaumeblanc/ozz-animation.gi
