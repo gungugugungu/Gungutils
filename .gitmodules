@@ -28,6 +28,6 @@
 [submodule "include/ozz-animation"]
 	path = include/ozz-animation
 	url = https://github.com/guillaumeblanc/ozz-animation.git
-[submodule "include/reactphysics3d"]
-	path = include/reactphysics3d
-	url = https://github.com/DanielChappuis/reactphysics3d.git
+[submodule "include/JoltPhysics"]
+	path = include/JoltPhysics
+	url = https://github.com/jrouwe/JoltPhysics.git
