@@ -81,6 +81,9 @@ public:
                     ConvexMeshShape* shape = physicsCommon.createConvexMeshShape(convexMesh);
                     Transform colliderTransform = Transform::identity();
                     body->addCollider(shape, colliderTransform);
+                    cout << "Shape attached" << endl;
+                } else {
+                    cout << "Shape not attached" << endl;
                 }
 
                 delete[] faces;

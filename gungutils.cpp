@@ -74,12 +74,15 @@ struct AppState {
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
+    sg_image default_palette_img{};
+    sg_sampler default_palette_smp{};
 };
 
 AppState state;
 int texture_index = 0;
 int mesh_index = 0;
 int num_elements = 0;
+bool loaded_is_palette = false;
 
 void fetch_callback(const sfetch_response_t* response);
 
@@ -260,8 +263,8 @@ void render_meshes_streaming() {
             // visualizer meshes use default palette texture
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
-            state.bind.images[0] = state.bind.images[0]; // keep default palette
-            state.bind.samplers[0] = state.bind.samplers[0]; // keep default sampler
+            state.bind.images[0] = state.default_palette_img;
+            state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -385,6 +388,8 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
+            state.bind.images[0] = state.default_palette_img;
+            state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
@@ -1617,7 +1622,7 @@ void _init() {
     sampler_desc.mag_filter = SG_FILTER_LINEAR;
     sampler_desc.wrap_u = SG_WRAP_REPEAT;
     sampler_desc.wrap_v = SG_WRAP_REPEAT;
-    state.bind.samplers[0] = sg_make_sampler(&sampler_desc);
+    state.default_palette_smp = sg_make_sampler(&sampler_desc);
 
     sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
 
@@ -1648,8 +1653,9 @@ void _init() {
     state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     state.pass_action.depth.clear_value = 1.0f;
 
+    loaded_is_palette = true;
     sfetch_request_t request = {};
-    request.path = "palette.png";
+    request.path = "palette.png"; // palette.png MUST exist
     request.callback = fetch_callback;
     request.buffer.ptr = state.file_buffer.data();
     request.buffer.size = state.file_buffer.size();
@@ -1696,7 +1702,6 @@ void _frame() {
     simgui_frame_desc_t imgui_frame_desc = {};
     imgui_frame_desc.width = w_width;
     imgui_frame_desc.height = w_height;
-    cout << time_state.dt << endl;
     imgui_frame_desc.delta_time = time_state.dt;
     imgui_frame_desc.dpi_scale = 1.0f;
     simgui_new_frame(imgui_frame_desc);
@@ -2318,7 +2323,12 @@ void fetch_callback(const sfetch_response_t* response) {
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
-            state.bind.images[texture_index] = sg_make_image(&img_desc);
+            if (loaded_is_palette) {
+                loaded_is_palette = false;
+                state.default_palette_img = sg_make_image(&img_desc);
+            } else {
+                state.bind.images[texture_index] = sg_make_image(&img_desc);
+            }
 
             stbi_image_free(pixels);
         }
