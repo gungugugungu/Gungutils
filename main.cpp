@@ -31,6 +31,7 @@ void init() {
     }
     state.physics_holders[2]->body->setLinearLockAxisFactor({0.0f, 0.0f, 0.0f});
     state.physics_holders[2]->body->setAngularLockAxisFactor({0.0f, 0.0f, 0.0f});
+    state.camera_pos = get_helper_by_name("campos")->position;
 }
 
 void frame() {

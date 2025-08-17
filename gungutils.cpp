@@ -1676,7 +1676,7 @@ void _frame() {
     print_fmod_error(result);
 
     // Physics
-    //if (!state.editor_open) world->update(time_state.dt);
+    if (!state.editor_open) world->update(time_state.dt);
     for (auto& holder : state.physics_holders) {
         holder->update();
     }
