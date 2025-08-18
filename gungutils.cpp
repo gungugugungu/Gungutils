@@ -2226,6 +2226,10 @@ void _event(SDL_Event* e) {
                             if (&visgroup.meshes[m_idx] == result.mesh) {
                                 selected_mesh_index = m_idx;
                                 selected_mesh_visgroup = vg_idx;
+                                if (vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].has_texture) {
+                                    editor_display_image = sg_make_image(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].texture_desc);
+                                    editor_display_sampler = sg_make_sampler(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].sampler_desc);
+                                }
                                 break;
                             }
                         }
