@@ -41,8 +41,6 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
-    state.physics_holders[2]->body->setLinearVelocity({0, 0, 0});
-    state.physics_holders[2]->body->setAngularVelocity({0, 0, 0});
 }
 
 void event(SDL_Event* e) {

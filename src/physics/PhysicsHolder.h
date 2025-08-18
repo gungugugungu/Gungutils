@@ -211,8 +211,6 @@ public:
         float maxX = -FLT_MAX, maxY = -FLT_MAX, maxZ = -FLT_MAX;
 
         HMM_Mat4 scale_matrix = HMM_Scale(assigned_mesh->scale);
-        HMM_Mat4 rotation_matrix = HMM_QToM4(assigned_mesh->rotation);
-        HMM_Mat4 transform_matrix = HMM_MulM4(rotation_matrix, scale_matrix);
 
         for (size_t i = 0; i < assigned_mesh->vertex_count; i++) {
             float x = assigned_mesh->vertices[i * 8 + 0];
@@ -220,7 +218,7 @@ public:
             float z = assigned_mesh->vertices[i * 8 + 2];
 
             HMM_Vec4 vertex = {x, y, z, 1.0f};
-            HMM_Vec4 transformed = HMM_MulM4V4(transform_matrix, vertex);
+            HMM_Vec4 transformed = {vertex.X*assigned_mesh->scale.X, vertex.Y*assigned_mesh->scale.Y, vertex.Z*assigned_mesh->scale.Z, 1.0f};
 
             minX = std::min(minX, transformed.X);
             minY = std::min(minY, transformed.Y);
@@ -257,13 +255,13 @@ public:
         }
         body = world->createRigidBody(transform);
 
+        cout << "-----" << endl;
+
         if (mesh->vertices && mesh->vertex_count > 0) {
             std::vector<Vector3> vertices;
             vertices.reserve(mesh->vertex_count);
 
             HMM_Mat4 scale_matrix = HMM_Scale(mesh->scale);
-            HMM_Mat4 rotation_matrix = HMM_QToM4(mesh->rotation);
-            HMM_Mat4 transform_matrix = HMM_MulM4(rotation_matrix, scale_matrix);
 
             for (size_t i = 0; i < mesh->vertex_count; i++) {
                 float x = mesh->vertices[i * 8 + 0];
@@ -271,9 +269,9 @@ public:
                 float z = mesh->vertices[i * 8 + 2];
 
                 HMM_Vec4 vertex = {x, y, z, 1.0f};
-                HMM_Vec4 transformed = HMM_MulM4V4(transform_matrix, vertex);
+                HMM_Vec4 scaled = {vertex.X*assigned_mesh->scale.X, vertex.Y*assigned_mesh->scale.Y, vertex.Z*assigned_mesh->scale.Z, 1.0f};
 
-                vertices.emplace_back(transformed.X, transformed.Y, transformed.Z);
+                vertices.emplace_back(scaled.X, scaled.Y, scaled.Z);
             }
 
             std::vector<uint32_t> indices_vec;
