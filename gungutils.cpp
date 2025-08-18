@@ -596,7 +596,22 @@ std::vector<Mesh> load_gltf(const std::string& path) {
 
     std::vector<Mesh> meshes;
 
-    // Helper function to load texture from GLTF model
+    auto flip_tex_vertically = [&](unsigned char* data, int width, int height, int channels) -> void {
+        int row_size = width * channels;
+        unsigned char* temp_row = new unsigned char[row_size];
+
+        for (int y = 0; y < height / 2; ++y) {
+            unsigned char* top_row = data + y * row_size;
+            unsigned char* bottom_row = data + (height - 1 - y) * row_size;
+
+            memcpy(temp_row, top_row, row_size);
+            memcpy(top_row, bottom_row, row_size);
+            memcpy(bottom_row, temp_row, row_size);
+        }
+
+        delete[] temp_row;
+    };
+
     auto loadTexture = [&](int textureIndex) -> std::pair<uint8_t*, sg_image_desc> {
         if (textureIndex < 0 || textureIndex >= model.textures.size()) {
             return {nullptr, {}};
@@ -622,6 +637,8 @@ std::vector<Mesh> load_gltf(const std::string& path) {
             texture_data = new uint8_t[data_size];
             memcpy(texture_data, image.image.data(), data_size);
 
+            flip_tex_vertically(texture_data, image.width, image.height, 4);
+
             img_desc.data.subimage[0][0].ptr = texture_data;
             img_desc.data.subimage[0][0].size = data_size;
         } else if (!image.uri.empty()) {
@@ -641,6 +658,8 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                 size_t data_size = img_width * img_height * desired_channels;
                 texture_data = new uint8_t[data_size];
                 memcpy(texture_data, pixels, data_size);
+
+                flip_tex_vertically(texture_data, img_width, img_height, desired_channels);
 
                 img_desc.data.subimage[0][0].ptr = texture_data;
                 img_desc.data.subimage[0][0].size = data_size;
@@ -1582,6 +1601,7 @@ void _init() {
     VisGroup* default_visgroup = new VisGroup("default", {});
     vis_groups.push_back(*default_visgroup);
     stbi_set_flip_vertically_on_load(true);
+    stbi_set_flip_vertically_on_load_thread(true);
 
     // ImGui
     simgui_desc_t imgui_desc = {};
@@ -1708,7 +1728,7 @@ void _frame() {
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 100.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
 
     vs_params = {
         .view = view,
