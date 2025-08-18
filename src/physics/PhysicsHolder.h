@@ -7,6 +7,15 @@
 #include <reactphysics3d/reactphysics3d.h>
 #include "rendering/Mesh.h"
 
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <array>
+#include <cstdint>
+#include <cmath>
+#include <limits>
+#include <algorithm>
+
 using namespace reactphysics3d;
 
 inline PhysicsCommon physicsCommon;
@@ -46,49 +55,150 @@ public:
     }*/ // keep this function for later, might need it
 
     std::pair<std::vector<Vector3>, std::vector<uint32_t>> remove_duplicate_verts_with_mapping(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& original_indices, float epsilon = 1e-5f) {
-        std::vector<Vector3> uniqueVertices;
-        std::vector<uint32_t> vertexMapping(vertices.size()); // maps old index to new index
+        if (vertices.empty() || original_indices.empty()) {
+            return {vertices, original_indices};
+        }
 
-        // ceate mapping from old vertex indices to new indices
-        for (size_t i = 0; i < vertices.size(); i++) {
-            bool isDuplicate = false;
-            uint32_t duplicateIndex = 0;
+        struct Key {
+            long long ix, iy, iz;
+            bool operator==(const Key& o) const noexcept {
+                return ix == o.ix && iy == o.iy && iz == o.iz;
+            }
+        };
+        struct KeyHasher {
+            size_t operator()(const Key& k) const noexcept {
+                // Mix 3x int64 into size_t
+                auto mix = [](uint64_t h, uint64_t v) {
+                    h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+                    return h;
+                };
+                uint64_t h = static_cast<uint64_t>(k.ix);
+                h = mix(h, static_cast<uint64_t>(k.iy));
+                h = mix(h, static_cast<uint64_t>(k.iz));
+                return static_cast<size_t>(h);
+            }
+        };
+        auto quantize = [&](const Vector3& v) -> Key {
+            const double inv = 1.0 / static_cast<double>(epsilon);
+            auto q = [&](double f) -> long long {
+                return static_cast<long long>(std::llround(f * inv));
+            };
+            return Key{ q(v.x), q(v.y), q(v.z) };
+        };
+        auto sub = [](const Vector3& a, const Vector3& b) -> Vector3 {
+            return {a.x - b.x, a.y - b.y, a.z - b.z};
+        };
+        auto sqrLen = [&](const Vector3& v) -> float {
+            return v.x*v.x + v.y*v.y + v.z*v.z;
+        };
 
-            for (size_t j = 0; j < uniqueVertices.size(); j++) {
-                float dx = vertices[i].x - uniqueVertices[j].x;
-                float dy = vertices[i].y - uniqueVertices[j].y;
-                float dz = vertices[i].z - uniqueVertices[j].z;
-                float distanceSq = dx*dx + dy*dy + dz*dz;
+        std::vector<uint8_t> used(vertices.size(), 0);
+        for (uint32_t idx : original_indices) {
+            if (idx < vertices.size()) used[idx] = 1;
+        }
 
-                if (distanceSq < epsilon * epsilon) {
-                    isDuplicate = true;
-                    duplicateIndex = j;
-                    break;
+        std::vector<Vector3> unique_vertices;
+        unique_vertices.reserve(vertices.size());
+
+        std::unordered_map<Key, uint32_t, KeyHasher> key_to_new;
+        key_to_new.reserve(vertices.size());
+
+        const uint32_t INVALID = std::numeric_limits<uint32_t>::max();
+        std::vector<uint32_t> old2new(vertices.size(), INVALID);
+
+        for (uint32_t i = 0; i < vertices.size(); ++i) {
+            if (!used[i]) continue;
+            const auto& v = vertices[i];
+            const Key k = quantize(v);
+            auto it = key_to_new.find(k);
+            if (it != key_to_new.end()) {
+                old2new[i] = it->second;
+            } else {
+                uint32_t ni = static_cast<uint32_t>(unique_vertices.size());
+                key_to_new.emplace(k, ni);
+                unique_vertices.push_back(v);
+                old2new[i] = ni;
+            }
+        }
+
+        std::vector<uint32_t> remapped_indices;
+        remapped_indices.reserve(original_indices.size());
+
+        struct TriKeyHasher {
+            size_t operator()(const std::array<uint32_t,3>& t) const noexcept {
+                uint64_t a = t[0], b = t[1], c = t[2];
+                uint64_t h = a * 0x9e3779b1u;
+                h ^= b + 0x9e3779b97f4a7c15ULL + (h<<6) + (h>>2);
+                h ^= c + 0x9e3779b97f4a7c15ULL + (h<<6) + (h>>2);
+                return static_cast<size_t>(h);
+            }
+        };
+        std::unordered_set<std::array<uint32_t,3>, TriKeyHasher> tri_seen;
+        tri_seen.reserve(original_indices.size() / 3);
+
+        auto valid_old = [&](uint32_t idx) -> bool {
+            return idx < vertices.size() && old2new[idx] != INVALID;
+        };
+
+        const float eps2 = epsilon * epsilon;
+
+        for (size_t i = 0; i + 2 < original_indices.size(); i += 3) {
+            uint32_t ia = original_indices[i + 0];
+            uint32_t ib = original_indices[i + 1];
+            uint32_t ic = original_indices[i + 2];
+
+            if (!valid_old(ia) || !valid_old(ib) || !valid_old(ic)) {
+                continue;
+            }
+
+            uint32_t a = old2new[ia];
+            uint32_t b = old2new[ib];
+            uint32_t c = old2new[ic];
+
+            if (a == b || b == c || c == a) {
+                continue;
+            }
+
+            const Vector3& va = unique_vertices[a];
+            const Vector3& vb = unique_vertices[b];
+            const Vector3& vc = unique_vertices[c];
+            if (sqrLen(sub(va, vb)) <= eps2 ||
+                sqrLen(sub(vb, vc)) <= eps2 ||
+                sqrLen(sub(vc, va)) <= eps2) {
+                continue;
                 }
+
+            std::array<uint32_t,3> canon = {a, b, c};
+            std::sort(canon.begin(), canon.end());
+            if (!tri_seen.insert(canon).second) {
+                continue;
             }
 
-            if (!isDuplicate) {
-                vertexMapping[i] = uniqueVertices.size();
-                uniqueVertices.push_back(vertices[i]);
-            } else {
-                vertexMapping[i] = duplicateIndex;
-            }
+            remapped_indices.push_back(a);
+            remapped_indices.push_back(b);
+            remapped_indices.push_back(c);
         }
 
-        // remap the indices
-        std::vector<uint32_t> newIndices;
-        newIndices.reserve(original_indices.size());
-
-        for (uint32_t oldIndex : original_indices) {
-            if (oldIndex < vertexMapping.size()) {
-                newIndices.push_back(vertexMapping[oldIndex]);
-            } else {
-                cout << "Error: Original index " << oldIndex << " exceeds vertex count " << vertices.size() << endl;
-                return {uniqueVertices, {}};
-            }
+        if (remapped_indices.empty()) {
+            return {{}, {}};
         }
 
-        return {uniqueVertices, newIndices};
+        std::vector<uint32_t> new2packed(unique_vertices.size(),
+                                         std::numeric_limits<uint32_t>::max());
+        std::vector<Vector3> packed_vertices;
+        packed_vertices.reserve(unique_vertices.size());
+
+        uint32_t next = 0;
+        for (uint32_t& idx : remapped_indices) {
+            uint32_t& p = new2packed[idx];
+            if (p == std::numeric_limits<uint32_t>::max()) {
+                p = next++;
+                packed_vertices.push_back(unique_vertices[idx]);
+            }
+            idx = p;
+        }
+
+        return { std::move(packed_vertices), std::move(remapped_indices) };
     }
 
     // alternative: create a box collider based on mesh bounds
@@ -182,6 +292,9 @@ public:
             cout << "Unique vertices: " << uniqueVertices.size() << endl;
             cout << "Remapped indices: " << remappedIndices.size() << endl;
 
+            vertices = uniqueVertices;
+            indices_vec = remappedIndices;
+
             if (indices_vec.size() % 3 != 0) {
                 cout << "bruh index count is not divisible by 3: " << indices_vec.size() << endl;
                 return;
@@ -208,18 +321,18 @@ public:
                 PolygonVertexArray::PolygonFace* face_data = faces_vec.data();
 
                 cout << "Creating PolygonVertexArray with:" << endl;
-                cout << "  Vertices: " << vertices.size() << endl;
-                cout << "  Indices: " << indices_vec.size() << endl;
-                cout << "  Faces: " << num_faces << endl;
+                cout << "⤷Vertices: " << vertices.size() << endl;
+                cout << "⤷Indices: " << indices_vec.size() << endl;
+                cout << "⤷Faces: " << num_faces << endl;
 
                 PolygonVertexArray polygonArray(
-                    vertices.size(),           // nbVertices
-                    vertex_data,               // verticesArray
-                    sizeof(Vector3),           // verticesStride
-                    index_data,                // indicesArray
-                    sizeof(uint32_t),          // indicesStride
-                    num_faces,                 // nbFaces
-                    face_data,                 // facesArray
+                    vertices.size(),            // nbVertices
+                    vertex_data,                // verticesArray
+                    sizeof(Vector3),            // verticesStride
+                    index_data,                 // indicesArray
+                    sizeof(uint32_t),           // indicesStride
+                    num_faces,                  // nbFaces
+                    face_data,                  // facesArray
                     PolygonVertexArray::VertexDataType::VERTEX_FLOAT_TYPE,
                     PolygonVertexArray::IndexDataType::INDEX_INTEGER_TYPE
                 );
