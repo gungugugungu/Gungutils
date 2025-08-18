@@ -24,7 +24,7 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
-    load_scene("maps/physicstest.gmap");
+    load_scene("maps/physicstest2.gmap");
     for (auto& mesh : vis_groups[0].meshes) {
         auto& holder = state.physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
         holder->assign_mesh(&mesh);
