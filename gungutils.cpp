@@ -234,6 +234,11 @@ void render_meshes_streaming() {
                 HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                 vs_params.model = model;
                 vs_params.opacity = mesh.opacity*visgroup.opacity;
+                if (mesh.enable_shading) {
+                    vs_params.enable_shading = 1;
+                } else {
+                    vs_params.enable_shading = 0;
+                }
                 sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
                 sg_draw(0, mesh.index_count, 1);
@@ -1790,9 +1795,9 @@ void _frame() {
         ImGui::EndChild();
 
         ImGui::SameLine();
-        ImGui::BeginChild("Obj settings", ImVec2(300, 300), true);
+        ImGui::BeginChild("Mesh settings", ImVec2(300, 300), true);
         if (selected_mesh_index != -1) {
-            ImGui::Text("Object settings");
+            ImGui::Text("Mesh settings");
             ImGui::Separator();
 
             auto& selected_mesh = vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index];
@@ -1819,6 +1824,8 @@ void _frame() {
             ImGui::DragFloat3("Scale", &selected_mesh.scale.X, 0.01f);
 
             ImGui::SliderFloat("Opacity", &selected_mesh.opacity, 0.0f, 1.0f);
+
+            ImGui::Checkbox("Shading", &selected_mesh.enable_shading);
 
             ImGui::PopItemWidth();
 

@@ -29,6 +29,8 @@ public:
     uint8_t* texture_data = nullptr;
     size_t texture_data_size = 0;
 
+    bool enable_shading = true;
+
     Mesh() = default;
 
     ~Mesh() {
