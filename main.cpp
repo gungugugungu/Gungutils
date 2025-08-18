@@ -23,15 +23,6 @@ void init() {
     state.event_descriptions.resize(event_count);
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
-
-    /*load_scene("maps/physicstest2.gmap");
-    for (auto& mesh : vis_groups[0].meshes) {
-        auto& holder = state.physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
-        holder->assign_mesh(&mesh);
-    }
-    state.physics_holders[2]->body->setLinearLockAxisFactor({0.0f, 0.0f, 0.0f});
-    state.physics_holders[2]->body->setAngularLockAxisFactor({0.0f, 0.0f, 0.0f});
-    state.camera_pos = get_helper_by_name("campos")->position;*/
 }
 
 void frame() {

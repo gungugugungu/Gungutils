@@ -279,6 +279,7 @@ void render_meshes_streaming() {
 
             vs_params.model = model;
             vs_params.opacity = mesh.opacity;
+            vs_params.enable_shading = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, mesh.index_count, 1);
@@ -359,6 +360,11 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                     vs_params.model = model;
                     vs_params.opacity = mesh.opacity*visgroup.opacity;
+                    if (mesh.enable_shading) {
+                        vs_params.enable_shading = 1;
+                    } else {
+                        vs_params.enable_shading = 0;
+                    }
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
                     sg_draw(0, mesh.index_count, 1);
@@ -404,6 +410,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
             vs_params.model = model;
             vs_params.opacity = mesh.opacity;
+            vs_params.enable_shading = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, mesh.index_count, 1);

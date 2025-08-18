@@ -5,7 +5,10 @@ in vec3 aPos;
 in vec3 aNormal;
 in vec2 aTexCoord;
 
-out vec2 TexCoord;
+layout(location = 0) out vec2 TexCoord;
+layout(location = 1) out float v_opacity;
+layout(location = 2) out vec3 vNormal;
+layout(location = 3) flat out int venable_shading;
 
 layout(binding = 0) uniform vs_params {
     mat4 model;
@@ -15,9 +18,6 @@ layout(binding = 0) uniform vs_params {
     int enable_shading; // 0 = disable, 1 = enable
 };
 
-layout(location = 1) out float v_opacity;
-layout(location = 2) out vec3 vNormal;
-
 void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
@@ -26,28 +26,50 @@ void main() {
     // transform normal into world space
     mat3 normalMat = mat3(transpose(inverse(model)));
     vNormal = normalize(normalMat * aNormal);
+
+    venable_shading = enable_shading;
 }
 @end
 
 @fs fs
 out vec4 FragColor;
 
-in vec2 TexCoord;
+layout(location = 0) in vec2 TexCoord;
+layout(location = 1) in float v_opacity;
+layout(location = 2) in vec3 vNormal;
+layout(location = 3) flat in int venable_shading;
 
 layout(binding = 0) uniform texture2D _palette2D;
 layout(binding = 0) uniform sampler palette_smp;
-layout(location = 1) in float v_opacity;
-layout(location = 2) in vec3 vNormal;
 
 #define palette2D sampler2D(_palette2D, palette_smp)
+
+float bayer4x4(vec2 fragXY) {
+    // use integer pixel coordinates modulo 4
+    ivec2 p = ivec2(floor(fragXY)) & ivec2(3, 3); // faster than mod for power-of-two
+    int idx = p.y * 4 + p.x;
+
+    // index order:
+    //  0,  8,  2, 10
+    // 12,  4, 14,  6
+    //  3, 11,  1,  9
+    // 15,  7, 13,  5
+    int bayerVals[16] = int[16](
+    0,  8,  2, 10,
+    12,  4, 14,  6,
+    3, 11,  1,  9,
+    15,  7, 13,  5
+    );
+    return (float(bayerVals[idx]) + 0.5) / 16.0; // center within each bin
+}
 
 void main() {
     vec4 texColor = texture(palette2D, TexCoord);
 
     // directional light settings
     const vec3 LIGHT_DIR = normalize(vec3(-0.4, -1.0, -0.6));
-    const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.90);
-    const vec3 AMBIENT_COLOR = vec3(0.12, 0.12, 0.12);
+    const vec3 LIGHT_COLOR = vec3(1.0, 1.0, 1.0);
+    const vec3 AMBIENT_COLOR = vec3(0.5, 0.5, 0.5);
     const float AMBIENT_STRENGTH = 0.35;
     const float TOON_BANDS = 4.0;
 
@@ -55,11 +77,25 @@ void main() {
     vec3 L = normalize(-LIGHT_DIR); // from point toward light
     float ndl = max(dot(N, L), 0.0);
 
-    float q = round(ndl * (TOON_BANDS - 1.0)) / (TOON_BANDS - 1.0);
+    // dither only the lighting bands.
+    float bands = max(TOON_BANDS - 1.0, 1.0);
+    float bandStep = 1.0 / bands;
 
-    // combine ambient + toon diffuse modulated by texture/albedo
+    // Bayer in [-0.5, +0.5], then scale by band step for stable band crossing
+    float dither = (bayer4x4(gl_FragCoord.xy) - 0.5) * bandStep;
+
+    float ndlDithered = clamp(ndl + dither, 0.0, 1.0);
+    float q = round(ndlDithered * bands) / bands;
+
+    // combine ambient + toon diffuse (dithered)
     vec3 lighting = AMBIENT_COLOR * AMBIENT_STRENGTH + LIGHT_COLOR * q;
-    vec3 finalRgb = clamp(texColor.rgb * lighting, 0.0, 1.0);
+
+    vec3 finalRgb;
+    if (venable_shading == 1) {
+        finalRgb = clamp(texColor.rgb * lighting, 0.0, 1.0);
+    } else {
+        finalRgb = texColor.rgb;
+    }
 
     FragColor = vec4(finalRgb, texColor.a * v_opacity);
 }
