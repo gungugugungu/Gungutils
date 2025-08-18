@@ -40,7 +40,6 @@
 // sources
 #include "rendering/Mesh.h"
 #include "rendering/VisGroup.h"
-#include "rendering/Light.h"
 #include "physics/PhysicsHolder.h"
 
 using namespace std;
@@ -77,7 +76,6 @@ struct AppState {
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
     sg_image default_palette_img{};
     sg_sampler default_palette_smp{};
-    vector<Light> lights;
 };
 
 AppState state;
@@ -136,80 +134,7 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 vs_params_t vs_params;
 
 vector<VisGroup> vis_groups;
-vector<Mesh> visualizer_meshes;
-
-struct ShaderLight {
-    HMM_Vec3 position;
-    float pad1;
-    HMM_Vec3 direction;
-    float pad2;
-    HMM_Vec3 color;
-    float intensity;
-    float radius;
-    float inner_angle;
-    float outer_angle;
-    int type;
-    float pad3[3];
-};
-
-struct fs_params {
-    HMM_Vec3 view_pos;
-    float pad0;
-    int num_lights;
-    float pad1[3];
-    HMM_Vec4 light_positions[32];
-    HMM_Vec4 light_directions[32];
-    HMM_Vec4 light_colors[32];
-    HMM_Vec4 light_data1[32];
-    HMM_Vec4 light_data2[32];
-    int light_types[32][4];
-};
-
-struct material_params {
-    HMM_Vec3 ambient = {0.1f, 0.1f, 0.1f};
-    float pad1;
-    HMM_Vec3 diffuse = {0.8f, 0.8f, 0.8f};
-    float pad2;
-    HMM_Vec3 specular = {1.0f, 1.0f, 1.0f};
-    float shininess = 32.0f;
-};
-
-void update_light_uniforms() {
-    fs_params fs_uniforms = {};
-    fs_uniforms.view_pos = state.camera_pos;
-    fs_uniforms.num_lights = min((int)state.lights.size(), 32);
-
-    for(int i = 0; i < fs_uniforms.num_lights; i++) {
-        Light* light = &state.lights[i];
-
-        fs_uniforms.light_positions[i] = {light->position.X, light->position.Y, light->position.Z, 0.0f};
-        fs_uniforms.light_colors[i] = {light->color.X, light->color.Y, light->color.Z, 0.0f};
-        fs_uniforms.light_data1[i].X = light->intensity;
-        fs_uniforms.light_types[i][0] = light->type;
-        fs_uniforms.light_types[i][1] = 0;
-        fs_uniforms.light_types[i][2] = 0;
-        fs_uniforms.light_types[i][3] = 0;
-
-        if(light->type == 0) {
-            DirectionalLight* dir_light = static_cast<DirectionalLight*>(light);
-            fs_uniforms.light_directions[i] = {dir_light->direction.X, dir_light->direction.Y, dir_light->direction.Z, 0.0f};
-        } else if(light->type == 1) {
-            PointLight* point_light = static_cast<PointLight*>(light);
-            fs_uniforms.light_data1[i].Y = point_light->radius;
-        } else if(light->type == 2) {
-            SpotLight* spot_light = static_cast<SpotLight*>(light);
-            fs_uniforms.light_directions[i] = {spot_light->direction.X, spot_light->direction.Y, spot_light->direction.Z, 0.0f};
-            fs_uniforms.light_data1[i].Y = spot_light->radius;
-            fs_uniforms.light_data1[i].Z = spot_light->inner_angle;
-            fs_uniforms.light_data1[i].W = spot_light->outer_angle;
-        }
-    }
-
-    sg_apply_uniforms(UB_fs_params, SG_RANGE(fs_uniforms));
-
-    material_params material = {};
-    sg_apply_uniforms(UB_material_params, SG_RANGE(material));
-}
+vector<Mesh> visualizer_meshes; // TODO: Fix visualizers
 
 void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
     if (!mesh.vertices || mesh.vertex_count == 0) {
@@ -1785,12 +1710,11 @@ void _frame() {
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 100.0f);
 
-    // rendering
     vs_params = {
         .view = view,
         .projection = projection
     };
-    update_light_uniforms();
+
     render_meshes_batched_streaming();
 
     // input

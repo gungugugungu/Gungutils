@@ -3,14 +3,14 @@
 - GLTF and OBJ loading
 - FMOD audio
 - Helpers (named positions)
-- Rigidbody physics
 
 # Cloning
 After cloning, you only need to run it with CMake and it should work. Make sure the working directory is the main path that conatins guntutils.hpp. Also, set this environment variable: LD_LIBRARY_PATH=[path]/include/FModStudio/api/core/lib/x86_64:[path]/include/FModStudio/api/studio/lib/x86_64 ./cmake-build-release/Gungutils
 
 # TODO
+- Physics bodies implemented straight into the mesh classas a toggle
 - Pathfinding on ground and in air
-- Directional, point and spotlight light sources
+- Light sources
 - Shadows and shadowmaps
 - Complete UI system
 - Animations
