@@ -3,6 +3,7 @@
 echo "starting compilation"
 
 find . -type f -name "*.glsl" | while read -r shader_file; do
+    echo "-----"
     # shader directory
     dir_path=$(dirname "$shader_file")
     # base name of the shader file

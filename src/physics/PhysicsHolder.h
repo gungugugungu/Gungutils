@@ -4,17 +4,6 @@
 
 #ifndef PHYSICSHOLDER_H
 #define PHYSICSHOLDER_H
-#include <reactphysics3d/reactphysics3d.h>
-#include "rendering/Mesh.h"
-
-#include <vector>
-#include <unordered_map>
-#include <unordered_set>
-#include <array>
-#include <cstdint>
-#include <cmath>
-#include <limits>
-#include <algorithm>
 
 using namespace reactphysics3d;
 

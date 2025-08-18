@@ -35,11 +35,14 @@
 #include "FModStudio/api/core/inc/fmod_errors.h"
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
+#include <reactphysics3d/reactphysics3d.h>
 // shaders
 #include "shaders/mainshader.glsl.h"
+#include "shaders/postprocess.glsl.h"
 // sources
 #include "rendering/Mesh.h"
 #include "rendering/VisGroup.h"
+#include "rendering/Post Processing.h"
 #include "physics/PhysicsHolder.h"
 
 using namespace std;
@@ -79,10 +82,117 @@ struct AppState {
 };
 
 AppState state;
+PostProcessState post_state = {};
 int texture_index = 0;
 int mesh_index = 0;
 int num_elements = 0;
 bool loaded_is_palette = false;
+
+// full-screen quad vertices
+static float quad_vertices[] = {
+    // positions        // texture coords
+    -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
+     1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
+    -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
+     1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+};
+
+void init_post_processing() {
+    int width, height;
+    SDL_GetWindowSize(state.win, &width, &height);
+
+    sg_image_desc color_img_desc = {};
+    color_img_desc.width = width;
+    color_img_desc.height = height;
+    color_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    color_img_desc.sample_count = 1;
+    color_img_desc.label = "color-render-target";
+    post_state.color_img = sg_make_image(&color_img_desc);
+
+    sg_image_desc depth_img_desc = {};
+    depth_img_desc.width = width;
+    depth_img_desc.height = height;
+    depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    depth_img_desc.sample_count = 1;
+    depth_img_desc.label = "depth-render-target";
+    post_state.depth_img = sg_make_image(&depth_img_desc);
+
+    sg_attachments_desc attachments_desc = {};
+    attachments_desc.colors[0].image = post_state.color_img;
+    attachments_desc.depth_stencil.image = post_state.depth_img;
+    attachments_desc.label = "offscreen-attachments";
+    post_state.pass_attachments = sg_make_attachments(&attachments_desc);
+
+    sg_buffer_desc quad_vb_desc = {};
+    quad_vb_desc.data.ptr = quad_vertices;
+    quad_vb_desc.data.size = sizeof(quad_vertices);
+    quad_vb_desc.label = "quad-vertices";
+    post_state.quad_vb = sg_make_buffer(&quad_vb_desc);
+
+    sg_shader post_shader = sg_make_shader(postprocess_shader_desc(sg_query_backend()));
+
+    sg_pipeline_desc post_pip_desc = {};
+    post_pip_desc.shader = post_shader;
+    post_pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3; // position
+    post_pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_FLOAT2; // texcoord
+    post_pip_desc.color_count = 1;
+    post_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    post_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    post_pip_desc.depth.write_enabled = false;
+    post_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    post_pip_desc.cull_mode = SG_CULLMODE_NONE;
+    post_pip_desc.label = "post-process-pipeline";
+    post_state.post_pipeline = sg_make_pipeline(&post_pip_desc);
+
+    sg_sampler_desc post_sampler_desc = {};
+    post_sampler_desc.min_filter = SG_FILTER_LINEAR;
+    post_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+    post_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    post_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    post_state.post_sampler = sg_make_sampler(&post_sampler_desc);
+
+    post_state.post_bindings.vertex_buffers[0] = post_state.quad_vb;
+    post_state.post_bindings.images[0] = post_state.color_img;
+    post_state.post_bindings.samplers[0] = post_state.post_sampler;
+
+    post_state.uniforms.vignette_strength = 0.5f;
+    post_state.uniforms.vignette_radius = 0.8f;
+    post_state.uniforms.color_tint = HMM_V3(1.0f, 1.0f, 1.0f);
+    post_state.uniforms.exposure = 1.0f;
+    post_state.uniforms.contrast = 1.0f;
+    post_state.uniforms.brightness = 0.0f;
+    post_state.uniforms.saturation = 1.0f;
+}
+
+void resize_post_processing_targets(int width, int height) {
+    sg_destroy_image(post_state.color_img);
+    sg_destroy_image(post_state.depth_img);
+    sg_destroy_attachments(post_state.pass_attachments);
+
+    sg_image_desc color_img_desc = {};
+    color_img_desc.width = width;
+    color_img_desc.height = height;
+    color_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    color_img_desc.sample_count = 1;
+    color_img_desc.label = "color-render-target";
+    post_state.color_img = sg_make_image(&color_img_desc);
+
+    sg_image_desc depth_img_desc = {};
+    depth_img_desc.width = width;
+    depth_img_desc.height = height;
+    depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    depth_img_desc.sample_count = 1;
+    depth_img_desc.label = "depth-render-target";
+    post_state.depth_img = sg_make_image(&depth_img_desc);
+
+    sg_attachments_desc attachments_desc = {};
+    attachments_desc.colors[0].image = post_state.color_img;
+    attachments_desc.depth_stencil.image = post_state.depth_img;
+    attachments_desc.label = "offscreen-attachments";
+    post_state.pass_attachments = sg_make_attachments(&attachments_desc);
+
+    post_state.post_bindings.images[0] = post_state.color_img;
+}
 
 void fetch_callback(const sfetch_response_t* response);
 
@@ -419,6 +529,60 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             sg_destroy_buffer(ib);
         }
     }
+}
+
+void render_first_pass() {
+    sg_pass_action offscreen_pass_action = {};
+    offscreen_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    offscreen_pass_action.colors[0].clear_value = {state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f};
+    offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    offscreen_pass_action.depth.clear_value = 1.0f;
+
+    sg_pass pass = {};
+    pass.action = offscreen_pass_action;
+    pass.attachments = post_state.pass_attachments;
+    pass.label = "offscreen-pass";
+    sg_begin_pass(pass);
+
+    sg_apply_pipeline(state.pip);
+
+    render_meshes_batched_streaming();
+
+    sg_end_pass();
+}
+
+void render_second_pass() {
+    sg_pass_action swapchain_pass_action = {};
+    swapchain_pass_action.colors[0].load_action = SG_LOADACTION_DONTCARE;
+
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    sg_swapchain swapchain = {};
+    swapchain.width = w_width;
+    swapchain.height = w_height;
+    swapchain.sample_count = 1;
+    swapchain.color_format = SG_PIXELFORMAT_RGBA8;
+    swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    swapchain.gl.framebuffer = 0;
+
+    sg_pass pass{};
+    pass.action = swapchain_pass_action;
+    pass.swapchain = swapchain;
+    pass.label = "swapchain-pass";
+    sg_begin_pass(pass);
+
+    sg_apply_pipeline(post_state.post_pipeline);
+    sg_apply_bindings(&post_state.post_bindings);
+
+    post_state.uniforms.time = (float)stm_sec(stm_now());
+
+    sg_apply_uniforms(0, SG_RANGE(post_state.uniforms));
+
+    // draw full-screen quad
+    sg_draw(0, 4, 1);
+
+    sg_end_pass();
 }
 
 // using the Möller-Trumbore by the way
@@ -1692,10 +1856,15 @@ void _init() {
     request.buffer.ptr = state.file_buffer.data();
     request.buffer.size = state.file_buffer.size();
     sfetch_send(&request);
+
+    init_post_processing();
 }
 
 void _frame() {
     Time_BeginFrame(time_state);
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
     // FMOD
     FMOD_RESULT result;
     state.fmod_system->update();
@@ -1715,39 +1884,25 @@ void _frame() {
 
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
-    sg_pass pass = {};
-    pass.action = state.pass_action;
-    sg_swapchain swapchain = {};
-    int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
-    swapchain.width = w_width;
-    swapchain.height = w_height;
-    swapchain.sample_count = 1;
-    swapchain.color_format = SG_PIXELFORMAT_RGBA8;
-    swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    swapchain.gl.framebuffer = 0;
-    pass.swapchain = swapchain;
-    sg_begin_pass(&pass);
-    sg_apply_pipeline(state.pip);
 
-    // imgui
-    simgui_frame_desc_t imgui_frame_desc = {};
-    imgui_frame_desc.width = w_width;
-    imgui_frame_desc.height = w_height;
-    imgui_frame_desc.delta_time = time_state.dt;
-    imgui_frame_desc.dpi_scale = 1.0f;
-    simgui_new_frame(imgui_frame_desc);
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
 
-    vs_params = {
-        .view = view,
-        .projection = projection
-    };
+    vs_params = {.view = view, .projection = projection};
 
-    render_meshes_batched_streaming();
+    static int last_width = 0, last_height = 0;
+    if (w_width != last_width || w_height != last_height) {
+        if (last_width != 0 && last_height != 0) {
+            resize_post_processing_targets(w_width, w_height);
+        }
+        last_width = w_width;
+        last_height = w_height;
+    }
+
+    render_first_pass();
+    render_second_pass();
 
     // input
     if (state.editor_open) {
@@ -1769,6 +1924,14 @@ void _frame() {
             state.camera_pos = HMM_AddV3(state.camera_pos, offset);
         }
     }
+
+    // imgui
+    simgui_frame_desc_t imgui_frame_desc = {};
+    imgui_frame_desc.width = w_width;
+    imgui_frame_desc.height = w_height;
+    imgui_frame_desc.delta_time = time_state.dt;
+    imgui_frame_desc.dpi_scale = 1.0f;
+    simgui_new_frame(imgui_frame_desc);
 
     // imgui and editor
     if (state.editor_open) {
@@ -2199,7 +2362,6 @@ void _frame() {
     }*/ // This is just for the DEMO, feel free to remove it later.
     simgui_render();
 
-    sg_end_pass();
     sg_commit();
 }
 
