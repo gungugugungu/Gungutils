@@ -25,13 +25,19 @@ void init() {
     print_fmod_error(result);
 
     load_scene("maps/physicstest2.gmap");
-    for (auto& mesh : vis_groups[0].meshes) {
+    /*for (auto& mesh : vis_groups[0].meshes) {
         auto& holder = state.physics_holders.emplace_back(std::make_unique<PhysicsHolder>());
         holder->assign_mesh(&mesh);
     }
     state.physics_holders[2]->body->setLinearLockAxisFactor({0.0f, 0.0f, 0.0f});
     state.physics_holders[2]->body->setAngularLockAxisFactor({0.0f, 0.0f, 0.0f});
-    state.camera_pos = get_helper_by_name("campos")->position;
+    state.camera_pos = get_helper_by_name("campos")->position;*/
+    PointLight* light = new PointLight();
+    light->position = {0.0f, 4.0f, 0.0f};
+    light->color = {1.0f, 1.0f, 1.0f};
+    light->intensity = 30.0f;
+    light->radius = 15.0f;
+    state.lights.push_back(*light);
 }
 
 void frame() {
