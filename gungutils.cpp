@@ -1804,11 +1804,16 @@ sg_image editor_display_image;
 sg_sampler editor_display_sampler;
 
 void render_editor() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    int last_window_height = 0;
     if (state.editor_open) {
         // Mesh editor
-        ImGui::Begin("Object list");
+        ImGui::SetNextWindowPos(ImVec2(w_width, 0), 0, ImVec2(1.0f, 0.0f));
+        ImGui::Begin("Mesh list", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+        last_window_height = ImGui::GetWindowSize().y;
 
-        ImGui::BeginChild("Objects", ImVec2(256, 300), true);
+        ImGui::BeginChild("Meshes", ImVec2(256, 300), true);
 
         for (int v = 0; v < vis_groups.size(); v++) {
             VisGroup visgroup = vis_groups[v];
@@ -1983,7 +1988,9 @@ void render_editor() {
         ImGui::End();
 
         // Audio sources
-        ImGui::Begin("Audio sources");
+        ImGui::SetNextWindowPos(ImVec2(w_width, last_window_height), 0, ImVec2(1.0f, 0.0f));
+        ImGui::Begin("Audio sources", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+        last_window_height += ImGui::GetWindowSize().y;
 
         static int selected_as_index = -1;
 
@@ -2085,7 +2092,9 @@ void render_editor() {
 
         ImGui::End();
 
-        ImGui::Begin("Helpers");
+        ImGui::SetNextWindowPos(ImVec2(w_width, last_window_height), 0, ImVec2(1.0f, 0.0f));
+        ImGui::Begin("Helpers", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+        last_window_height += ImGui::GetWindowSize().y;
 
         static int selected_helper_index = -1;
 
@@ -2151,7 +2160,8 @@ void render_editor() {
 
         ImGui::End();
 
-        ImGui::Begin("General settings");
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
         if (ImGui::Button("Save Scene")) {
             const char* filter_patterns[] = {"*.gmap"};
             const char* file_path = tinyfd_saveFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files");
@@ -2175,7 +2185,7 @@ void render_editor() {
         }
 
         ImGui::Separator();
-        ImGui::BeginChild("VisGroups", ImVec2(150, 75), true);
+        ImGui::BeginChild("VisGroups", ImVec2(150, 75), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground);
         for (int i = 0; i < vis_groups.size(); i++) {
             string label = vis_groups[i].name;
 
@@ -2242,7 +2252,6 @@ void _init() {
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
-    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     // FMOD
     FMOD_RESULT result;
