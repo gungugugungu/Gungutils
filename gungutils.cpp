@@ -84,6 +84,7 @@ struct AppState {
 
 AppState state;
 PostProcessState post_state = {};
+ssao_params_t ssao_params;
 int texture_index = 0;
 int mesh_index = 0;
 int num_elements = 0;
@@ -601,6 +602,7 @@ void render_second_pass() {
 
     sg_apply_bindings(&post_state.post_bindings);
     sg_apply_uniforms(2, SG_RANGE(post_state.uniforms));
+    sg_apply_uniforms(3, SG_RANGE(ssao_params));
 
     sg_draw(0, 3, 1);
 
@@ -2351,12 +2353,24 @@ void _frame() {
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
 
-
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 50.0f);
 
     vs_params = {.view = view, .projection = projection};
+    HMM_Vec2 ssao_proj{};
+    ssao_proj.Y = tanf(state.fov * 0.5f);
+    ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
+    ssao_params = ssao_params_t{};
+    ssao_params.ao_radius = 0.5f;
+    ssao_params.ao_bias = 0.2f;
+    ssao_params.ao_strength = 0.75f;
+    ssao_params.ao_power = 1.0f;
+    ssao_params.ssao_samples= 16;
+    ssao_params.proj = ssao_proj;
+    ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
+    ssao_params.u_near = 0.1f;
+    ssao_params.u_far = 50.0f;
 
     render_first_pass();
     render_second_pass();
