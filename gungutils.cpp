@@ -2242,6 +2242,7 @@ void _init() {
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     // FMOD
     FMOD_RESULT result;
