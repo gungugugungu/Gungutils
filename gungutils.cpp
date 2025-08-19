@@ -436,7 +436,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         if (specular_textures[i].id != SG_INVALID_ID) {
                             sg_destroy_image(specular_textures[i]);
                             sg_destroy_sampler(specular_samplers[i]);
-                            cout << "destroyed specular texture " << i << endl;
                         }
                     }
                 }
