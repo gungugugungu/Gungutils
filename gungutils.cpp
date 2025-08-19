@@ -49,6 +49,7 @@ using namespace std;
 
 class AudioSource3D;
 class Helper;
+void render_editor();
 
 struct AppState {
     sg_pipeline pip{};
@@ -551,8 +552,6 @@ void render_first_pass() {
     sg_end_pass();
 
     sg_destroy_attachments(pass_attachments);
-
-    printf("First pass completed, color image id: %d\n", post_state.rendered_color_img.id);
 }
 
 void render_second_pass() {
@@ -583,7 +582,6 @@ void render_second_pass() {
     pass.label = "swapchain-pass";
     sg_begin_pass(pass);
 
-    // Apply post-processing pipeline
     sg_apply_pipeline(post_state.post_pipeline);
 
     post_state.uniforms.time = (float)stm_sec(stm_now());
@@ -598,9 +596,9 @@ void render_second_pass() {
 
     sg_draw(0, 3, 1);
 
-    sg_end_pass();
+    render_editor();
 
-    printf("Second pass completed\n");
+    sg_end_pass();
 }
 
 // using the Möller-Trumbore by the way
@@ -1790,158 +1788,7 @@ static int selected_selectable_visgroup_index = -1;
 sg_image editor_display_image;
 sg_sampler editor_display_sampler;
 
-void _init() {
-    VisGroup* default_visgroup = new VisGroup("default", {});
-    vis_groups.push_back(*default_visgroup);
-    stbi_set_flip_vertically_on_load(true);
-    stbi_set_flip_vertically_on_load_thread(true);
-
-    // ImGui
-    simgui_desc_t imgui_desc = {};
-    simgui_setup(imgui_desc);
-
-    // FMOD
-    FMOD_RESULT result;
-    result = FMOD::Studio::System::create(&state.fmod_system);
-    print_fmod_error(result);
-    FMOD::System* sys;
-    result = state.fmod_system->getCoreSystem(&sys);
-    print_fmod_error(result);
-    result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
-    print_fmod_error(result);
-    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL | FMOD_STUDIO_INIT_LIVEUPDATE, FMOD_INIT_NORMAL, 0);
-    print_fmod_error(result);
-    result = state.fmod_system->setNumListeners(1);
-    print_fmod_error(result);
-
-    // Set default camera variables
-    state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
-    state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
-    state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
-    state.yaw = -90.0f;
-    state.pitch = 0.0f;
-    state.last_time = stm_now();
-    state.fov = 95.0f;
-
-    sfetch_desc_t fetch_desc = {};
-    fetch_desc.max_requests = 1;
-    fetch_desc.num_channels = 1;
-    fetch_desc.num_lanes = 1;
-    sfetch_setup(&fetch_desc);
-
-    // create sampler
-    sg_sampler_desc sampler_desc = {};
-    sampler_desc.min_filter = SG_FILTER_LINEAR;
-    sampler_desc.mag_filter = SG_FILTER_LINEAR;
-    sampler_desc.wrap_u = SG_WRAP_REPEAT;
-    sampler_desc.wrap_v = SG_WRAP_REPEAT;
-    state.default_palette_smp = sg_make_sampler(&sampler_desc);
-
-    sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
-
-    sg_pipeline_desc pip_desc = {};
-    pip_desc.shader = shd;
-    pip_desc.color_count = 1;
-    pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    pip_desc.colors->blend.enabled = true;
-    pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-    pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    pip_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
-    pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
-    pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
-    pip_desc.layout.attrs[ATTR_main_aPos].format = SG_VERTEXFORMAT_FLOAT3;
-    pip_desc.layout.attrs[ATTR_main_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
-    pip_desc.layout.attrs[ATTR_main_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
-    pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
-    pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    pip_desc.index_type = SG_INDEXTYPE_UINT16;
-    pip_desc.depth.write_enabled = true;
-    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky, only use it if you avoided issues with it in scenes
-    pip_desc.label = "main-pipeline";
-    state.pip = sg_make_pipeline(&pip_desc);
-
-    state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
-    state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
-    state.pass_action.depth.clear_value = 1.0f;
-
-    loaded_is_palette = true;
-    sfetch_request_t request = {};
-    request.path = "palette.png"; // palette.png MUST exist
-    request.callback = fetch_callback;
-    request.buffer.ptr = state.file_buffer.data();
-    request.buffer.size = state.file_buffer.size();
-    sfetch_send(&request);
-
-    init_post_processing();
-}
-
-void _frame() {
-    Time_BeginFrame(time_state);
-    int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
-
-    // FMOD
-    FMOD_RESULT result;
-    state.fmod_system->update();
-    FMOD_3D_ATTRIBUTES camera_attributes;
-    camera_attributes.position = { -state.camera_pos.X, state.camera_pos.Y, -state.camera_pos.Z };
-    camera_attributes.velocity = { 0.0f, 0.0f, 0.0f };
-    camera_attributes.forward = { state.camera_front.X, state.camera_front.Y, state.camera_front.Z };
-    camera_attributes.up = { state.camera_up.X, state.camera_up.Y, state.camera_up.Z };
-    result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
-    print_fmod_error(result);
-
-    // Physics
-    if (!state.editor_open) world->update(time_state.dt);
-    for (auto& holder : state.physics_holders) {
-        holder->update();
-    }
-
-    sfetch_dowork();
-    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
-
-
-    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
-    HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
-
-    vs_params = {.view = view, .projection = projection};
-
-    render_first_pass();
-    render_second_pass();
-
-    // input
-    if (state.editor_open) {
-        float camera_speed = 5.f * time_state.dt;
-        if (state.inputs[SDLK_W] == true) {
-            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
-            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
-        }
-        if (state.inputs[SDLK_S] == true) {
-            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
-            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
-        }
-        if (state.inputs[SDLK_A] == true) {
-            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
-            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
-        }
-        if (state.inputs[SDLK_D] == true) {
-            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
-            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
-        }
-    }
-
-    // imgui
-    simgui_frame_desc_t imgui_frame_desc = {};
-    imgui_frame_desc.width = w_width;
-    imgui_frame_desc.height = w_height;
-    imgui_frame_desc.delta_time = time_state.dt;
-    imgui_frame_desc.dpi_scale = 1.0f;
-    simgui_new_frame(imgui_frame_desc);
-
-    // imgui and editor
+void render_editor() {
     if (state.editor_open) {
         // Mesh editor
         ImGui::Begin("Object list");
@@ -2369,6 +2216,158 @@ void _frame() {
         ImGui::End();
     }*/ // This is just for the DEMO, feel free to remove it later.
     simgui_render();
+}
+
+void _init() {
+    VisGroup* default_visgroup = new VisGroup("default", {});
+    vis_groups.push_back(*default_visgroup);
+    stbi_set_flip_vertically_on_load(true);
+    stbi_set_flip_vertically_on_load_thread(true);
+
+    // ImGui
+    simgui_desc_t imgui_desc = {};
+    simgui_setup(imgui_desc);
+
+    // FMOD
+    FMOD_RESULT result;
+    result = FMOD::Studio::System::create(&state.fmod_system);
+    print_fmod_error(result);
+    FMOD::System* sys;
+    result = state.fmod_system->getCoreSystem(&sys);
+    print_fmod_error(result);
+    result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
+    print_fmod_error(result);
+    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL | FMOD_STUDIO_INIT_LIVEUPDATE, FMOD_INIT_NORMAL, 0);
+    print_fmod_error(result);
+    result = state.fmod_system->setNumListeners(1);
+    print_fmod_error(result);
+
+    // Set default camera variables
+    state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
+    state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
+    state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
+    state.yaw = -90.0f;
+    state.pitch = 0.0f;
+    state.last_time = stm_now();
+    state.fov = 95.0f;
+
+    sfetch_desc_t fetch_desc = {};
+    fetch_desc.max_requests = 1;
+    fetch_desc.num_channels = 1;
+    fetch_desc.num_lanes = 1;
+    sfetch_setup(&fetch_desc);
+
+    // create sampler
+    sg_sampler_desc sampler_desc = {};
+    sampler_desc.min_filter = SG_FILTER_LINEAR;
+    sampler_desc.mag_filter = SG_FILTER_LINEAR;
+    sampler_desc.wrap_u = SG_WRAP_REPEAT;
+    sampler_desc.wrap_v = SG_WRAP_REPEAT;
+    state.default_palette_smp = sg_make_sampler(&sampler_desc);
+
+    sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
+
+    sg_pipeline_desc pip_desc = {};
+    pip_desc.shader = shd;
+    pip_desc.color_count = 1;
+    pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    pip_desc.colors->blend.enabled = true;
+    pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    pip_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
+    pip_desc.layout.attrs[ATTR_main_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_main_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
+    pip_desc.layout.attrs[ATTR_main_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
+    pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
+    pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    pip_desc.index_type = SG_INDEXTYPE_UINT16;
+    pip_desc.depth.write_enabled = true;
+    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky, only use it if you avoided issues with it in scenes
+    pip_desc.label = "main-pipeline";
+    state.pip = sg_make_pipeline(&pip_desc);
+
+    state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
+    state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    state.pass_action.depth.clear_value = 1.0f;
+
+    loaded_is_palette = true;
+    sfetch_request_t request = {};
+    request.path = "palette.png"; // palette.png MUST exist
+    request.callback = fetch_callback;
+    request.buffer.ptr = state.file_buffer.data();
+    request.buffer.size = state.file_buffer.size();
+    sfetch_send(&request);
+
+    init_post_processing();
+}
+
+void _frame() {
+    Time_BeginFrame(time_state);
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    // FMOD
+    FMOD_RESULT result;
+    state.fmod_system->update();
+    FMOD_3D_ATTRIBUTES camera_attributes;
+    camera_attributes.position = { -state.camera_pos.X, state.camera_pos.Y, -state.camera_pos.Z };
+    camera_attributes.velocity = { 0.0f, 0.0f, 0.0f };
+    camera_attributes.forward = { state.camera_front.X, state.camera_front.Y, state.camera_front.Z };
+    camera_attributes.up = { state.camera_up.X, state.camera_up.Y, state.camera_up.Z };
+    result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
+    print_fmod_error(result);
+
+    // imgui
+    simgui_frame_desc_t imgui_frame_desc = {};
+    imgui_frame_desc.width = w_width;
+    imgui_frame_desc.height = w_height;
+    imgui_frame_desc.delta_time = time_state.dt;
+    imgui_frame_desc.dpi_scale = 1.0f;
+    simgui_new_frame(imgui_frame_desc);
+
+    // Physics
+    if (!state.editor_open) world->update(time_state.dt);
+    for (auto& holder : state.physics_holders) {
+        holder->update();
+    }
+
+    sfetch_dowork();
+    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
+
+
+    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
+    HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
+
+    vs_params = {.view = view, .projection = projection};
+
+    render_first_pass();
+    render_second_pass();
+
+    // input
+    if (state.editor_open) {
+        float camera_speed = 5.f * time_state.dt;
+        if (state.inputs[SDLK_W] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_S] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_A] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_SubV3(state.camera_pos, offset);
+        }
+        if (state.inputs[SDLK_D] == true) {
+            HMM_Vec3 offset = HMM_MulV3F(HMM_NormV3(HMM_Cross(state.camera_front, state.camera_up)), camera_speed);
+            state.camera_pos = HMM_AddV3(state.camera_pos, offset);
+        }
+    }
 
     sg_commit();
 }
