@@ -10,8 +10,15 @@ layout(location = 1) in vec2 texcoord;
 out vec2 uv;
 
 void main() {
-    gl_Position = vec4(position, 1.0);
-    uv = texcoord;
+    // Fullscreen triangle
+    const vec2 pos[3] = vec2[](
+    vec2(-1.0, -1.0),
+    vec2( 3.0, -1.0),
+    vec2(-1.0,  3.0)
+    );
+    vec2 p = pos[gl_VertexIndex];
+    gl_Position = vec4(p, 0.0, 1.0);
+    uv = 0.5 * (p + 1.0);
 }
 @end
 
@@ -19,6 +26,7 @@ void main() {
 // Use consistent binding pattern like mainshader.glsl
 layout(binding = 0) uniform texture2D u_texture2D;
 layout(binding = 0) uniform sampler u_texture_smp;
+#define texture2D sampler2D(u_texture2D, u_texture_smp)
 
 // Move uniform block to binding = 1 to avoid conflict
 layout(binding = 1) uniform fs_params {
@@ -31,8 +39,6 @@ layout(binding = 1) uniform fs_params {
     float saturation;
     float time;
 };
-
-#define u_texture sampler2D(u_texture2D, u_texture_smp)
 
 in vec2 uv;
 out vec4 frag_color;
@@ -78,9 +84,9 @@ vec3 tonemap_aces(vec3 color) {
 }
 
 void main() {
-    vec3 color = texture(u_texture, uv).rgb;
+    vec3 color = texture(texture2D, uv).rgb;
 
-    // Apply exposure
+    /*// Apply exposure
     color *= exposure;
 
     // Apply contrast (simple method)
@@ -113,7 +119,7 @@ void main() {
     // color += (noise - 0.5) * 0.02;
 
     // Clamp final color
-    color = clamp(color, 0.0, 1.0);
+    color = clamp(color, 0.0, 1.0);*/
 
     frag_color = vec4(color, 1.0);
 }

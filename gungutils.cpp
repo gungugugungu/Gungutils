@@ -101,59 +101,48 @@ void init_post_processing() {
     int width, height;
     SDL_GetWindowSize(state.win, &width, &height);
 
-    sg_image_desc color_img_desc = {};
-    color_img_desc.width = width;
-    color_img_desc.height = height;
-    color_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    color_img_desc.sample_count = 1;
-    color_img_desc.label = "color-render-target";
-    post_state.color_img = sg_make_image(&color_img_desc);
+    post_state.color_img = {};
+    post_state.color_img.width = width;
+    post_state.color_img.height = height;
+    post_state.color_img.pixel_format = SG_PIXELFORMAT_RGBA8;
+    post_state.color_img.sample_count = 1;
+    post_state.depth_img.usage.render_attachment = true;
+    post_state.color_img.label = "color-render-target";
 
-    sg_image_desc depth_img_desc = {};
-    depth_img_desc.width = width;
-    depth_img_desc.height = height;
-    depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    depth_img_desc.sample_count = 1;
-    depth_img_desc.label = "depth-render-target";
-    post_state.depth_img = sg_make_image(&depth_img_desc);
+    post_state.depth_img = {};
+    post_state.depth_img.width = width;
+    post_state.depth_img.height = height;
+    post_state.depth_img.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    post_state.depth_img.sample_count = 1;
+    post_state.depth_img.usage.render_attachment = true;
+    post_state.depth_img.label = "depth-render-target";
 
-    sg_attachments_desc attachments_desc = {};
-    attachments_desc.colors[0].image = post_state.color_img;
-    attachments_desc.depth_stencil.image = post_state.depth_img;
-    attachments_desc.label = "offscreen-attachments";
-    post_state.pass_attachments = sg_make_attachments(&attachments_desc);
-
-    sg_buffer_desc quad_vb_desc = {};
-    quad_vb_desc.data.ptr = quad_vertices;
-    quad_vb_desc.data.size = sizeof(quad_vertices);
-    quad_vb_desc.label = "quad-vertices";
-    post_state.quad_vb = sg_make_buffer(&quad_vb_desc);
-
+    // Create the post-processing shader
     sg_shader post_shader = sg_make_shader(postprocess_shader_desc(sg_query_backend()));
 
+    // Create pipeline for fullscreen quad
     sg_pipeline_desc post_pip_desc = {};
     post_pip_desc.shader = post_shader;
-    post_pip_desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3; // position
-    post_pip_desc.layout.attrs[1].format = SG_VERTEXFORMAT_FLOAT2; // texcoord
+
+    post_pip_desc.layout.attrs[ATTR_postprocess_position].format = SG_VERTEXFORMAT_FLOAT3;
+    post_pip_desc.layout.attrs[ATTR_postprocess_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+
+    post_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     post_pip_desc.color_count = 1;
     post_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     post_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
-    post_pip_desc.depth.write_enabled = false;
     post_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    post_pip_desc.depth.write_enabled = false;
     post_pip_desc.cull_mode = SG_CULLMODE_NONE;
     post_pip_desc.label = "post-process-pipeline";
     post_state.post_pipeline = sg_make_pipeline(&post_pip_desc);
 
-    sg_sampler_desc post_sampler_desc = {};
-    post_sampler_desc.min_filter = SG_FILTER_LINEAR;
-    post_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-    post_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    post_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-    post_state.post_sampler = sg_make_sampler(&post_sampler_desc);
-
-    post_state.post_bindings.vertex_buffers[0] = post_state.quad_vb;
-    post_state.post_bindings.images[0] = post_state.color_img;
-    post_state.post_bindings.samplers[0] = post_state.post_sampler;
+    sg_sampler_desc smp_desc = {};
+    smp_desc.min_filter = SG_FILTER_LINEAR;
+    smp_desc.mag_filter = SG_FILTER_LINEAR;
+    smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    post_state.rendered_post_sampler = sg_make_sampler(&smp_desc);
 
     post_state.uniforms.vignette_strength = 0.5f;
     post_state.uniforms.vignette_radius = 0.8f;
@@ -162,36 +151,8 @@ void init_post_processing() {
     post_state.uniforms.contrast = 1.0f;
     post_state.uniforms.brightness = 0.0f;
     post_state.uniforms.saturation = 1.0f;
-}
 
-void resize_post_processing_targets(int width, int height) {
-    sg_destroy_image(post_state.color_img);
-    sg_destroy_image(post_state.depth_img);
-    sg_destroy_attachments(post_state.pass_attachments);
-
-    sg_image_desc color_img_desc = {};
-    color_img_desc.width = width;
-    color_img_desc.height = height;
-    color_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    color_img_desc.sample_count = 1;
-    color_img_desc.label = "color-render-target";
-    post_state.color_img = sg_make_image(&color_img_desc);
-
-    sg_image_desc depth_img_desc = {};
-    depth_img_desc.width = width;
-    depth_img_desc.height = height;
-    depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    depth_img_desc.sample_count = 1;
-    depth_img_desc.label = "depth-render-target";
-    post_state.depth_img = sg_make_image(&depth_img_desc);
-
-    sg_attachments_desc attachments_desc = {};
-    attachments_desc.colors[0].image = post_state.color_img;
-    attachments_desc.depth_stencil.image = post_state.depth_img;
-    attachments_desc.label = "offscreen-attachments";
-    post_state.pass_attachments = sg_make_attachments(&attachments_desc);
-
-    post_state.post_bindings.images[0] = post_state.color_img;
+    printf("Post-processing initialized\n");
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -532,15 +493,54 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 }
 
 void render_first_pass() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    if (post_state.color_img.width != w_width || post_state.color_img.height != w_height) {
+        if (post_state.rendered_color_img.id != SG_INVALID_ID) {
+            sg_destroy_image(post_state.rendered_color_img);
+        }
+        if (post_state.rendered_depth_img.id != SG_INVALID_ID) {
+            sg_destroy_image(post_state.rendered_depth_img);
+        }
+
+        post_state.color_img.width = w_width;
+        post_state.color_img.height = w_height;
+        post_state.depth_img.width = w_width;
+        post_state.depth_img.height = w_height;
+
+        post_state.rendered_color_img = sg_make_image(&post_state.color_img);
+        post_state.rendered_depth_img = sg_make_image(&post_state.depth_img);
+    } else if (post_state.rendered_color_img.id == SG_INVALID_ID) {
+        post_state.rendered_color_img = sg_make_image(&post_state.color_img);
+        post_state.rendered_depth_img = sg_make_image(&post_state.depth_img);
+    }
+
+    if (post_state.rendered_color_img.id == SG_INVALID_ID || post_state.rendered_depth_img.id == SG_INVALID_ID) {
+        printf("ERROR: Failed to create offscreen render targets!\n");
+        return;
+    }
+
     sg_pass_action offscreen_pass_action = {};
     offscreen_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     offscreen_pass_action.colors[0].clear_value = {state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f};
     offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     offscreen_pass_action.depth.clear_value = 1.0f;
 
+    sg_attachments_desc attachments_desc = {};
+    attachments_desc.colors[0].image = post_state.rendered_color_img;
+    attachments_desc.depth_stencil.image = post_state.rendered_depth_img;
+    attachments_desc.label = "offscreen-attachments";
+    sg_attachments pass_attachments = sg_make_attachments(&attachments_desc);
+
+    if (pass_attachments.id == SG_INVALID_ID) {
+        printf("ERROR: Failed to create offscreen attachments!\n");
+        return;
+    }
+
     sg_pass pass = {};
     pass.action = offscreen_pass_action;
-    pass.attachments = post_state.pass_attachments;
+    pass.attachments = pass_attachments;
     pass.label = "offscreen-pass";
     sg_begin_pass(pass);
 
@@ -549,11 +549,22 @@ void render_first_pass() {
     render_meshes_batched_streaming();
 
     sg_end_pass();
+
+    sg_destroy_attachments(pass_attachments);
+
+    printf("First pass completed, color image id: %d\n", post_state.rendered_color_img.id);
 }
 
 void render_second_pass() {
+    if (post_state.rendered_color_img.id == SG_INVALID_ID) {
+        printf("ERROR: No valid color image from first pass!\n");
+        return;
+    }
+
+    // Set up swapchain pass (render to screen)
     sg_pass_action swapchain_pass_action = {};
-    swapchain_pass_action.colors[0].load_action = SG_LOADACTION_DONTCARE;
+    swapchain_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    swapchain_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
 
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
@@ -572,17 +583,24 @@ void render_second_pass() {
     pass.label = "swapchain-pass";
     sg_begin_pass(pass);
 
+    // Apply post-processing pipeline
     sg_apply_pipeline(post_state.post_pipeline);
-    sg_apply_bindings(&post_state.post_bindings);
 
     post_state.uniforms.time = (float)stm_sec(stm_now());
 
-    sg_apply_uniforms(0, SG_RANGE(post_state.uniforms));
+    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID};
+    post_state.post_bindings.images[0] = post_state.rendered_color_img;
+    post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
 
-    // draw full-screen quad
-    sg_draw(0, 4, 1);
+    sg_apply_bindings(&post_state.post_bindings);
+
+    sg_apply_uniforms(1, SG_RANGE(post_state.uniforms));
+
+    sg_draw(0, 3, 1);
 
     sg_end_pass();
+
+    printf("Second pass completed\n");
 }
 
 // using the Möller-Trumbore by the way
@@ -757,7 +775,6 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
 
     rotation = HMM_M4ToQ_RH(rot_mat);
 }
-
 
 std::vector<Mesh> load_gltf(const std::string& path) {
     tinygltf::TinyGLTF loader;
@@ -1891,15 +1908,6 @@ void _frame() {
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
 
     vs_params = {.view = view, .projection = projection};
-
-    static int last_width = 0, last_height = 0;
-    if (w_width != last_width || w_height != last_height) {
-        if (last_width != 0 && last_height != 0) {
-            resize_post_processing_targets(w_width, w_height);
-        }
-        last_width = w_width;
-        last_height = w_height;
-    }
 
     render_first_pass();
     render_second_pass();
