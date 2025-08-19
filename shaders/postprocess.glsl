@@ -10,7 +10,7 @@ layout(location = 1) in vec2 texcoord;
 out vec2 uv;
 
 void main() {
-    // Fullscreen triangle
+    // fullscreen triangle
     const vec2 pos[3] = vec2[](
     vec2(-1.0, -1.0),
     vec2( 3.0, -1.0),
@@ -23,13 +23,14 @@ void main() {
 @end
 
 @fs postprocess_fs
-// Use consistent binding pattern like mainshader.glsl
 layout(binding = 0) uniform texture2D u_texture2D;
 layout(binding = 0) uniform sampler u_texture_smp;
+layout(binding = 1) uniform texture2D u_depth2D;
+layout(binding = 1) uniform sampler u_depth_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
+#define depth2D   sampler2D(u_depth2D, u_depth_smp)
 
-// Move uniform block to binding = 1 to avoid conflict
-layout(binding = 1) uniform fs_params {
+layout(binding = 2) uniform fs_params {
     float vignette_strength;
     float vignette_radius;
     vec3 color_tint;
@@ -43,83 +44,21 @@ layout(binding = 1) uniform fs_params {
 in vec2 uv;
 out vec4 frag_color;
 
-// Helper functions for color grading
-vec3 rgb2hsv(vec3 c) {
-    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-
-    float d = q.x - min(q.w, q.y);
-    float e = 1.0e-10;
-    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-
-vec3 hsv2rgb(vec3 c) {
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
-// Vignette effect
-vec3 apply_vignette(vec3 color, vec2 uv, float strength, float radius) {
-    vec2 center = vec2(0.5, 0.5);
-    float dist = distance(uv, center);
-    float vignette = smoothstep(radius, radius - 0.3, dist);
-    return mix(color * (1.0 - strength), color, vignette);
-}
-
-// Tone mapping (simple Reinhard)
-vec3 tonemap_reinhard(vec3 color) {
-    return color / (1.0 + color);
-}
-
-// ACES filmic tone mapping (approximation)
-vec3 tonemap_aces(vec3 color) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
-}
-
 void main() {
+    float u_near = 0.1;
+    float u_far  = 200.0;
+
     vec3 color = texture(texture2D, uv).rgb;
+    float d    = texture(depth2D, uv).r;
 
-    /*// Apply exposure
-    color *= exposure;
+    float viewZ = (u_near * u_far) / max((u_far - d * (u_far - u_near)), 1e-6);
 
-    // Apply contrast (simple method)
-    color = ((color - 0.5) * contrast) + 0.5;
+    float vis_near = 0.2;
+    float vis_far  = 50.0;
 
-    // Apply brightness
-    color += brightness;
-
-    // Apply saturation
-    vec3 hsv = rgb2hsv(color);
-    hsv.y *= saturation;
-    color = hsv2rgb(hsv);
-
-    // Apply color tint
-    color *= color_tint;
-
-    // Apply vignette
-    color = apply_vignette(color, uv, vignette_strength, vignette_radius);
-
-    // Tone mapping (choose one)
-    color = tonemap_aces(color);
-    // color = tonemap_reinhard(color);
-
-    // Gamma correction
-    color = pow(color, vec3(1.0/2.2));
-
-    // Optional: Add some film grain or noise
-    // vec2 noise_uv = uv + sin(time * 1000.0) * 0.001;
-    // float noise = fract(sin(dot(noise_uv, vec2(12.9898, 78.233))) * 43758.5453);
-    // color += (noise - 0.5) * 0.02;
-
-    // Clamp final color
-    color = clamp(color, 0.0, 1.0);*/
+    float mapped = clamp((viewZ - vis_near) / (vis_far - vis_near), 0.0, 1.0);
+    mapped = smoothstep(0.0, 1.0, mapped);
+    mapped = pow(mapped, 0.7);
 
     frag_color = vec4(color, 1.0);
 }

@@ -23,6 +23,8 @@ void init() {
     state.event_descriptions.resize(event_count);
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
+
+    load_scene("maps/lightingtest.gmap");
 }
 
 void frame() {

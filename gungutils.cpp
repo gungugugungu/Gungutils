@@ -133,7 +133,7 @@ void init_post_processing() {
     post_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     post_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
     post_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
-    post_pip_desc.depth.write_enabled = false;
+    post_pip_desc.depth.write_enabled = true;
     post_pip_desc.cull_mode = SG_CULLMODE_NONE;
     post_pip_desc.label = "post-process-pipeline";
     post_state.post_pipeline = sg_make_pipeline(&post_pip_desc);
@@ -144,6 +144,13 @@ void init_post_processing() {
     smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
     smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     post_state.rendered_post_sampler = sg_make_sampler(&smp_desc);
+
+    sg_sampler_desc smp_depth_desc = {};
+    smp_depth_desc.min_filter = SG_FILTER_NEAREST;
+    smp_depth_desc.mag_filter = SG_FILTER_NEAREST;
+    smp_depth_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    smp_depth_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    post_state.rendered_depth_sampler = sg_make_sampler(&smp_depth_desc);
 
     post_state.uniforms.vignette_strength = 0.5f;
     post_state.uniforms.vignette_radius = 0.8f;
@@ -586,13 +593,14 @@ void render_second_pass() {
 
     post_state.uniforms.time = (float)stm_sec(stm_now());
 
-    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID};
+    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID}; // I'm generating the fullscreen quad in the shader
     post_state.post_bindings.images[0] = post_state.rendered_color_img;
     post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
+    post_state.post_bindings.images[1] = post_state.rendered_depth_img;
+    post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
 
     sg_apply_bindings(&post_state.post_bindings);
-
-    sg_apply_uniforms(1, SG_RANGE(post_state.uniforms));
+    sg_apply_uniforms(2, SG_RANGE(post_state.uniforms));
 
     sg_draw(0, 3, 1);
 
@@ -1464,6 +1472,7 @@ void save_scene(const string& path) {
             mesh_json["rotation"] = {mesh.rotation.X, mesh.rotation.Y, mesh.rotation.Z, mesh.rotation.W};
             mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
             mesh_json["opacity"] = mesh.opacity;
+            mesh_json["enable_shading"] = mesh.enable_shading;
 
             if (mesh.vertex_count > 0 && mesh.vertices) {
                 mesh_json["vertex_count"] = mesh.vertex_count;
@@ -1594,6 +1603,10 @@ void load_scene(const string& path) {
 
                     if (mesh_json.contains("opacity")) {
                         mesh.opacity = mesh_json["opacity"];
+                    }
+
+                    if (mesh_json.contains("enable_shading")) {
+                        mesh.enable_shading = mesh_json["enable_shading"];
                     }
 
                     if (mesh_json.contains("vertex_count") &&
@@ -2341,7 +2354,7 @@ void _frame() {
 
     // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 200.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 50.0f);
 
     vs_params = {.view = view, .projection = projection};
 

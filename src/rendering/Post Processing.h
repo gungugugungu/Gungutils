@@ -16,7 +16,9 @@ struct PostProcessState {
     sg_bindings post_bindings;
     sg_buffer_desc quad_vb;
     sg_sampler_desc post_sampler;
+    sg_sampler_desc post_depth_sampler;
     sg_sampler rendered_post_sampler;
+    sg_sampler rendered_depth_sampler;
 
     // post-process uniforms
     struct PostProcessUniforms {
