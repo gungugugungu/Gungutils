@@ -2363,10 +2363,10 @@ void _frame() {
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
     ssao_params = ssao_params_t{};
     ssao_params.ao_radius = 0.5f;
-    ssao_params.ao_bias = 0.2f;
-    ssao_params.ao_strength = 0.75f;
-    ssao_params.ao_power = 1.0f;
-    ssao_params.ssao_samples= 16;
+    ssao_params.ao_bias = 0.02f;
+    ssao_params.ao_strength = 1.0f;
+    ssao_params.ao_power = 1.75f;
+    ssao_params.ssao_samples = 32;
     ssao_params.proj = ssao_proj;
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
     ssao_params.u_near = 0.1f;

@@ -120,6 +120,9 @@ vec3( 0.0352, -0.0631, 0.5460),
 vec3(-0.4776, 0.2847, -0.0271)
 );
 
+int outline_size = 2;
+float outline_trigger_dist = 0.1;
+
 void main() {
     vec3 color = texture(texture2D, uv).rgb;
     float d = texture(depth2D, uv).r;
@@ -176,7 +179,31 @@ void main() {
     float ao = 1.0 - occ;
     ao = pow(mix(1.0, ao, ao_strength), ao_power);
 
-    vec3 final_color = color * ao;
+    vec3 final_color = color * ao; // ambient-occlusion done by here
+
+    float highest_depth = 0.0;
+    float lowest_depth = 1.0;
+    vec2 texel = 1.0 / screen_size;
+
+    float center_raw = texture(depth2D, uv).r;
+    float center_depth = linearize_reversed_depth(center_raw, u_near, u_far);
+
+    float max_diff = 0.0;
+
+    for (int y=-outline_size; y<=outline_size; y++) {
+        for (int x=-outline_size; x<=outline_size; x++) {
+            vec2 offset = uv + vec2(x, y) * texel;
+            float sample_raw = texture(depth2D, offset).r;
+            float sample_depth = linearize_reversed_depth(sample_raw, u_near, u_far);
+
+            float diff = abs(center_depth - sample_depth);
+            max_diff = max(max_diff, diff);
+        }
+    }
+
+    if (max_diff > outline_trigger_dist) {
+        final_color = vec3(0.0, 0.0, 0.0); // outline
+    }
 
     frag_color = vec4(final_color, 1.0);
 }
