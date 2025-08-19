@@ -18,13 +18,9 @@ public:
     uint16_t* indices16 = nullptr;
     bool use_uint16_indices = true;
 
-    sg_image_desc texture_desc = {};
-    sg_sampler_desc sampler_desc = {};
-    bool has_texture = false;
-    uint8_t* texture_data = nullptr;
-    size_t texture_data_size = 0;
-
     bool enable_shading = true;
+
+    Material* material;
 
     Mesh() = default;
 
@@ -32,10 +28,9 @@ public:
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
-        delete[] texture_data;
     }
 
-    Mesh(const Mesh& other) : vertices(nullptr), indices(nullptr), indices16(nullptr), texture_data(nullptr) {
+    Mesh(const Mesh& other) : vertices(nullptr), indices(nullptr), indices16(nullptr) {
         *this = other;
     }
 
@@ -45,18 +40,12 @@ public:
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
-        delete[] texture_data;
 
         vertex_count = other.vertex_count;
         index_count = other.index_count;
         vertex_buffer_desc = other.vertex_buffer_desc;
         index_buffer_desc = other.index_buffer_desc;
         use_uint16_indices = other.use_uint16_indices;
-
-        texture_desc = other.texture_desc;
-        sampler_desc = other.sampler_desc;
-        has_texture = other.has_texture;
-        texture_data_size = other.texture_data_size;
 
         if (other.vertices && vertex_count > 0) {
             vertices = new float[vertex_count * 8];
@@ -85,14 +74,6 @@ public:
             indices16 = nullptr;
         }
 
-        if (other.texture_data && texture_data_size > 0) {
-            texture_data = new uint8_t[texture_data_size];
-            memcpy(texture_data, other.texture_data, texture_data_size);
-            texture_desc.data.subimage[0][0].ptr = texture_data;
-        } else {
-            texture_data = nullptr;
-        }
-
         return *this;
     }
 
@@ -106,7 +87,6 @@ public:
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
-        delete[] texture_data;
 
         vertices = o.vertices;
         vertex_count = o.vertex_count;
@@ -119,17 +99,9 @@ public:
         vertex_buffer_desc = o.vertex_buffer_desc;
         index_buffer_desc = o.index_buffer_desc;
 
-        // Move texture data
-        texture_desc = o.texture_desc;
-        sampler_desc = o.sampler_desc;
-        has_texture = o.has_texture;
-        texture_data = o.texture_data;
-        texture_data_size = o.texture_data_size;
-
         o.vertices = nullptr;
         o.indices = nullptr;
         o.indices16 = nullptr;
-        o.texture_data = nullptr;
 
         return *this;
     }

@@ -39,10 +39,19 @@ layout(location = 1) in float v_opacity;
 layout(location = 2) in vec3 vNormal;
 layout(location = 3) flat in int venable_shading;
 
-layout(binding = 0) uniform texture2D _palette2D;
-layout(binding = 0) uniform sampler palette_smp;
+layout(binding = 0) uniform texture2D _diffuse_tex2D;
+layout(binding = 0) uniform sampler diffuse_tex_smp;
+layout(binding = 1) uniform texture2D _specular_tex2D;
+layout(binding = 1) uniform sampler specular_tex_smp;
 
-#define palette2D sampler2D(_palette2D, palette_smp)
+layout(binding = 2) uniform model_fs_params {
+    int has_diffuse_tex;
+    int has_specular_tex;
+    float specular; // in case of no specular texture, just render it with this setting instead of a map. 0f to 1f
+};
+
+#define diffuse_texture2D sampler2D(_diffuse_tex2D, diffuse_tex_smp)
+#define specular_texture2D sampler2D(_specular_tex2D, specular_tex_smp)
 
 float bayer4x4(vec2 fragXY) {
     // use integer pixel coordinates modulo 4
@@ -64,7 +73,8 @@ float bayer4x4(vec2 fragXY) {
 }
 
 void main() {
-    vec4 texColor = texture(palette2D, TexCoord);
+    vec4 diffuse_tex_color = texture(diffuse_texture2D, TexCoord);
+    vec4 specular_tex_color = texture(specular_texture2D, TexCoord);
 
     // directional light settings
     const vec3 LIGHT_DIR = normalize(vec3(-0.4, -1.0, -0.6));
@@ -92,12 +102,12 @@ void main() {
 
     vec3 finalRgb;
     if (venable_shading == 1) {
-        finalRgb = clamp(texColor.rgb * lighting, 0.0, 1.0);
+        finalRgb = clamp(diffuse_tex_color.rgb * lighting, 0.0, 1.0);
     } else {
-        finalRgb = texColor.rgb;
+        finalRgb = diffuse_tex_color.rgb;
     }
 
-    FragColor = vec4(finalRgb, texColor.a * v_opacity);
+    FragColor = vec4(finalRgb, diffuse_tex_color.a * v_opacity);
 }
 @end
 

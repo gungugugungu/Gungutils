@@ -40,6 +40,7 @@
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
 // sources
+#include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
@@ -109,7 +110,7 @@ void init_post_processing() {
     post_state.color_img.height = height;
     post_state.color_img.pixel_format = SG_PIXELFORMAT_RGBA8;
     post_state.color_img.sample_count = 1;
-    post_state.depth_img.usage.render_attachment = true;
+    post_state.color_img.usage.render_attachment = true;
     post_state.color_img.label = "color-render-target";
 
     post_state.depth_img = {};
@@ -270,120 +271,53 @@ void prepare_mesh_buffers(Mesh& mesh) {
         mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
     }
 
-    if (!mesh.has_texture) {
-        mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-        mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-        mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-        mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+    if (!mesh.material->has_diffuse_texture) {
+        mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+        mesh.material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+        mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
     }
 }
 
-void render_meshes_streaming() {
-    for (auto& visgroup : vis_groups) {
-        if (visgroup.enabled) {
-            for (auto& obj : visgroup.objects) {
-                Mesh* mesh = obj.mesh;
-                sg_buffer vertex_buffer = sg_make_buffer(&mesh->vertex_buffer_desc);
-                sg_buffer index_buffer = sg_make_buffer(&mesh->index_buffer_desc);
-
-                if (vertex_buffer.id == SG_INVALID_ID || index_buffer.id == SG_INVALID_ID) {
-                    if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
-                    if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
-                    continue;
-                }
-
-                sg_image texture;
-                sg_sampler sampler;
-
-                if (mesh->has_texture && mesh->texture_data) {
-                    texture = sg_make_image(&mesh->texture_desc);
-                    sampler = sg_make_sampler(&mesh->sampler_desc);
-                } else {
-                    // use default palette texture and sampler
-                    texture = state.bind.images[0];
-                    sampler = state.bind.samplers[0];
-                }
-
-                state.bind.vertex_buffers[0] = vertex_buffer;
-                state.bind.index_buffer = index_buffer;
-                state.bind.images[0] = texture;
-                state.bind.samplers[0] = sampler;
-
-                sg_apply_bindings(&state.bind);
-
-                HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-                HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-                HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-                HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-                vs_params.model = model;
-                vs_params.opacity = obj.opacity*visgroup.opacity;
-                if (mesh->enable_shading) {
-                    vs_params.enable_shading = 1;
-                } else {
-                    vs_params.enable_shading = 0;
-                }
-                sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-                sg_draw(0, mesh->index_count, 1);
-
-                sg_destroy_buffer(vertex_buffer);
-                sg_destroy_buffer(index_buffer);
-
-                if (mesh->has_texture && mesh->texture_data) {
-                    sg_destroy_image(texture);
-                    sg_destroy_sampler(sampler);
-                }
-            }
-        }
+sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
+    if (!d) { printf("validate: null desc for %s\n", name); return (sg_image){ .id = SG_INVALID_ID }; }
+    // verify dims
+    if (d->width <= 0 || d->height <= 0) {
+        printf("validate: %s has invalid dims w=%d h=%d\n", name, d->width, d->height);
     }
-
-    if (state.editor_open) {
-        for (auto& obj : visualizer_objects) {
-            Mesh* mesh = obj.mesh;
-            sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
-            sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
-            if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
-                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
-                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
-                continue;
-            }
-
-            // visualizer meshes use default palette texture
-            state.bind.vertex_buffers[0] = vb;
-            state.bind.index_buffer = ib;
-            state.bind.images[0] = state.default_palette_img;
-            state.bind.samplers[0] = state.default_palette_smp;
-            sg_apply_bindings(&state.bind);
-
-            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-
-            vs_params.model = model;
-            vs_params.opacity = obj.opacity;
-            vs_params.enable_shading = 0;
-            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-            sg_draw(0, mesh->index_count, 1);
-
-            sg_destroy_buffer(vb);
-            sg_destroy_buffer(ib);
-        }
+    // verify pixel format - expecting RGBA8 for your code
+    if (d->pixel_format != SG_PIXELFORMAT_RGBA8) {
+        printf("validate: %s pixel_format = %d (expected RGBA8)\n", name, (int)d->pixel_format);
     }
-}
+    // verify data pointer/size for a texture (not a render target)
+    size_t expected = (size_t)d->width * (size_t)d->height * 4; // if RGBA8
+    size_t given = d->data.subimage[0][0].size;
+    const void *ptr = d->data.subimage[0][0].ptr;
+    if (!ptr || given == 0) {
+        printf("validate: %s has null ptr or zero size (ptr=%p size=%zu)\n", name, ptr, given);
+    } else if (given != expected) {
+        printf("validate: %s size mismatch (expected %zu, given %zu)\n", name, expected, given);
+    }
+    // make a local copy of the desc before calling sg_make_image (safer)
+    sg_image_desc local_desc = *d;
+    return sg_make_image(&local_desc);
+};
 
 void render_meshes_batched_streaming(size_t batch_size = 10) {
     std::vector<sg_buffer> vertex_buffers;
     std::vector<sg_buffer> index_buffers;
     std::vector<sg_image> textures;
     std::vector<sg_sampler> samplers;
+    std::vector<sg_image> specular_textures;
+    std::vector<sg_sampler> specular_samplers;
     std::vector<bool> created_textures;
 
     vertex_buffers.reserve(batch_size);
     index_buffers.reserve(batch_size);
     textures.reserve(batch_size);
     samplers.reserve(batch_size);
+    specular_textures.reserve(batch_size);
+    specular_samplers.reserve(batch_size);
     created_textures.reserve(batch_size);
 
     for (auto& visgroup : vis_groups) {
@@ -395,6 +329,8 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                 index_buffers.clear();
                 textures.clear();
                 samplers.clear();
+                specular_textures.clear();
+                specular_samplers.clear();
                 created_textures.clear();
 
                 for (size_t i = start; i < end; i++) {
@@ -408,12 +344,21 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         index_buffers.push_back(ib);
 
                         // handle texture
-                        if (mesh->has_texture && mesh->texture_data) {
-                            sg_image texture = sg_make_image(&mesh->texture_desc);
-                            sg_sampler sampler = sg_make_sampler(&mesh->sampler_desc);
+                        if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
+                            sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
+                            sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
                             textures.push_back(texture);
                             samplers.push_back(sampler);
                             created_textures.push_back(true);
+                            if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
+                                sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular"); // optional wrapper
+                                sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
+                                specular_textures.push_back(texture2);
+                                specular_samplers.push_back(sampler2);
+                            } else {
+                                specular_textures.push_back((sg_image){ .id = SG_INVALID_ID });
+                                specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
+                            }
                         } else {
                             // use default palette texture
                             textures.push_back(state.bind.images[0]);
@@ -436,6 +381,10 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     state.bind.index_buffer = index_buffers[i];
                     state.bind.images[0] = textures[i];
                     state.bind.samplers[0] = samplers[i];
+                    if (mesh->material->has_specular_texture) {
+                        state.bind.images[1] = specular_textures[i];
+                        state.bind.samplers[1] = specular_samplers[i];
+                    }
 
                     sg_apply_bindings(&state.bind);
 
@@ -451,6 +400,24 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         vs_params.enable_shading = 0;
                     }
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+                    struct model_fs_params_t {
+                        int has_diffuse_tex;
+                        int has_specular_tex;
+                        float specular;
+                    };
+                    model_fs_params_t model_fs_params;
+                    if (mesh->material->has_diffuse_texture) {
+                        model_fs_params.has_diffuse_tex = 1;
+                    } else {
+                        model_fs_params.has_diffuse_tex = 0;
+                    }
+                    if (mesh->material->has_specular_texture) {
+                        model_fs_params.has_specular_tex = 1;
+                    } else {
+                        model_fs_params.has_specular_tex = 0;
+                    }
+                    model_fs_params.specular = mesh->material->specular;
+                    sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
                     sg_draw(0, mesh->index_count, 1);
                 }
@@ -466,6 +433,11 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     if (created_textures[i]) {
                         sg_destroy_image(textures[i]);
                         sg_destroy_sampler(samplers[i]);
+                        if (specular_textures[i].id != SG_INVALID_ID) {
+                            sg_destroy_image(specular_textures[i]);
+                            sg_destroy_sampler(specular_samplers[i]);
+                            cout << "destroyed specular texture " << i << endl;
+                        }
                     }
                 }
             }
@@ -821,67 +793,112 @@ vector<Object> load_gltf(const std::string& path) {
     };
 
     auto loadTexture = [&](int textureIndex) -> std::pair<uint8_t*, sg_image_desc> {
+        cout << "loading texture" << endl;
         if (textureIndex < 0 || textureIndex >= model.textures.size()) {
             return {nullptr, {}};
         }
-
         const auto& texture = model.textures[textureIndex];
         if (texture.source < 0 || texture.source >= model.images.size()) {
             return {nullptr, {}};
         }
-
         const auto& image = model.images[texture.source];
 
         sg_image_desc img_desc = {};
         uint8_t* texture_data = nullptr;
 
+        auto flip_tex_vertically_local = [&](unsigned char* data, int width, int height, int channels) -> void {
+            cout << "flipping texture vertically" << endl;
+            int row_size = width * channels;
+            unsigned char* temp_row = new unsigned char[row_size];
+            for (int y = 0; y < height / 2; ++y) {
+                unsigned char* top_row = data + y * row_size;
+                unsigned char* bottom_row = data + (height - 1 - y) * row_size;
+                memcpy(temp_row, top_row, row_size);
+                memcpy(top_row, bottom_row, row_size);
+                memcpy(bottom_row, temp_row, row_size);
+            }
+            delete[] temp_row;
+        };
+
+        auto expand_to_rgba = [&](const unsigned char* src, int w, int h, int channels)->std::pair<uint8_t*, size_t> {
+            cout << "expanding to rgba" << endl;
+            const size_t out_pixels = (size_t)w * (size_t)h;
+            size_t out_size = out_pixels * 4;
+            uint8_t* out = new uint8_t[out_size];
+            for (size_t i = 0; i < out_pixels; ++i) {
+                const unsigned char* s = src + i * channels;
+                uint8_t r = (channels >= 1) ? s[0] : 0;
+                uint8_t g = (channels >= 2) ? s[1] : 0;
+                uint8_t b = (channels >= 3) ? s[2] : 0;
+                uint8_t a = (channels == 4) ? s[3] : 255;
+                uint8_t* d = out + i * 4;
+                d[0] = r; d[1] = g; d[2] = b; d[3] = a;
+            }
+            return {out, out_size};
+        };
+
         if (!image.image.empty()) {
-            // image data is already decoded
-            img_desc.width = image.width;
-            img_desc.height = image.height;
-            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-
-            size_t data_size = image.image.size();
-            texture_data = new uint8_t[data_size];
-            memcpy(texture_data, image.image.data(), data_size);
-
-            flip_tex_vertically(texture_data, image.width, image.height, 4);
-
-            img_desc.data.subimage[0][0].ptr = texture_data;
-            img_desc.data.subimage[0][0].size = data_size;
+            int channels = image.component > 0 ? image.component : 4;
+            int w = image.width;
+            int h = image.height;
+            if (w > 0 && h > 0) {
+                if (channels == 4) {
+                    size_t data_size = (size_t)w * (size_t)h * 4;
+                    texture_data = new uint8_t[data_size];
+                    memcpy(texture_data, image.image.data(), data_size);
+                    flip_tex_vertically_local(texture_data, w, h, 4);
+                    img_desc.width = w;
+                    img_desc.height = h;
+                    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                    img_desc.data.subimage[0][0].ptr = texture_data;
+                    img_desc.data.subimage[0][0].size = data_size;
+                    cout << "set 4 channel texture data" << endl;
+                } else {
+                    const unsigned char* src = image.image.data();
+                    auto [expanded, expanded_size] = expand_to_rgba(src, w, h, channels);
+                    flip_tex_vertically_local(expanded, w, h, 4);
+                    texture_data = expanded;
+                    img_desc.width = w;
+                    img_desc.height = h;
+                    img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                    img_desc.data.subimage[0][0].ptr = texture_data;
+                    img_desc.data.subimage[0][0].size = expanded_size;
+                    cout << "setting other channel number data?" << endl;
+                }
+            } else {
+                return {nullptr, {}};
+            }
         } else if (!image.uri.empty()) {
-            // load from file (relative to GLTF file)
             std::string base_dir = path.substr(0, path.find_last_of("/\\") + 1);
             std::string full_path = base_dir + image.uri;
 
-            int img_width, img_height, num_channels;
+            cout << "loading texture from path" << endl;
+
+            int img_width = 0, img_height = 0, num_channels = 0;
             const int desired_channels = 4;
             stbi_uc* pixels = stbi_load(full_path.c_str(), &img_width, &img_height, &num_channels, desired_channels);
-
             if (pixels) {
                 img_desc.width = img_width;
                 img_desc.height = img_height;
                 img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-
-                size_t data_size = img_width * img_height * desired_channels;
+                size_t data_size = (size_t)img_width * (size_t)img_height * desired_channels;
                 texture_data = new uint8_t[data_size];
                 memcpy(texture_data, pixels, data_size);
-
-                flip_tex_vertically(texture_data, img_width, img_height, desired_channels);
-
+                flip_tex_vertically_local(texture_data, img_width, img_height, desired_channels);
                 img_desc.data.subimage[0][0].ptr = texture_data;
                 img_desc.data.subimage[0][0].size = data_size;
-
                 stbi_image_free(pixels);
             }
         } else if (image.bufferView >= 0) {
             const auto& bufferView = model.bufferViews[image.bufferView];
             const auto& buffer = model.buffers[bufferView.buffer];
 
+            cout << "something to do with bufferviews idk" << endl;
+
             const uint8_t* data = buffer.data.data() + bufferView.byteOffset;
             size_t data_size = bufferView.byteLength;
 
-            int img_width, img_height, num_channels;
+            int img_width = 0, img_height = 0, num_channels = 0;
             const int desired_channels = 4;
             stbi_uc* pixels = stbi_load_from_memory(data, static_cast<int>(data_size),
                                                   &img_width, &img_height, &num_channels, desired_channels);
@@ -891,10 +908,10 @@ vector<Object> load_gltf(const std::string& path) {
                 img_desc.height = img_height;
                 img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
 
-                size_t pixel_data_size = img_width * img_height * desired_channels;
+                size_t pixel_data_size = (size_t)img_width * (size_t)img_height * desired_channels;
                 texture_data = new uint8_t[pixel_data_size];
                 memcpy(texture_data, pixels, pixel_data_size);
-
+                flip_tex_vertically_local(texture_data, img_width, img_height, desired_channels);
                 img_desc.data.subimage[0][0].ptr = texture_data;
                 img_desc.data.subimage[0][0].size = pixel_data_size;
 
@@ -902,10 +919,12 @@ vector<Object> load_gltf(const std::string& path) {
             }
         }
 
+        cout << "returning texture data" << endl;
         return {texture_data, img_desc};
     };
 
     std::function<void(int, const HMM_Mat4&)> processNode = [&](int nodeIndex, const HMM_Mat4& parentTransform) {
+        cout << "processing node" << endl;
         if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) return;
         const auto& node = model.nodes[nodeIndex];
 
@@ -1017,6 +1036,7 @@ vector<Object> load_gltf(const std::string& path) {
 
                 Object obj;
                 obj.mesh = new Mesh;
+                obj.mesh->material = new Material;
                 obj.mesh->vertices = verts;
                 obj.mesh->vertex_count = vcount;
                 obj.mesh->indices = idxs;
@@ -1029,28 +1049,48 @@ vector<Object> load_gltf(const std::string& path) {
 
                     if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                         auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
+                        cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
+                        uint8_t* specular_texture_data;
+                        sg_image_desc specular_img_desc;
+                        if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
+                            cout << "loading specular texture" << endl;
+                            auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
+                            specular_texture_data = u_specular_texture_data;
+                            specular_img_desc = u_specular_img_desc;
+                        }
 
                         if (texture_data && img_desc.width > 0) {
-                            obj.mesh->texture_data = texture_data;
-                            obj.mesh->texture_desc = img_desc;
-                            obj.mesh->texture_data_size = img_desc.data.subimage[0][0].size;
-                            obj.mesh->has_texture = true;
+                            obj.mesh->material->diffuse_texture_data = texture_data;
+                            obj.mesh->material->diffuse_texture_desc = img_desc;
+                            obj.mesh->material->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
+                            obj.mesh->material->has_diffuse_texture = true;
 
-                            obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                        }
+                        if (specular_texture_data && specular_img_desc.width > 0) {
+                            obj.mesh->material->specular_texture_data = specular_texture_data;
+                            obj.mesh->material->specular_texture_desc = specular_img_desc;
+                            obj.mesh->material->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
+                            obj.mesh->material->has_specular_texture = true;
+
+                            obj.mesh->material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                         }
                     }
                 }
 
                 // if no texture was loaded, set up for default palette.png
-                if (!obj.mesh->has_texture) {
-                    obj.mesh->has_texture = false;
-                    obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                if (!obj.mesh->material->has_diffuse_texture) {
+                    obj.mesh->material->has_diffuse_texture = false;
+                    obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
 
                 objects.push_back(obj);
@@ -1146,6 +1186,7 @@ vector<Object> load_gltf(const std::string& path) {
 
                 Object obj;
                 obj.mesh = new Mesh;
+                obj.mesh->material = new Material;
                 obj.mesh->vertices = verts;
                 obj.mesh->vertex_count = vcount;
                 obj.mesh->indices = idxs;
@@ -1160,27 +1201,48 @@ vector<Object> load_gltf(const std::string& path) {
 
                     if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                         auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
+                        cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
+                        uint8_t* specular_texture_data;
+                        sg_image_desc specular_img_desc;
+                        if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
+                            cout << "loading specular texture" << endl;
+                            auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
+                            specular_texture_data = u_specular_texture_data;
+                            specular_img_desc = u_specular_img_desc;
+                        }
 
                         if (texture_data && img_desc.width > 0) {
-                            obj.mesh->texture_data = texture_data;
-                            obj.mesh->texture_desc = img_desc;
-                            obj.mesh->texture_data_size = img_desc.data.subimage[0][0].size;
-                            obj.mesh->has_texture = true;
+                            obj.mesh->material->diffuse_texture_data = texture_data;
+                            obj.mesh->material->diffuse_texture_desc = img_desc;
+                            obj.mesh->material->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
+                            obj.mesh->material->has_diffuse_texture = true;
 
-                            obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                        }
+                        if (specular_texture_data && specular_img_desc.width > 0) {
+                            obj.mesh->material->specular_texture_data = specular_texture_data;
+                            obj.mesh->material->specular_texture_desc = specular_img_desc;
+                            obj.mesh->material->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
+                            obj.mesh->material->has_specular_texture = true;
+
+                            obj.mesh->material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                         }
                     }
                 }
 
-                if (!obj.mesh->has_texture) {
-                    obj.mesh->has_texture = false;
-                    obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                // if no texture was loaded, set up for default palette.png
+                if (!obj.mesh->material->has_diffuse_texture) {
+                    obj.mesh->material->has_diffuse_texture = false;
+                    obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
 
                 objects.push_back(obj);
@@ -1188,6 +1250,7 @@ vector<Object> load_gltf(const std::string& path) {
         }
     }
 
+    cout << "Loaded " << objects.size() << " objects from GLTF" << endl;
     return objects;
 }
 
@@ -1494,6 +1557,7 @@ void save_scene(const string& path) {
 
                 mesh_json["enable_shading"] = mesh->enable_shading;
 
+                // Save vertex and index data
                 if (mesh->vertex_count > 0 && mesh->vertices) {
                     mesh_json["vertex_count"] = mesh->vertex_count;
                     mesh_json["vertices"] = nlohmann::json::array();
@@ -1510,24 +1574,59 @@ void save_scene(const string& path) {
                     }
                 }
 
-                mesh_json["has_texture"] = mesh->has_texture;
-                if (mesh->has_texture && mesh->texture_data && mesh->texture_data_size > 0) {
-                    mesh_json["texture_width"] = mesh->texture_desc.width;
-                    mesh_json["texture_height"] = mesh->texture_desc.height;
-                    mesh_json["texture_format"] = static_cast<int>(mesh->texture_desc.pixel_format);
+                if (mesh->material) {
+                    mesh_json["material"] = nlohmann::json::object();
+                    auto& material_json = mesh_json["material"];
 
-                    std::ostringstream hex_stream;
-                    hex_stream << std::hex << std::setfill('0');
-                    for (size_t i = 0; i < mesh->texture_data_size; i++) {
-                        hex_stream << std::setw(2) << static_cast<int>(mesh->texture_data[i]);
+                    Material* material = mesh->material;
+
+                    // Save material properties
+                    material_json["diffuse"] = material->diffuse;
+                    material_json["specular"] = material->specular;
+
+                    // Save diffuse texture
+                    material_json["has_diffuse_texture"] = material->has_diffuse_texture;
+                    if (material->has_diffuse_texture && material->diffuse_texture_data && material->diffuse_texture_data_size > 0) {
+                        material_json["diffuse_texture_width"] = material->diffuse_texture_desc.width;
+                        material_json["diffuse_texture_height"] = material->diffuse_texture_desc.height;
+                        material_json["diffuse_texture_format"] = static_cast<int>(material->diffuse_texture_desc.pixel_format);
+
+                        std::ostringstream hex_stream;
+                        hex_stream << std::hex << std::setfill('0');
+                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
+                            hex_stream << std::setw(2) << static_cast<int>(material->diffuse_texture_data[i]);
+                        }
+                        material_json["diffuse_texture_data"] = hex_stream.str();
+                        material_json["diffuse_texture_data_size"] = material->diffuse_texture_data_size;
+
+                        // Save diffuse sampler settings
+                        material_json["diffuse_sampler_min_filter"] = static_cast<int>(material->diffuse_sampler_desc.min_filter);
+                        material_json["diffuse_sampler_mag_filter"] = static_cast<int>(material->diffuse_sampler_desc.mag_filter);
+                        material_json["diffuse_sampler_wrap_u"] = static_cast<int>(material->diffuse_sampler_desc.wrap_u);
+                        material_json["diffuse_sampler_wrap_v"] = static_cast<int>(material->diffuse_sampler_desc.wrap_v);
                     }
-                    mesh_json["texture_data"] = hex_stream.str();
-                    mesh_json["texture_data_size"] = mesh->texture_data_size;
 
-                    mesh_json["sampler_min_filter"] = static_cast<int>(mesh->sampler_desc.min_filter);
-                    mesh_json["sampler_mag_filter"] = static_cast<int>(mesh->sampler_desc.mag_filter);
-                    mesh_json["sampler_wrap_u"] = static_cast<int>(mesh->sampler_desc.wrap_u);
-                    mesh_json["sampler_wrap_v"] = static_cast<int>(mesh->sampler_desc.wrap_v);
+                    // Save specular texture
+                    material_json["has_specular_texture"] = material->has_specular_texture;
+                    if (material->has_specular_texture && material->specular_texture_data && material->specular_texture_data_size > 0) {
+                        material_json["specular_texture_width"] = material->specular_texture_desc.width;
+                        material_json["specular_texture_height"] = material->specular_texture_desc.height;
+                        material_json["specular_texture_format"] = static_cast<int>(material->specular_texture_desc.pixel_format);
+
+                        std::ostringstream hex_stream;
+                        hex_stream << std::hex << std::setfill('0');
+                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
+                            hex_stream << std::setw(2) << static_cast<int>(material->specular_texture_data[i]);
+                        }
+                        material_json["specular_texture_data"] = hex_stream.str();
+                        material_json["specular_texture_data_size"] = material->specular_texture_data_size;
+
+                        // Save specular sampler settings
+                        material_json["specular_sampler_min_filter"] = static_cast<int>(material->specular_sampler_desc.min_filter);
+                        material_json["specular_sampler_mag_filter"] = static_cast<int>(material->specular_sampler_desc.mag_filter);
+                        material_json["specular_sampler_wrap_u"] = static_cast<int>(material->specular_sampler_desc.wrap_u);
+                        material_json["specular_sampler_wrap_v"] = static_cast<int>(material->specular_sampler_desc.wrap_v);
+                    }
                 }
             }
 
@@ -1631,6 +1730,7 @@ void load_scene(const string& path) {
                             mesh->enable_shading = mesh_json["enable_shading"];
                         }
 
+                        // Load vertex and index data
                         if (mesh_json.contains("vertex_count") &&
                             mesh_json.contains("index_count") &&
                             mesh_json.contains("vertices") &&
@@ -1651,48 +1751,122 @@ void load_scene(const string& path) {
                             }
                         }
 
-                        if (mesh_json.contains("has_texture") && mesh_json["has_texture"]) {
-                            mesh->has_texture = true;
+                        if (mesh_json.contains("material")) {
+                            const auto& material_json = mesh_json["material"];
 
-                            if (mesh_json.contains("texture_width") &&
-                                mesh_json.contains("texture_height") &&
-                                mesh_json.contains("texture_data") &&
-                                mesh_json.contains("texture_data_size")) {
+                            Material* material = new Material();
+                            mesh->material = material;
 
-                                mesh->texture_desc.width = mesh_json["texture_width"];
-                                mesh->texture_desc.height = mesh_json["texture_height"];
-                                mesh->texture_desc.pixel_format = static_cast<sg_pixel_format>(mesh_json["texture_format"]);
-                                mesh->texture_data_size = mesh_json["texture_data_size"];
+                            // Load material properties
+                            if (material_json.contains("diffuse")) {
+                                material->diffuse = material_json["diffuse"];
+                            }
 
-                                std::string hex_data = mesh_json["texture_data"];
-                                mesh->texture_data = new uint8_t[mesh->texture_data_size];
+                            if (material_json.contains("specular")) {
+                                material->specular = material_json["specular"];
+                            }
 
-                                for (size_t i = 0; i < mesh->texture_data_size; i++) {
-                                    std::string byte_string = hex_data.substr(i * 2, 2);
-                                    mesh->texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                            // Load diffuse texture
+                            if (material_json.contains("has_diffuse_texture") && material_json["has_diffuse_texture"]) {
+                                material->has_diffuse_texture = true;
+
+                                if (material_json.contains("diffuse_texture_width") &&
+                                    material_json.contains("diffuse_texture_height") &&
+                                    material_json.contains("diffuse_texture_data") &&
+                                    material_json.contains("diffuse_texture_data_size")) {
+
+                                    material->diffuse_texture_desc.width = material_json["diffuse_texture_width"];
+                                    material->diffuse_texture_desc.height = material_json["diffuse_texture_height"];
+                                    material->diffuse_texture_desc.pixel_format = static_cast<sg_pixel_format>(material_json["diffuse_texture_format"]);
+                                    material->diffuse_texture_data_size = material_json["diffuse_texture_data_size"];
+
+                                    std::string hex_data = material_json["diffuse_texture_data"];
+                                    material->diffuse_texture_data = new uint8_t[material->diffuse_texture_data_size];
+
+                                    for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
+                                        std::string byte_string = hex_data.substr(i * 2, 2);
+                                        material->diffuse_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                                    }
+
+                                    material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
+                                    material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
+
+                                    // Load diffuse sampler settings
+                                    if (material_json.contains("diffuse_sampler_min_filter")) {
+                                        material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(material_json["diffuse_sampler_min_filter"]);
+                                        material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["diffuse_sampler_mag_filter"]);
+                                        material->diffuse_sampler_desc.wrap_u = static_cast<sg_wrap>(material_json["diffuse_sampler_wrap_u"]);
+                                        material->diffuse_sampler_desc.wrap_v = static_cast<sg_wrap>(material_json["diffuse_sampler_wrap_v"]);
+                                    } else {
+                                        material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                        material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                        material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                        material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                    }
                                 }
+                            } else {
+                                material->has_diffuse_texture = false;
+                            }
 
-                                mesh->texture_desc.data.subimage[0][0].ptr = mesh->texture_data;
-                                mesh->texture_desc.data.subimage[0][0].size = mesh->texture_data_size;
+                            // Load specular texture
+                            if (material_json.contains("has_specular_texture") && material_json["has_specular_texture"]) {
+                                material->has_specular_texture = true;
 
-                                if (mesh_json.contains("sampler_min_filter")) {
-                                    mesh->sampler_desc.min_filter = static_cast<sg_filter>(mesh_json["sampler_min_filter"]);
-                                    mesh->sampler_desc.mag_filter = static_cast<sg_filter>(mesh_json["sampler_mag_filter"]);
-                                    mesh->sampler_desc.wrap_u = static_cast<sg_wrap>(mesh_json["sampler_wrap_u"]);
-                                    mesh->sampler_desc.wrap_v = static_cast<sg_wrap>(mesh_json["sampler_wrap_v"]);
-                                } else {
-                                    mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                    mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                    mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                    mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                if (material_json.contains("specular_texture_width") &&
+                                    material_json.contains("specular_texture_height") &&
+                                    material_json.contains("specular_texture_data") &&
+                                    material_json.contains("specular_texture_data_size")) {
+
+                                    material->specular_texture_desc.width = material_json["specular_texture_width"];
+                                    material->specular_texture_desc.height = material_json["specular_texture_height"];
+                                    material->specular_texture_desc.pixel_format = static_cast<sg_pixel_format>(material_json["specular_texture_format"]);
+                                    material->specular_texture_data_size = material_json["specular_texture_data_size"];
+
+                                    std::string hex_data = material_json["specular_texture_data"];
+                                    material->specular_texture_data = new uint8_t[material->specular_texture_data_size];
+
+                                    for (size_t i = 0; i < material->specular_texture_data_size; i++) {
+                                        std::string byte_string = hex_data.substr(i * 2, 2);
+                                        material->specular_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                                    }
+
+                                    material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
+                                    material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
+
+                                    // Load specular sampler settings
+                                    if (material_json.contains("specular_sampler_min_filter")) {
+                                        material->specular_sampler_desc.min_filter = static_cast<sg_filter>(material_json["specular_sampler_min_filter"]);
+                                        material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["specular_sampler_mag_filter"]);
+                                        material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(material_json["specular_sampler_wrap_u"]);
+                                        material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(material_json["specular_sampler_wrap_v"]);
+                                    } else {
+                                        material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                        material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                        material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                        material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                    }
                                 }
+                            } else {
+                                material->has_specular_texture = false;
+                            }
+
+                            // Set default sampler settings if no textures
+                            if (!material->has_diffuse_texture) {
+                                material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            }
+
+                            if (!material->has_specular_texture) {
+                                material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                             }
                         } else {
-                            mesh->has_texture = false;
-                            mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            // Create default material if none exists
+                            mesh->material = new Material();
                         }
 
                         prepare_mesh_buffers(*mesh);
@@ -1822,6 +1996,8 @@ static int last_selected_mesh = -1;
 static int selected_selectable_visgroup_index = -1;
 sg_image editor_display_image;
 sg_sampler editor_display_sampler;
+sg_image editor_specular_display_image;
+sg_sampler editor_specular_display_sampler;
 
 void render_editor() {
     int w_width, w_height;
@@ -1846,9 +2022,13 @@ void render_editor() {
                 if (ImGui::Selectable(label.c_str(), is_selected)) {
                     selected_object_index = i;
                     selected_mesh_visgroup = v;
-                    if (vis_groups[v].objects[i].mesh->has_texture) {
-                        editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->texture_desc);
-                        editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->sampler_desc);
+                    if (vis_groups[v].objects[i].mesh->material->has_diffuse_texture) {
+                        editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->diffuse_texture_desc);
+                        editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->diffuse_sampler_desc);
+                    }
+                    if (vis_groups[v].objects[i].mesh->material->has_specular_texture) {
+                        editor_specular_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->specular_texture_desc);
+                        editor_specular_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->specular_sampler_desc);
                     }
                 }
 
@@ -1948,8 +2128,12 @@ void render_editor() {
                 selected_object_index = -1;
                 selected_mesh_visgroup = -1;
             }
-            if (selected_object->mesh->has_texture) { // texture display
+            if (selected_object->mesh->material->has_diffuse_texture) { // texture display
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
+                ImGui::Image(imtex_id, ImVec2(128, 128));
+            }
+            if (selected_object->mesh->material->has_specular_texture) {
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
                 ImGui::Image(imtex_id, ImVec2(128, 128));
             }
         } else {
@@ -2348,7 +2532,7 @@ void _init() {
 
     loaded_is_palette = true;
     sfetch_request_t request = {};
-    request.path = "palette.png"; // palette.png MUST exist
+    request.path = "notex.png"; // notex.png MUST exist
     request.callback = fetch_callback;
     request.buffer.ptr = state.file_buffer.data();
     request.buffer.size = state.file_buffer.size();
@@ -2488,9 +2672,13 @@ void _event(SDL_Event* e) {
                                 selected_object_index = obj_idx;
                                 selected_mesh_visgroup = vg_idx;
 
-                                if (visgroup.objects[obj_idx].mesh->has_texture) {
-                                    editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->texture_desc);
-                                    editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->sampler_desc);
+                                if (visgroup.objects[obj_idx].mesh->material->has_diffuse_texture) {
+                                    editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->diffuse_texture_desc);
+                                    editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->diffuse_sampler_desc);
+                                }
+                                if (visgroup.objects[obj_idx].mesh->material->has_specular_texture) {
+                                    editor_specular_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->specular_texture_desc);
+                                    editor_specular_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->specular_sampler_desc);
                                 }
                                 break;
                             }

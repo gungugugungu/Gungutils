@@ -5,18 +5,16 @@
 #ifndef PHYSICSHOLDER_H
 #define PHYSICSHOLDER_H
 
-using namespace reactphysics3d;
-
-inline PhysicsCommon physicsCommon;
-inline PhysicsWorld* world = physicsCommon.createPhysicsWorld();
+inline reactphysics3d::PhysicsCommon physicsCommon;
+inline reactphysics3d::PhysicsWorld* world = physicsCommon.createPhysicsWorld();
 
 class PhysicsHolder {
 public:
     Object* assigned_object;
-    Vector3 position;
-    Quaternion orientation;
-    Transform transform;
-    RigidBody* body = world->createRigidBody(transform);
+    reactphysics3d::Vector3 position;
+    reactphysics3d::Quaternion orientation;
+    reactphysics3d::Transform transform;
+    reactphysics3d::RigidBody* body = world->createRigidBody(transform);
 
     // alternative: create a box collider based on mesh bounds
     void create_box_collider() const {
@@ -45,14 +43,14 @@ public:
             maxZ = std::max(maxZ, transformed.Z);
         }
 
-        Vector3 halfExtents((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f);
+        reactphysics3d::Vector3 halfExtents((maxX - minX) * 0.5f, (maxY - minY) * 0.5f, (maxZ - minZ) * 0.5f);
 
         halfExtents.x = std::max(halfExtents.x, 0.01f);
         halfExtents.y = std::max(halfExtents.y, 0.01f);
         halfExtents.z = std::max(halfExtents.z, 0.01f);
 
-        BoxShape* boxShape = physicsCommon.createBoxShape(halfExtents);
-        Transform colliderTransform = Transform::identity();
+        reactphysics3d::BoxShape* boxShape = physicsCommon.createBoxShape(halfExtents);
+        reactphysics3d::Transform colliderTransform = reactphysics3d::Transform::identity();
         body->addCollider(boxShape, colliderTransform);
     }
 
@@ -65,7 +63,7 @@ public:
         orientation.y = obj->rotation.Y;
         orientation.z = obj->rotation.Z;
         orientation.w = obj->rotation.W;
-        transform = Transform(position, orientation);
+        transform = reactphysics3d::Transform(position, orientation);
 
         if (body) {
             world->destroyRigidBody(body);
@@ -75,7 +73,7 @@ public:
         cout << "-----" << endl;
 
         if (obj->mesh->vertices && obj->mesh->vertex_count > 0) {
-            std::vector<Vector3> vertices;
+            std::vector<reactphysics3d::Vector3> vertices;
             vertices.reserve(obj->mesh->vertex_count);
 
             for (size_t i = 0; i < obj->mesh->vertex_count; i++) {
@@ -113,20 +111,20 @@ public:
 
             if (!indices_vec.empty() && vertices.size() >= 4) {
 
-                Vector3* vertex_data = vertices.data();
+                reactphysics3d::Vector3* vertex_data = vertices.data();
 
                 cout << "Creating PolygonVertexArray with:" << endl;
                 cout << "⤷Vertices: " << vertices.size() << endl;
                 cout << "⤷Indices: " << indices_vec.size() << endl;
 
-                VertexArray vertex_array = VertexArray(vertex_data, sizeof(Vector3), vertices.size(), VertexArray::DataType::VERTEX_FLOAT_TYPE);
-                std::vector<Message> messages;
+                reactphysics3d::VertexArray vertex_array = reactphysics3d::VertexArray(vertex_data, sizeof(reactphysics3d::Vector3), vertices.size(), reactphysics3d::VertexArray::DataType::VERTEX_FLOAT_TYPE);
+                std::vector<reactphysics3d::Message> messages;
                 cout << "About to create convex mesh..." << endl;
-                ConvexMesh* convexMesh = physicsCommon.createConvexMesh(vertex_array, messages);
+                reactphysics3d::ConvexMesh* convexMesh = physicsCommon.createConvexMesh(vertex_array, messages);
 
                 if (convexMesh) {
-                    ConvexMeshShape* shape = physicsCommon.createConvexMeshShape(convexMesh);
-                    Transform colliderTransform = Transform::identity();
+                    reactphysics3d::ConvexMeshShape* shape = physicsCommon.createConvexMeshShape(convexMesh);
+                    reactphysics3d::Transform colliderTransform = reactphysics3d::Transform::identity();
                     body->addCollider(shape, colliderTransform);
                     cout << "Shape attached successfully" << endl;
                 } else {
