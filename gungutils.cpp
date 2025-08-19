@@ -41,6 +41,7 @@
 #include "shaders/postprocess.glsl.h"
 // sources
 #include "rendering/Mesh.h"
+#include "rendering/Object.h"
 #include "rendering/VisGroup.h"
 #include "rendering/Post Processing.h"
 #include "physics/PhysicsHolder.h"
@@ -161,7 +162,12 @@ void init_post_processing() {
     post_state.uniforms.brightness = 0.0f;
     post_state.uniforms.saturation = 1.0f;
 
-    printf("Post-processing initialized\n");
+    ssao_params = ssao_params_t{};
+    ssao_params.ao_radius = 0.5f;
+    ssao_params.ao_bias = 0.02f;
+    ssao_params.ao_strength = 1.0f;
+    ssao_params.ao_power = 1.75f;
+    ssao_params.ssao_samples = 32;
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -214,9 +220,9 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 vs_params_t vs_params;
 
 vector<VisGroup> vis_groups;
-vector<Mesh> visualizer_meshes; // TODO: Fix visualizers
+vector<Object> visualizer_objects; // TODO: Fix visualizers
 
-void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
+void prepare_mesh_buffers(Mesh& mesh) {
     if (!mesh.vertices || mesh.vertex_count == 0) {
         std::cerr << "ERROR: Invalid vertex data!" << std::endl;
         exit(-1);
@@ -270,18 +276,15 @@ void Mesh_To_Buffers(Mesh& mesh, bool dontadd = false) {
         mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
         mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
     }
-
-    if (!dontadd) {
-        vis_groups[0].meshes.push_back(std::move(mesh));
-    }
 }
 
 void render_meshes_streaming() {
     for (auto& visgroup : vis_groups) {
         if (visgroup.enabled) {
-            for (auto& mesh : visgroup.meshes) {
-                sg_buffer vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
-                sg_buffer index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
+            for (auto& obj : visgroup.objects) {
+                Mesh* mesh = obj.mesh;
+                sg_buffer vertex_buffer = sg_make_buffer(&mesh->vertex_buffer_desc);
+                sg_buffer index_buffer = sg_make_buffer(&mesh->index_buffer_desc);
 
                 if (vertex_buffer.id == SG_INVALID_ID || index_buffer.id == SG_INVALID_ID) {
                     if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
@@ -292,9 +295,9 @@ void render_meshes_streaming() {
                 sg_image texture;
                 sg_sampler sampler;
 
-                if (mesh.has_texture && mesh.texture_data) {
-                    texture = sg_make_image(&mesh.texture_desc);
-                    sampler = sg_make_sampler(&mesh.sampler_desc);
+                if (mesh->has_texture && mesh->texture_data) {
+                    texture = sg_make_image(&mesh->texture_desc);
+                    sampler = sg_make_sampler(&mesh->sampler_desc);
                 } else {
                     // use default palette texture and sampler
                     texture = state.bind.images[0];
@@ -308,26 +311,25 @@ void render_meshes_streaming() {
 
                 sg_apply_bindings(&state.bind);
 
-                HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-                HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-                HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+                HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+                HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+                HMM_Mat4 translate_mat = HMM_Translate(obj.position);
                 HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                 vs_params.model = model;
-                vs_params.opacity = mesh.opacity*visgroup.opacity;
-                if (mesh.enable_shading) {
+                vs_params.opacity = obj.opacity*visgroup.opacity;
+                if (mesh->enable_shading) {
                     vs_params.enable_shading = 1;
                 } else {
                     vs_params.enable_shading = 0;
                 }
                 sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-                sg_draw(0, mesh.index_count, 1);
+                sg_draw(0, mesh->index_count, 1);
 
                 sg_destroy_buffer(vertex_buffer);
                 sg_destroy_buffer(index_buffer);
 
-                // only destroy if we created them god damn it
-                if (mesh.has_texture && mesh.texture_data) {
+                if (mesh->has_texture && mesh->texture_data) {
                     sg_destroy_image(texture);
                     sg_destroy_sampler(sampler);
                 }
@@ -336,9 +338,10 @@ void render_meshes_streaming() {
     }
 
     if (state.editor_open) {
-        for (auto& mesh : visualizer_meshes) {
-            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
-            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+        for (auto& obj : visualizer_objects) {
+            Mesh* mesh = obj.mesh;
+            sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
+            sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
             if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
                 if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
                 if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
@@ -352,17 +355,17 @@ void render_meshes_streaming() {
             state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
             HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
-            vs_params.opacity = mesh.opacity;
+            vs_params.opacity = obj.opacity;
             vs_params.enable_shading = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-            sg_draw(0, mesh.index_count, 1);
+            sg_draw(0, mesh->index_count, 1);
 
             sg_destroy_buffer(vb);
             sg_destroy_buffer(ib);
@@ -385,8 +388,8 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
     for (auto& visgroup : vis_groups) {
         if (visgroup.enabled) {
-            for (size_t start = 0; start < visgroup.meshes.size(); start += batch_size) {
-                size_t end = std::min(start + batch_size, visgroup.meshes.size());
+            for (size_t start = 0; start < visgroup.objects.size(); start += batch_size) {
+                size_t end = std::min(start + batch_size, visgroup.objects.size());
 
                 vertex_buffers.clear();
                 index_buffers.clear();
@@ -395,18 +398,19 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                 created_textures.clear();
 
                 for (size_t i = start; i < end; i++) {
-                    auto& mesh = visgroup.meshes[i];
-                    sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
-                    sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+                    Object obj = visgroup.objects[i];
+                    Mesh* mesh = obj.mesh;
+                    sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
+                    sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
 
                     if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
                         vertex_buffers.push_back(vb);
                         index_buffers.push_back(ib);
 
                         // handle texture
-                        if (mesh.has_texture && mesh.texture_data) {
-                            sg_image texture = sg_make_image(&mesh.texture_desc);
-                            sg_sampler sampler = sg_make_sampler(&mesh.sampler_desc);
+                        if (mesh->has_texture && mesh->texture_data) {
+                            sg_image texture = sg_make_image(&mesh->texture_desc);
+                            sg_sampler sampler = sg_make_sampler(&mesh->sampler_desc);
                             textures.push_back(texture);
                             samplers.push_back(sampler);
                             created_textures.push_back(true);
@@ -425,7 +429,8 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                 for (size_t i = 0; i < vertex_buffers.size(); i++) {
                     size_t mesh_idx = start + i;
-                    auto& mesh = visgroup.meshes[mesh_idx];
+                    Object obj = visgroup.objects[mesh_idx];
+                    Mesh* mesh = obj.mesh;
 
                     state.bind.vertex_buffers[0] = vertex_buffers[i];
                     state.bind.index_buffer = index_buffers[i];
@@ -434,20 +439,20 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                     sg_apply_bindings(&state.bind);
 
-                    HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-                    HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-                    HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+                    HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+                    HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+                    HMM_Mat4 translate_mat = HMM_Translate(obj.position);
                     HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
                     vs_params.model = model;
-                    vs_params.opacity = mesh.opacity*visgroup.opacity;
-                    if (mesh.enable_shading) {
+                    vs_params.opacity = obj.opacity*visgroup.opacity;
+                    if (mesh->enable_shading) {
                         vs_params.enable_shading = 1;
                     } else {
                         vs_params.enable_shading = 0;
                     }
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-                    sg_draw(0, mesh.index_count, 1);
+                    sg_draw(0, mesh->index_count, 1);
                 }
 
                 // cleanup
@@ -468,9 +473,10 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
     }
 
     if (state.editor_open) {
-        for (auto& mesh : visualizer_meshes) {
-            sg_buffer vb = sg_make_buffer(&mesh.vertex_buffer_desc);
-            sg_buffer ib = sg_make_buffer(&mesh.index_buffer_desc);
+        for (auto& obj : visualizer_objects) {
+            Mesh* mesh = obj.mesh;
+            sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
+            sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
             if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
                 if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
                 if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
@@ -483,17 +489,17 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-            HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-            HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
             HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
             vs_params.model = model;
-            vs_params.opacity = mesh.opacity;
+            vs_params.opacity = obj.opacity;
             vs_params.enable_shading = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-            sg_draw(0, mesh.index_count, 1);
+            sg_draw(0, mesh->index_count, 1);
 
             sg_destroy_buffer(vb);
             sg_destroy_buffer(ib);
@@ -555,7 +561,7 @@ void render_first_pass() {
 
     sg_apply_pipeline(state.pip);
 
-    render_meshes_batched_streaming();
+    render_meshes_batched_streaming(30); // TODO: sort and then automatically instance meshes that are rendered twice
 
     sg_end_pass();
 
@@ -650,10 +656,10 @@ bool ray_triangle_intersect(const HMM_Vec3& ray_origin, const HMM_Vec3& ray_dire
 }
 
 // helper function for raycasting
-HMM_Vec3 transform_vertex(const HMM_Vec3& vertex, const Mesh& mesh) {
-    HMM_Mat4 scale_mat = HMM_Scale(mesh.scale);
-    HMM_Mat4 rot_mat = HMM_QToM4(mesh.rotation);
-    HMM_Mat4 translate_mat = HMM_Translate(mesh.position);
+HMM_Vec3 transform_vertex(const HMM_Vec3& vertex, const Object& obj) {
+    HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+    HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+    HMM_Mat4 translate_mat = HMM_Translate(obj.position);
     HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
     HMM_Vec4 transformed = HMM_MulM4V4(model, HMM_V4V(vertex, 1.0f));
@@ -695,43 +701,44 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     for (const auto& visgroup : vis_groups) {
         if (!visgroup.enabled) continue;
 
-        for (const auto& mesh : visgroup.meshes) {
-            if (!mesh.vertices || !mesh.indices || mesh.vertex_count == 0 || mesh.index_count == 0) {
+        for (const auto& obj : visgroup.objects) {
+            Mesh* mesh = obj.mesh;
+            if (!mesh->vertices || !mesh->indices || mesh->vertex_count == 0 || mesh->index_count == 0) {
                 continue;
             }
 
-            for (size_t i = 0; i < mesh.index_count; i += 3) {
-                if (i + 2 >= mesh.index_count) break;
+            for (size_t i = 0; i < mesh->index_count; i += 3) {
+                if (i + 2 >= mesh->index_count) break;
 
                 uint32_t idx0, idx1, idx2;
-                if (mesh.use_uint16_indices && mesh.indices16) {
-                    idx0 = mesh.indices16[i];
-                    idx1 = mesh.indices16[i + 1];
-                    idx2 = mesh.indices16[i + 2];
+                if (mesh->use_uint16_indices && mesh->indices16) {
+                    idx0 = mesh->indices16[i];
+                    idx1 = mesh->indices16[i + 1];
+                    idx2 = mesh->indices16[i + 2];
                 } else {
-                    idx0 = mesh.indices[i];
-                    idx1 = mesh.indices[i + 1];
-                    idx2 = mesh.indices[i + 2];
+                    idx0 = mesh->indices[i];
+                    idx1 = mesh->indices[i + 1];
+                    idx2 = mesh->indices[i + 2];
                 }
 
-                if (idx0 >= mesh.vertex_count || idx1 >= mesh.vertex_count || idx2 >= mesh.vertex_count) {
+                if (idx0 >= mesh->vertex_count || idx1 >= mesh->vertex_count || idx2 >= mesh->vertex_count) {
                     continue;
                 }
 
-                HMM_Vec3 v0 = HMM_V3(mesh.vertices[idx0 * 8], mesh.vertices[idx0 * 8 + 1], mesh.vertices[idx0 * 8 + 2]);
-                HMM_Vec3 v1 = HMM_V3(mesh.vertices[idx1 * 8], mesh.vertices[idx1 * 8 + 1], mesh.vertices[idx1 * 8 + 2]);
-                HMM_Vec3 v2 = HMM_V3(mesh.vertices[idx2 * 8], mesh.vertices[idx2 * 8 + 1], mesh.vertices[idx2 * 8 + 2]);
+                HMM_Vec3 v0 = HMM_V3(mesh->vertices[idx0 * 8], mesh->vertices[idx0 * 8 + 1], mesh->vertices[idx0 * 8 + 2]);
+                HMM_Vec3 v1 = HMM_V3(mesh->vertices[idx1 * 8], mesh->vertices[idx1 * 8 + 1], mesh->vertices[idx1 * 8 + 2]);
+                HMM_Vec3 v2 = HMM_V3(mesh->vertices[idx2 * 8], mesh->vertices[idx2 * 8 + 1], mesh->vertices[idx2 * 8 + 2]);
 
-                v0 = transform_vertex(v0, mesh);
-                v1 = transform_vertex(v1, mesh);
-                v2 = transform_vertex(v2, mesh);
+                v0 = transform_vertex(v0, obj);
+                v1 = transform_vertex(v1, obj);
+                v2 = transform_vertex(v2, obj);
 
                 float distance;
                 if (ray_triangle_intersect(ray_origin, ray_direction, v0, v1, v2, distance)) {
                     if (distance < closest_distance) {
                         closest_distance = distance;
                         closest_point = HMM_AddV3(ray_origin, HMM_MulV3F(ray_direction, distance));
-                        hit_mesh = &mesh;
+                        hit_mesh = mesh;
                         hit_found = true;
                     }
                 }
@@ -784,7 +791,7 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     rotation = HMM_M4ToQ_RH(rot_mat);
 }
 
-std::vector<Mesh> load_gltf(const std::string& path) {
+vector<Object> load_gltf(const std::string& path) {
     tinygltf::TinyGLTF loader;
     tinygltf::Model model;
     std::string err, warn;
@@ -795,7 +802,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
         return {};
     }
 
-    std::vector<Mesh> meshes;
+    std::vector<Object> objects;
 
     auto flip_tex_vertically = [&](unsigned char* data, int width, int height, int channels) -> void {
         int row_size = width * channels;
@@ -1008,13 +1015,14 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                     }
                 }
 
-                Mesh mesh;
-                mesh.vertices = verts;
-                mesh.vertex_count = vcount;
-                mesh.indices = idxs;
-                mesh.index_count = icount;
+                Object obj;
+                obj.mesh = new Mesh;
+                obj.mesh->vertices = verts;
+                obj.mesh->vertex_count = vcount;
+                obj.mesh->indices = idxs;
+                obj.mesh->index_count = icount;
 
-                decompose_matrix(worldTransform, mesh.position, mesh.rotation, mesh.scale);
+                decompose_matrix(worldTransform, obj.position, obj.rotation, obj.scale);
 
                 if (prim.material >= 0 && prim.material < model.materials.size()) {
                     const auto& material = model.materials[prim.material];
@@ -1023,29 +1031,29 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                         auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
 
                         if (texture_data && img_desc.width > 0) {
-                            mesh.texture_data = texture_data;
-                            mesh.texture_desc = img_desc;
-                            mesh.texture_data_size = img_desc.data.subimage[0][0].size;
-                            mesh.has_texture = true;
+                            obj.mesh->texture_data = texture_data;
+                            obj.mesh->texture_desc = img_desc;
+                            obj.mesh->texture_data_size = img_desc.data.subimage[0][0].size;
+                            obj.mesh->has_texture = true;
 
-                            mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
                         }
                     }
                 }
 
                 // if no texture was loaded, set up for default palette.png
-                if (!mesh.has_texture) {
-                    mesh.has_texture = false;
-                    mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                if (!obj.mesh->has_texture) {
+                    obj.mesh->has_texture = false;
+                    obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
 
-                meshes.push_back(std::move(mesh));
+                objects.push_back(obj);
             }
         }
 
@@ -1070,7 +1078,7 @@ std::vector<Mesh> load_gltf(const std::string& path) {
         }
     }
 
-    if (meshes.empty()) {
+    if (objects.empty()) {
         for (const auto& meshDef : model.meshes) {
             for (const auto& prim : meshDef.primitives) {
                 if (prim.attributes.find("POSITION") == prim.attributes.end() ||
@@ -1136,14 +1144,15 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                     }
                 }
 
-                Mesh mesh;
-                mesh.vertices = verts;
-                mesh.vertex_count = vcount;
-                mesh.indices = idxs;
-                mesh.index_count = icount;
-                mesh.position = {0, 0, 0};
-                mesh.rotation = {0, 0, 0, 1};
-                mesh.scale = {1, 1, 1};
+                Object obj;
+                obj.mesh = new Mesh;
+                obj.mesh->vertices = verts;
+                obj.mesh->vertex_count = vcount;
+                obj.mesh->indices = idxs;
+                obj.mesh->index_count = icount;
+                obj.position = {0, 0, 0};
+                obj.rotation = {0, 0, 0, 1};
+                obj.scale = {1, 1, 1};
 
                 // load texture if material has one
                 if (prim.material >= 0 && prim.material < model.materials.size()) {
@@ -1153,33 +1162,33 @@ std::vector<Mesh> load_gltf(const std::string& path) {
                         auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
 
                         if (texture_data && img_desc.width > 0) {
-                            mesh.texture_data = texture_data;
-                            mesh.texture_desc = img_desc;
-                            mesh.texture_data_size = img_desc.data.subimage[0][0].size;
-                            mesh.has_texture = true;
+                            obj.mesh->texture_data = texture_data;
+                            obj.mesh->texture_desc = img_desc;
+                            obj.mesh->texture_data_size = img_desc.data.subimage[0][0].size;
+                            obj.mesh->has_texture = true;
 
-                            mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
                         }
                     }
                 }
 
-                if (!mesh.has_texture) {
-                    mesh.has_texture = false;
-                    mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                if (!obj.mesh->has_texture) {
+                    obj.mesh->has_texture = false;
+                    obj.mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    obj.mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    obj.mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    obj.mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
 
-                meshes.push_back(std::move(mesh));
+                objects.push_back(obj);
             }
         }
     }
 
-    return meshes;
+    return objects;
 }
 
 bool load_obj(
@@ -1272,7 +1281,7 @@ class AudioSource3D {
     public:
         FMOD::Studio::EventInstance* event_instance;
         HMM_Vec3 position;
-        Mesh* visualizer_mesh = nullptr;
+        Object* visualizer_object = nullptr;
         int visualizer_mesh_index = -1;
         FMOD_GUID guid;
 
@@ -1283,25 +1292,26 @@ class AudioSource3D {
             position = pos;
 
             // init visualizer mesh
-            visualizer_mesh = new Mesh();
+            visualizer_object = new Object();
+            visualizer_object->mesh = new Mesh();
             float* verts = nullptr;
             uint32_t vertex_count = 0;
             uint32_t* indices = nullptr;
             uint32_t index_count = 0;
 
             if (load_obj("speaker.obj", &verts, &vertex_count, &indices, &index_count)) {
-                visualizer_mesh->vertices = verts;
-                visualizer_mesh->vertex_count = vertex_count;
-                visualizer_mesh->indices = indices;
-                visualizer_mesh->index_count = index_count;
-                visualizer_mesh->position = position;
+                visualizer_object->mesh->vertices = verts;
+                visualizer_object->mesh->vertex_count = vertex_count;
+                visualizer_object->mesh->indices = indices;
+                visualizer_object->mesh->index_count = index_count;
+                visualizer_object->position = position;
 
-                visualizer_mesh_index = visualizer_meshes.size();
-                Mesh_To_Buffers(*visualizer_mesh, true);
-                visualizer_meshes.push_back(std::move(*visualizer_mesh));
+                visualizer_mesh_index = visualizer_objects.size();
+                prepare_mesh_buffers(*visualizer_object->mesh);
+                visualizer_objects.push_back(*visualizer_object);
 
-                delete visualizer_mesh;
-                visualizer_mesh = nullptr;
+                delete visualizer_object;
+                visualizer_object = nullptr;
             }
             desc->getID(&guid);
         }
@@ -1318,8 +1328,8 @@ class AudioSource3D {
         }
 
         void update_visualizer_position() {
-            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
-                visualizer_meshes[visualizer_mesh_index].position = position;
+            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
+                visualizer_objects[visualizer_mesh_index].position = position;
             }
         }
 
@@ -1355,8 +1365,8 @@ class AudioSource3D {
         void remove() {
             state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this),state.audio_sources.end());
 
-            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
-                visualizer_meshes.erase(visualizer_meshes.begin() + visualizer_mesh_index);
+            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
+                visualizer_objects.erase(visualizer_objects.begin() + visualizer_mesh_index);
                 for (auto* as : state.audio_sources) {
                     if (as->visualizer_mesh_index > visualizer_mesh_index) {
                         as->visualizer_mesh_index--;
@@ -1365,7 +1375,7 @@ class AudioSource3D {
             }
 
             event_instance->release();
-            delete visualizer_mesh;
+            delete visualizer_object;
         }
 };
 
@@ -1373,40 +1383,40 @@ class Helper {
 public:
     HMM_Vec3 position;
     string name;
-    Mesh* visualizer_mesh;
+    Object* visualizer_obj;
     int visualizer_mesh_index = -1;
     bool operator==(const Helper& other) const { return this == &other; }
 
     void initalize(const string& name, HMM_Vec3 pos) {
         this->name = name;
         position = pos;
-        visualizer_mesh = new Mesh();
+        visualizer_obj = new Object();
         float* verts = nullptr;
         uint32_t vertex_count = 0;
         uint32_t* indices = nullptr;
         uint32_t index_count = 0;
 
         if (load_obj("helper.obj", &verts, &vertex_count, &indices, &index_count)) {
-            visualizer_mesh->vertices = verts;
-            visualizer_mesh->vertex_count = vertex_count;
-            visualizer_mesh->indices = indices;
-            visualizer_mesh->index_count = index_count;
-            visualizer_mesh->position = position;
+            visualizer_obj->mesh->vertices = verts;
+            visualizer_obj->mesh->vertex_count = vertex_count;
+            visualizer_obj->mesh->indices = indices;
+            visualizer_obj->mesh->index_count = index_count;
+            visualizer_obj->position = position;
 
-            visualizer_mesh_index = visualizer_meshes.size();
-            Mesh_To_Buffers(*visualizer_mesh, true);
-            visualizer_meshes.push_back(std::move(*visualizer_mesh));
+            visualizer_mesh_index = visualizer_objects.size();
+            prepare_mesh_buffers(*visualizer_obj->mesh);
+            visualizer_objects.push_back(std::move(*visualizer_obj));
 
-            delete visualizer_mesh;
-            visualizer_mesh = nullptr;
+            delete visualizer_obj;
+            visualizer_obj = nullptr;
         }
         state.helpers.push_back(this);
     }
 
 
     void update_visualizer_position() {
-        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
-            visualizer_meshes[visualizer_mesh_index].position = position;
+        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
+            visualizer_objects[visualizer_mesh_index].position = position;
         }
     }
 
@@ -1418,15 +1428,15 @@ public:
     void remove() {
         state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), this),state.helpers.end());
 
-        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_meshes.size()) {
-            visualizer_meshes.erase(visualizer_meshes.begin() + visualizer_mesh_index);
+        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
+            visualizer_objects.erase(visualizer_objects.begin() + visualizer_mesh_index);
             for (auto* hpr : state.helpers) {
                 if (hpr->visualizer_mesh_index > visualizer_mesh_index) {
                     hpr->visualizer_mesh_index--;
                 }
             }
         }
-        delete visualizer_mesh;
+        delete visualizer_obj;
     }
 };
 
@@ -1442,7 +1452,10 @@ void clear_scene() {
     state.audio_sources.clear();
 
     for (auto& visgroup : vis_groups) {
-        visgroup.meshes.clear();
+        for (auto& obj : visgroup.objects) {
+            delete obj.mesh;
+        }
+        visgroup.objects.clear();
     }
     vis_groups.clear();
 
@@ -1451,13 +1464,12 @@ void clear_scene() {
     }
     state.helpers.clear();
 
-    visualizer_meshes.clear();
+    visualizer_objects.clear();
 }
 
 void save_scene(const string& path) {
     nlohmann::json j;
 
-    // Save meshes
     j["visgroups"] = nlohmann::json::array();
     for (auto& visgroup : vis_groups) {
         nlohmann::json vg_json;
@@ -1465,64 +1477,66 @@ void save_scene(const string& path) {
         vg_json["enabled"] = visgroup.enabled;
         vg_json["opacity"] = visgroup.opacity;
 
-        vg_json["meshes"] = nlohmann::json::array();
-        for (const auto& mesh_ptr : visgroup.meshes) {
-            const auto& mesh = mesh_ptr;
-            nlohmann::json mesh_json;
+        vg_json["objects"] = nlohmann::json::array();
+        for (const auto& obj : visgroup.objects) {
+            nlohmann::json obj_json;
 
-            mesh_json["position"] = {mesh.position.X, mesh.position.Y, mesh.position.Z};
-            mesh_json["rotation"] = {mesh.rotation.X, mesh.rotation.Y, mesh.rotation.Z, mesh.rotation.W};
-            mesh_json["scale"] = {mesh.scale.X, mesh.scale.Y, mesh.scale.Z};
-            mesh_json["opacity"] = mesh.opacity;
-            mesh_json["enable_shading"] = mesh.enable_shading;
+            // Save object transform properties
+            obj_json["position"] = {obj.position.X, obj.position.Y, obj.position.Z};
+            obj_json["rotation"] = {obj.rotation.X, obj.rotation.Y, obj.rotation.Z, obj.rotation.W};
+            obj_json["scale"] = {obj.scale.X, obj.scale.Y, obj.scale.Z};
+            obj_json["opacity"] = obj.opacity;
 
-            if (mesh.vertex_count > 0 && mesh.vertices) {
-                mesh_json["vertex_count"] = mesh.vertex_count;
-                mesh_json["vertices"] = nlohmann::json::array();
-                for (size_t v = 0; v < mesh.vertex_count * 8; v++) {
-                    mesh_json["vertices"].push_back(mesh.vertices[v]);
+            Mesh* mesh = obj.mesh;
+            if (mesh) {
+                obj_json["mesh"] = nlohmann::json::object();
+                auto& mesh_json = obj_json["mesh"];
+
+                mesh_json["enable_shading"] = mesh->enable_shading;
+
+                if (mesh->vertex_count > 0 && mesh->vertices) {
+                    mesh_json["vertex_count"] = mesh->vertex_count;
+                    mesh_json["vertices"] = nlohmann::json::array();
+                    for (size_t v = 0; v < mesh->vertex_count * 8; v++) {
+                        mesh_json["vertices"].push_back(mesh->vertices[v]);
+                    }
+                }
+
+                if (mesh->index_count > 0 && mesh->indices) {
+                    mesh_json["index_count"] = mesh->index_count;
+                    mesh_json["indices"] = nlohmann::json::array();
+                    for (size_t idx = 0; idx < mesh->index_count; idx++) {
+                        mesh_json["indices"].push_back(mesh->indices[idx]);
+                    }
+                }
+
+                mesh_json["has_texture"] = mesh->has_texture;
+                if (mesh->has_texture && mesh->texture_data && mesh->texture_data_size > 0) {
+                    mesh_json["texture_width"] = mesh->texture_desc.width;
+                    mesh_json["texture_height"] = mesh->texture_desc.height;
+                    mesh_json["texture_format"] = static_cast<int>(mesh->texture_desc.pixel_format);
+
+                    std::ostringstream hex_stream;
+                    hex_stream << std::hex << std::setfill('0');
+                    for (size_t i = 0; i < mesh->texture_data_size; i++) {
+                        hex_stream << std::setw(2) << static_cast<int>(mesh->texture_data[i]);
+                    }
+                    mesh_json["texture_data"] = hex_stream.str();
+                    mesh_json["texture_data_size"] = mesh->texture_data_size;
+
+                    mesh_json["sampler_min_filter"] = static_cast<int>(mesh->sampler_desc.min_filter);
+                    mesh_json["sampler_mag_filter"] = static_cast<int>(mesh->sampler_desc.mag_filter);
+                    mesh_json["sampler_wrap_u"] = static_cast<int>(mesh->sampler_desc.wrap_u);
+                    mesh_json["sampler_wrap_v"] = static_cast<int>(mesh->sampler_desc.wrap_v);
                 }
             }
 
-            if (mesh.index_count > 0 && mesh.indices) {
-                mesh_json["index_count"] = mesh.index_count;
-                mesh_json["indices"] = nlohmann::json::array();
-                for (size_t idx = 0; idx < mesh.index_count; idx++) {
-                    mesh_json["indices"].push_back(mesh.indices[idx]);
-                }
-            }
-
-            // save texture information
-            mesh_json["has_texture"] = mesh.has_texture;
-            if (mesh.has_texture && mesh.texture_data && mesh.texture_data_size > 0) {
-                mesh_json["texture_width"] = mesh.texture_desc.width;
-                mesh_json["texture_height"] = mesh.texture_desc.height;
-                mesh_json["texture_format"] = static_cast<int>(mesh.texture_desc.pixel_format);
-
-                // encode texture data as base64
-                std::string texture_base64;
-                // store as hex string for simplicity
-                std::ostringstream hex_stream;
-                hex_stream << std::hex << std::setfill('0');
-                for (size_t i = 0; i < mesh.texture_data_size; i++) {
-                    hex_stream << std::setw(2) << static_cast<int>(mesh.texture_data[i]);
-                }
-                mesh_json["texture_data"] = hex_stream.str();
-                mesh_json["texture_data_size"] = mesh.texture_data_size;
-
-                mesh_json["sampler_min_filter"] = static_cast<int>(mesh.sampler_desc.min_filter);
-                mesh_json["sampler_mag_filter"] = static_cast<int>(mesh.sampler_desc.mag_filter);
-                mesh_json["sampler_wrap_u"] = static_cast<int>(mesh.sampler_desc.wrap_u);
-                mesh_json["sampler_wrap_v"] = static_cast<int>(mesh.sampler_desc.wrap_v);
-            }
-
-            vg_json["meshes"].push_back(mesh_json);
+            vg_json["objects"].push_back(obj_json);
         }
 
         j["visgroups"].push_back(vg_json);
     }
 
-    // Save audio sources
     j["audio_sources"] = nlohmann::json::array();
     for (size_t i = 0; i < state.audio_sources.size(); i++) {
         const auto& as = state.audio_sources[i];
@@ -1579,109 +1593,112 @@ void load_scene(const string& path) {
 
     if (j.contains("visgroups")) {
         for (const auto& vg_json : j["visgroups"]) {
-            VisGroup new_visgroup = {"placeholder name", {}};
-            new_visgroup.name = vg_json["name"];
+            vector<Object> objects;
+            VisGroup new_visgroup(vg_json["name"], objects);
             new_visgroup.enabled = vg_json["enabled"];
             new_visgroup.opacity = vg_json["opacity"];
 
-            if (vg_json.contains("meshes")) {
-                for (const auto& mesh_json : vg_json["meshes"]) {
-                    Mesh mesh;
+            if (vg_json.contains("objects")) {
+                for (const auto& obj_json : vg_json["objects"]) {
+                    Object obj;
 
-                    if (mesh_json.contains("position")) {
-                        auto pos = mesh_json["position"];
-                        mesh.position = HMM_V3(pos[0], pos[1], pos[2]);
+                    if (obj_json.contains("position")) {
+                        auto pos = obj_json["position"];
+                        obj.position = HMM_V3(pos[0], pos[1], pos[2]);
                     }
 
-                    if (mesh_json.contains("rotation")) {
-                        auto rot = mesh_json["rotation"];
-                        mesh.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
+                    if (obj_json.contains("rotation")) {
+                        auto rot = obj_json["rotation"];
+                        obj.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
                     }
 
-                    if (mesh_json.contains("scale")) {
-                        auto scale = mesh_json["scale"];
-                        mesh.scale = HMM_V3(scale[0], scale[1], scale[2]);
+                    if (obj_json.contains("scale")) {
+                        auto scale = obj_json["scale"];
+                        obj.scale = HMM_V3(scale[0], scale[1], scale[2]);
                     }
 
-                    if (mesh_json.contains("opacity")) {
-                        mesh.opacity = mesh_json["opacity"];
+                    if (obj_json.contains("opacity")) {
+                        obj.opacity = obj_json["opacity"];
                     }
 
-                    if (mesh_json.contains("enable_shading")) {
-                        mesh.enable_shading = mesh_json["enable_shading"];
-                    }
+                    if (obj_json.contains("mesh")) {
+                        const auto& mesh_json = obj_json["mesh"];
 
-                    if (mesh_json.contains("vertex_count") &&
-                        mesh_json.contains("index_count") &&
-                        mesh_json.contains("vertices") &&
-                        mesh_json.contains("indices")) {
+                        Mesh* mesh = new Mesh();
+                        obj.mesh = mesh;
 
-                        mesh.vertex_count = mesh_json["vertex_count"];
-                        mesh.index_count = mesh_json["index_count"];
-
-                        mesh.vertices = new float[mesh.vertex_count * 8];
-                        mesh.indices = new uint32_t[mesh.index_count];
-
-                        for (size_t i = 0; i < mesh.vertex_count * 8; i++) {
-                            mesh.vertices[i] = mesh_json["vertices"][i];
+                        if (mesh_json.contains("enable_shading")) {
+                            mesh->enable_shading = mesh_json["enable_shading"];
                         }
 
-                        for (size_t i = 0; i < mesh.index_count; i++) {
-                            mesh.indices[i] = mesh_json["indices"][i];
-                        }
-                    }
+                        if (mesh_json.contains("vertex_count") &&
+                            mesh_json.contains("index_count") &&
+                            mesh_json.contains("vertices") &&
+                            mesh_json.contains("indices")) {
 
-                    // load texture information
-                    if (mesh_json.contains("has_texture") && mesh_json["has_texture"]) {
-                        mesh.has_texture = true;
+                            mesh->vertex_count = mesh_json["vertex_count"];
+                            mesh->index_count = mesh_json["index_count"];
 
-                        if (mesh_json.contains("texture_width") &&
-                            mesh_json.contains("texture_height") &&
-                            mesh_json.contains("texture_data") &&
-                            mesh_json.contains("texture_data_size")) {
+                            mesh->vertices = new float[mesh->vertex_count * 8];
+                            mesh->indices = new uint32_t[mesh->index_count];
 
-                            mesh.texture_desc.width = mesh_json["texture_width"];
-                            mesh.texture_desc.height = mesh_json["texture_height"];
-                            mesh.texture_desc.pixel_format = static_cast<sg_pixel_format>(mesh_json["texture_format"]);
-                            mesh.texture_data_size = mesh_json["texture_data_size"];
-
-                            // decode hex string back to binary data
-                            std::string hex_data = mesh_json["texture_data"];
-                            mesh.texture_data = new uint8_t[mesh.texture_data_size];
-
-                            for (size_t i = 0; i < mesh.texture_data_size; i++) {
-                                std::string byte_string = hex_data.substr(i * 2, 2);
-                                mesh.texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                            for (size_t i = 0; i < mesh->vertex_count * 8; i++) {
+                                mesh->vertices[i] = mesh_json["vertices"][i];
                             }
 
-                            mesh.texture_desc.data.subimage[0][0].ptr = mesh.texture_data;
-                            mesh.texture_desc.data.subimage[0][0].size = mesh.texture_data_size;
-
-                            // load sampler settings
-                            if (mesh_json.contains("sampler_min_filter")) {
-                                mesh.sampler_desc.min_filter = static_cast<sg_filter>(mesh_json["sampler_min_filter"]);
-                                mesh.sampler_desc.mag_filter = static_cast<sg_filter>(mesh_json["sampler_mag_filter"]);
-                                mesh.sampler_desc.wrap_u = static_cast<sg_wrap>(mesh_json["sampler_wrap_u"]);
-                                mesh.sampler_desc.wrap_v = static_cast<sg_wrap>(mesh_json["sampler_wrap_v"]);
-                            } else {
-                                // default sampler settings
-                                mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                            for (size_t i = 0; i < mesh->index_count; i++) {
+                                mesh->indices[i] = mesh_json["indices"][i];
                             }
                         }
-                    } else {
-                        mesh.has_texture = false;
-                        // set up default sampler for palette.png
-                        mesh.sampler_desc.min_filter = SG_FILTER_LINEAR;
-                        mesh.sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                        mesh.sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                        mesh.sampler_desc.wrap_v = SG_WRAP_REPEAT;
+
+                        if (mesh_json.contains("has_texture") && mesh_json["has_texture"]) {
+                            mesh->has_texture = true;
+
+                            if (mesh_json.contains("texture_width") &&
+                                mesh_json.contains("texture_height") &&
+                                mesh_json.contains("texture_data") &&
+                                mesh_json.contains("texture_data_size")) {
+
+                                mesh->texture_desc.width = mesh_json["texture_width"];
+                                mesh->texture_desc.height = mesh_json["texture_height"];
+                                mesh->texture_desc.pixel_format = static_cast<sg_pixel_format>(mesh_json["texture_format"]);
+                                mesh->texture_data_size = mesh_json["texture_data_size"];
+
+                                std::string hex_data = mesh_json["texture_data"];
+                                mesh->texture_data = new uint8_t[mesh->texture_data_size];
+
+                                for (size_t i = 0; i < mesh->texture_data_size; i++) {
+                                    std::string byte_string = hex_data.substr(i * 2, 2);
+                                    mesh->texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                                }
+
+                                mesh->texture_desc.data.subimage[0][0].ptr = mesh->texture_data;
+                                mesh->texture_desc.data.subimage[0][0].size = mesh->texture_data_size;
+
+                                if (mesh_json.contains("sampler_min_filter")) {
+                                    mesh->sampler_desc.min_filter = static_cast<sg_filter>(mesh_json["sampler_min_filter"]);
+                                    mesh->sampler_desc.mag_filter = static_cast<sg_filter>(mesh_json["sampler_mag_filter"]);
+                                    mesh->sampler_desc.wrap_u = static_cast<sg_wrap>(mesh_json["sampler_wrap_u"]);
+                                    mesh->sampler_desc.wrap_v = static_cast<sg_wrap>(mesh_json["sampler_wrap_v"]);
+                                } else {
+                                    mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                    mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                    mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                    mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                }
+                            }
+                        } else {
+                            mesh->has_texture = false;
+                            mesh->sampler_desc.min_filter = SG_FILTER_LINEAR;
+                            mesh->sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                            mesh->sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                            mesh->sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                        }
+
+                        prepare_mesh_buffers(*mesh);
                     }
 
-                    Mesh_To_Buffers(mesh, true);
-                    new_visgroup.meshes.push_back(std::move(mesh));
+                    new_visgroup.objects.push_back(std::move(obj));
                 }
             }
 
@@ -1718,7 +1735,10 @@ void load_scene(const string& path) {
             for (auto& ed : state.event_descriptions) {
                 FMOD_GUID current_id;
                 ed->getID(&current_id);
-                if (current_id.Data1 == audio_source->guid.Data1 && current_id.Data2 == audio_source->guid.Data2 && current_id.Data3 == audio_source->guid.Data3 && memcmp(current_id.Data4, audio_source->guid.Data4, 8) == 0) {
+                if (current_id.Data1 == audio_source->guid.Data1 &&
+                    current_id.Data2 == audio_source->guid.Data2 &&
+                    current_id.Data3 == audio_source->guid.Data3 &&
+                    memcmp(current_id.Data4, audio_source->guid.Data4, 8) == 0) {
                     audio_source->initalize(ed, audio_source->position);
                     break;
                 }
@@ -1792,7 +1812,7 @@ extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode);
 
-static int selected_mesh_index = -1;
+static int selected_object_index = -1;
 static int selected_mesh_visgroup = -1;
 static int selected_as_index = -1;
 static int selected_visgroup_index = -1;
@@ -1817,17 +1837,18 @@ void render_editor() {
 
         for (int v = 0; v < vis_groups.size(); v++) {
             VisGroup visgroup = vis_groups[v];
-            for (int i = 0; i < visgroup.meshes.size(); i++) {
-                auto& mesh = visgroup.meshes[i];
-                string label = "Mesh " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh.vertex_count);
+            for (int i = 0; i < visgroup.objects.size(); i++) {
+                Object obj = visgroup.objects[i];
+                Mesh* mesh = obj.mesh;
+                string label = "Mesh " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh->vertex_count);
 
-                bool is_selected = (selected_mesh_index == i);
+                bool is_selected = (selected_object_index == i);
                 if (ImGui::Selectable(label.c_str(), is_selected)) {
-                    selected_mesh_index = i;
+                    selected_object_index = i;
                     selected_mesh_visgroup = v;
-                    if (vis_groups[v].meshes[i].has_texture) {
-                        editor_display_image = sg_make_image(vis_groups[v].meshes[i].texture_desc);
-                        editor_display_sampler = sg_make_sampler(vis_groups[v].meshes[i].sampler_desc);
+                    if (vis_groups[v].objects[i].mesh->has_texture) {
+                        editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->texture_desc);
+                        editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->sampler_desc);
                     }
                 }
 
@@ -1841,36 +1862,36 @@ void render_editor() {
 
         ImGui::SameLine();
         ImGui::BeginChild("Mesh settings", ImVec2(300, 300), true);
-        if (selected_mesh_index != -1) {
+        if (selected_object_index != -1) {
             ImGui::Text("Mesh settings");
             ImGui::Separator();
 
-            auto& selected_mesh = vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index];
+            Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
 
-            ImGui::Text("Selected: Mesh %d", selected_mesh_index);
+            ImGui::Text("Selected: Mesh %d", selected_object_index);
 
             ImGui::PushItemWidth(200);
 
-            ImGui::DragFloat3("Positon", &selected_mesh.position.X, 0.01f);
+            ImGui::DragFloat3("Positon", &selected_object->position.X, 0.01f);
 
-            if (last_selected_mesh != selected_mesh_index) {
-                mesh_euler_rotations[selected_mesh_index] = QuatToEulerDegrees(selected_mesh.rotation);
-                last_selected_mesh = selected_mesh_index;
+            if (last_selected_mesh != selected_object_index) {
+                mesh_euler_rotations[selected_object_index] = QuatToEulerDegrees(selected_object->rotation);
+                last_selected_mesh = selected_object_index;
             }
 
-            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_mesh_index];
+            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_object_index];
 
             if (ImGui::DragFloat3("Rotation", &euler_rotation.X, 0.5f)) {
-                selected_mesh.rotation = EulerDegreesToQuat(euler_rotation);
+                selected_object->rotation = EulerDegreesToQuat(euler_rotation);
             }
-            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_mesh.rotation);
+            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_object->rotation);
             if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
 
-            ImGui::DragFloat3("Scale", &selected_mesh.scale.X, 0.01f);
+            ImGui::DragFloat3("Scale", &selected_object->scale.X, 0.01f);
 
-            ImGui::SliderFloat("Opacity", &selected_mesh.opacity, 0.0f, 1.0f);
+            ImGui::SliderFloat("Opacity", &selected_object->opacity, 0.0f, 1.0f);
 
-            ImGui::Checkbox("Shading", &selected_mesh.enable_shading);
+            ImGui::Checkbox("Shading", &selected_object->mesh->enable_shading);
 
             ImGui::PopItemWidth();
 
@@ -1879,11 +1900,11 @@ void render_editor() {
                     bool is_selected = (selected_selectable_visgroup_index == i);
                     if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
                         selected_selectable_visgroup_index = i;
-                        if (selected_mesh_index >= 0 && selected_mesh_index < vis_groups[selected_mesh_visgroup].meshes.size()) {
-                            Mesh mesh_to_move = std::move(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index]);
-                            vis_groups[selected_mesh_visgroup].meshes.erase(vis_groups[selected_mesh_visgroup].meshes.begin() + selected_mesh_index);
-                            vis_groups[i].meshes.push_back(std::move(mesh_to_move));
-                            selected_mesh_index = -1;
+                        if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
+                            Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                            vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                            vis_groups[i].objects.push_back(std::move(object_to_move));
+                            selected_object_index = -1;
                         }
                     }
 
@@ -1896,37 +1917,38 @@ void render_editor() {
 
             ImGui::Separator();
             if (ImGui::Button("Duplicate")) {
-                if (selected_mesh_index >= 0 && selected_mesh_index < vis_groups[selected_mesh_visgroup].meshes.size()) {
-                    const auto& selected_mesh = vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index];
-                    Mesh new_mesh;
+                if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
+                    const Object selected_object = vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+                    Object new_object;
+                    new_object.mesh = selected_object.mesh;
 
-                    new_mesh.position = selected_mesh.position;
-                    new_mesh.rotation = selected_mesh.rotation;
-                    new_mesh.scale = selected_mesh.scale;
-                    new_mesh.opacity = selected_mesh.opacity;
+                    new_object.position = selected_object.position;
+                    new_object.rotation = selected_object.rotation;
+                    new_object.scale = selected_object.scale;
+                    new_object.opacity = selected_object.opacity;
 
-                    if (selected_mesh.vertex_count > 0 && selected_mesh.vertices) {
-                        new_mesh.vertex_count = selected_mesh.vertex_count;
-                        new_mesh.vertices = new float[new_mesh.vertex_count * 8];
-                        memcpy(new_mesh.vertices, selected_mesh.vertices,new_mesh.vertex_count * 8 * sizeof(float));
+                    if (selected_object.mesh->vertex_count > 0 && selected_object.mesh->vertices) {
+                        new_object.mesh->vertex_count = selected_object.mesh->vertex_count;
+                        new_object.mesh->vertices = new float[new_object.mesh->vertex_count * 8];
+                        memcpy(new_object.mesh->vertices, selected_object.mesh->vertices,new_object.mesh->vertex_count * 8 * sizeof(float));
                     }
 
-                    if (selected_mesh.index_count > 0 && selected_mesh.indices) {
-                        new_mesh.index_count = selected_mesh.index_count;
-                        new_mesh.indices = new uint32_t[new_mesh.index_count];
-                        memcpy(new_mesh.indices, selected_mesh.indices,
-                               new_mesh.index_count * sizeof(uint32_t));
+                    if (selected_object.mesh->index_count > 0 && selected_object.mesh->indices) {
+                        new_object.mesh->index_count = selected_object.mesh->index_count;
+                        new_object.mesh->indices = new uint32_t[new_object.mesh->index_count];
+                        memcpy(new_object.mesh->indices, selected_object.mesh->indices,
+                               new_object.mesh->index_count * sizeof(uint32_t));
                     }
 
-                    Mesh_To_Buffers(new_mesh);
+                    prepare_mesh_buffers(*new_object.mesh);
                 }
             }
             if (ImGui::Button("Delete Mesh")) {
-                vis_groups[selected_mesh_visgroup].meshes.erase(vis_groups[selected_mesh_visgroup].meshes.begin() + selected_mesh_index);
-                selected_mesh_index = -1;
+                vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                selected_object_index = -1;
                 selected_mesh_visgroup = -1;
             }
-            if (selected_mesh.has_texture) { // texture display
+            if (selected_object->mesh->has_texture) { // texture display
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
                 ImGui::Image(imtex_id, ImVec2(128, 128));
             }
@@ -1947,9 +1969,10 @@ void render_editor() {
             );
 
             if (file_path) {
-                vector<Mesh> loaded_meshes = load_gltf(file_path);
-                for (auto& mesh : loaded_meshes) {
-                    Mesh_To_Buffers(mesh);
+                vector<Object> loaded_objects = load_gltf(file_path);
+                for (auto& obj : loaded_objects) {
+                    prepare_mesh_buffers(*obj.mesh);
+                    vis_groups[0].objects.push_back(obj);
                 }
             }
         }
@@ -1972,14 +1995,16 @@ void render_editor() {
                 uint32_t index_count;
 
                 if (load_obj(file_path, &verts, &vertex_count, &indices, &index_count)) {
-                    Mesh loaded_mesh = Mesh();
-                    loaded_mesh.vertices = verts;
-                    loaded_mesh.vertex_count = vertex_count;
-                    loaded_mesh.indices = indices;
-                    loaded_mesh.index_count = index_count;
-                    loaded_mesh.position = HMM_V3(0.0f, 0.0f, 0.0f);
+                    Object loaded_object{};
+                    loaded_object.mesh = new Mesh();
+                    loaded_object.mesh->vertices = verts;
+                    loaded_object.mesh->vertex_count = vertex_count;
+                    loaded_object.mesh->indices = indices;
+                    loaded_object.mesh->index_count = index_count;
+                    loaded_object.position = HMM_V3(0.0f, 0.0f, 0.0f);
 
-                    Mesh_To_Buffers(loaded_mesh);
+                    prepare_mesh_buffers(*loaded_object.mesh);
+                    vis_groups[0].objects.push_back(loaded_object);
                     std::cout << "Loaded OBJ" << std::endl;
                 }
             }
@@ -2161,7 +2186,7 @@ void render_editor() {
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+        ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
         if (ImGui::Button("Save Scene")) {
             const char* filter_patterns[] = {"*.gmap"};
             const char* file_path = tinyfd_saveFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files");
@@ -2185,54 +2210,56 @@ void render_editor() {
         }
 
         ImGui::Separator();
-        ImGui::BeginChild("VisGroups", ImVec2(150, 75), ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground);
-        for (int i = 0; i < vis_groups.size(); i++) {
-            string label = vis_groups[i].name;
+        if (ImGui::CollapsingHeader("VisGroups")) {
+            ImGui::BeginChild("VisGroups", ImVec2(150, 75), true);
+            for (int i = 0; i < vis_groups.size(); i++) {
+                string label = vis_groups[i].name;
 
-            bool is_selected = (selected_visgroup_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_visgroup_index = i;
-            }
-
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndChild();
-        ImGui::SameLine();
-        ImGui::BeginChild("VisGroup settings", ImVec2(150, 75), true);
-        if (selected_visgroup_index >= 0 && selected_visgroup_index < vis_groups.size()) {
-            static char visgroup_name_buffer[256];
-            static int last_selected_visgroup = -1;
-            VisGroup* selected_visgroup = &vis_groups[selected_visgroup_index];
-
-            if (last_selected_visgroup != selected_visgroup_index) {
-                strncpy(visgroup_name_buffer, selected_visgroup->name.c_str(), sizeof(visgroup_name_buffer) - 1);
-                visgroup_name_buffer[sizeof(visgroup_name_buffer) - 1] = '\0';
-                last_selected_visgroup = selected_visgroup_index;
-            }
-
-            if (ImGui::InputText("Name", visgroup_name_buffer, sizeof(visgroup_name_buffer))) {
-                selected_visgroup->name = string(visgroup_name_buffer);
-            }
-            ImGui::Checkbox("Enabled", &selected_visgroup->enabled);
-            ImGui::DragFloat("Opacity", &selected_visgroup->opacity, 0.01f, 0.0f, 1.0f);
-            if (ImGui::Button("Delete VisGroup")) {
-                for (auto& mesh : selected_visgroup->meshes) {
-                    vis_groups[0].meshes.push_back(std::move(mesh));
+                bool is_selected = (selected_visgroup_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_visgroup_index = i;
                 }
-                vis_groups.erase(vis_groups.begin() + selected_visgroup_index);
-                selected_visgroup_index = -1;
-                selected_mesh_index = -1;
-                selected_mesh_visgroup = -1;
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
             }
-        } else {
-            ImGui::Text("No VisGroup selected");
-        }
-        ImGui::EndChild();
-        if (ImGui::Button("Add VisGroup")) {
-            VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
-            vis_groups.push_back(*new_visgroup);
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("VisGroup settings", ImVec2(150, 75), true);
+            if (selected_visgroup_index >= 0 && selected_visgroup_index < vis_groups.size()) {
+                static char visgroup_name_buffer[256];
+                static int last_selected_visgroup = -1;
+                VisGroup* selected_visgroup = &vis_groups[selected_visgroup_index];
+
+                if (last_selected_visgroup != selected_visgroup_index) {
+                    strncpy(visgroup_name_buffer, selected_visgroup->name.c_str(), sizeof(visgroup_name_buffer) - 1);
+                    visgroup_name_buffer[sizeof(visgroup_name_buffer) - 1] = '\0';
+                    last_selected_visgroup = selected_visgroup_index;
+                }
+
+                if (ImGui::InputText("Name", visgroup_name_buffer, sizeof(visgroup_name_buffer))) {
+                    selected_visgroup->name = string(visgroup_name_buffer);
+                }
+                ImGui::Checkbox("Enabled", &selected_visgroup->enabled);
+                ImGui::DragFloat("Opacity", &selected_visgroup->opacity, 0.01f, 0.0f, 1.0f);
+                if (ImGui::Button("Delete VisGroup")) {
+                    for (auto& obj : selected_visgroup->objects) {
+                        vis_groups[0].objects.push_back(obj);
+                    }
+                    vis_groups.erase(vis_groups.begin() + selected_visgroup_index);
+                    selected_visgroup_index = -1;
+                    selected_object_index = -1;
+                    selected_mesh_visgroup = -1;
+                }
+            } else {
+                ImGui::Text("No VisGroup selected");
+            }
+            ImGui::EndChild();
+            if (ImGui::Button("Add VisGroup")) {
+                VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
+                vis_groups.push_back(*new_visgroup);
+            }
         }
         ImGui::End();
     } /*else {
@@ -2371,12 +2398,6 @@ void _frame() {
     HMM_Vec2 ssao_proj{};
     ssao_proj.Y = tanf(state.fov * 0.5f);
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
-    ssao_params = ssao_params_t{};
-    ssao_params.ao_radius = 0.5f;
-    ssao_params.ao_bias = 0.02f;
-    ssao_params.ao_strength = 1.0f;
-    ssao_params.ao_power = 1.75f;
-    ssao_params.ssao_samples = 32;
     ssao_params.proj = ssao_proj;
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
     ssao_params.u_near = 0.1f;
@@ -2457,29 +2478,29 @@ void _event(SDL_Event* e) {
                 std::cout << "Raycasting for selection" << std::endl;
                 RaycastResult result = raycast_from_screen(e->button.x, e->button.y);
                 if (result.hit) {
-                    selected_mesh_index = -1;
+                    selected_object_index = -1;
                     selected_mesh_visgroup = -1;
 
                     for (int vg_idx = 0; vg_idx < vis_groups.size(); vg_idx++) {
                         auto& visgroup = vis_groups[vg_idx];
-                        for (int m_idx = 0; m_idx < visgroup.meshes.size(); m_idx++) {
-                            if (&visgroup.meshes[m_idx] == result.mesh) {
-                                selected_mesh_index = m_idx;
+                        for (int obj_idx = 0; obj_idx < visgroup.objects.size(); obj_idx++) {
+                            if (visgroup.objects[obj_idx].mesh == result.mesh) {
+                                selected_object_index = obj_idx;
                                 selected_mesh_visgroup = vg_idx;
-                                if (vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].has_texture) {
-                                    editor_display_image = sg_make_image(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].texture_desc);
-                                    editor_display_sampler = sg_make_sampler(vis_groups[selected_mesh_visgroup].meshes[selected_mesh_index].sampler_desc);
+
+                                if (visgroup.objects[obj_idx].mesh->has_texture) {
+                                    editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->texture_desc);
+                                    editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->sampler_desc);
                                 }
                                 break;
                             }
                         }
-                        if (selected_mesh_index != -1) break;
+                        if (selected_object_index != -1) break;
                     }
 
-                    if (selected_mesh_index != -1) {
-                        std::cout << "Selected mesh: VisGroup " << selected_mesh_visgroup << ", Mesh " << selected_mesh_index << std::endl;
+                    if (selected_object_index != -1) {
+                        std::cout << "Selected object: VisGroup " << selected_mesh_visgroup << ", Object " << selected_object_index << std::endl;
                     }
-
                 }
             }
         }
@@ -2633,7 +2654,6 @@ int main(int argc, char* argv[]) {
 
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode)
 {
-    // Keypad doesn't have individual key values in SDL3
     switch (scancode)
     {
         case SDL_SCANCODE_KP_0: return ImGuiKey_Keypad0;
@@ -2762,7 +2782,6 @@ ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode sca
         default: break;
     }
 
-    // Fallback to scancode
     switch (scancode)
     {
     case SDL_SCANCODE_GRAVE: return ImGuiKey_GraveAccent;

@@ -9,12 +9,12 @@ using namespace std;
 class VisGroup {
 public:
     string name;
-    vector<Mesh> meshes;
+    vector<Object> objects;
     bool enabled = true;
     float opacity = 1.0f;
-    VisGroup(string name, vector<Mesh> new_meshes) {
+    VisGroup(string name, vector<Object> new_objects) {
         this->name = name;
-        this->meshes = std::move(new_meshes);
+        this->objects = std::move(new_objects);
     }
 };
 

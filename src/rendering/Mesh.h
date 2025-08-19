@@ -7,11 +7,6 @@
 
 class Mesh {
 public:
-    HMM_Vec3 position{0,0,0};
-    HMM_Quat rotation{0,0,0,1};
-    HMM_Vec3 scale{1,1,1};
-    float opacity = 1.0f;
-
     float*    vertices = nullptr; // 3 floats for position, 3 floats for normals, and 2 floats for vertex coords
     size_t    vertex_count = 0;
     uint32_t* indices  = nullptr;
@@ -52,10 +47,6 @@ public:
         delete[] indices16;
         delete[] texture_data;
 
-        position = other.position;
-        rotation = other.rotation;
-        scale = other.scale;
-        opacity = other.opacity;
         vertex_count = other.vertex_count;
         index_count = other.index_count;
         vertex_buffer_desc = other.vertex_buffer_desc;
@@ -123,10 +114,6 @@ public:
         index_count = o.index_count;
         indices16 = o.indices16;
         use_uint16_indices = o.use_uint16_indices;
-        position = o.position;
-        rotation = o.rotation;
-        scale = o.scale;
-        opacity = o.opacity;
         vertex_count = o.vertex_count;
         index_count = o.index_count;
         vertex_buffer_desc = o.vertex_buffer_desc;

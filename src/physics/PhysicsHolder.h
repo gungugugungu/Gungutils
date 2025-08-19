@@ -12,7 +12,7 @@ inline PhysicsWorld* world = physicsCommon.createPhysicsWorld();
 
 class PhysicsHolder {
 public:
-    Mesh* assigned_mesh;
+    Object* assigned_object;
     Vector3 position;
     Quaternion orientation;
     Transform transform;
@@ -20,22 +20,22 @@ public:
 
     // alternative: create a box collider based on mesh bounds
     void create_box_collider() const {
-        if (!assigned_mesh || !assigned_mesh->vertices || assigned_mesh->vertex_count == 0) {
+        if (!assigned_object || !assigned_object->mesh->vertices || assigned_object->mesh->vertex_count == 0) {
             return;
         }
 
         float minX = FLT_MAX, minY = FLT_MAX, minZ = FLT_MAX;
         float maxX = -FLT_MAX, maxY = -FLT_MAX, maxZ = -FLT_MAX;
 
-        HMM_Mat4 scale_matrix = HMM_Scale(assigned_mesh->scale);
+        HMM_Mat4 scale_matrix = HMM_Scale(assigned_object->scale);
 
-        for (size_t i = 0; i < assigned_mesh->vertex_count; i++) {
-            float x = assigned_mesh->vertices[i * 8 + 0];
-            float y = assigned_mesh->vertices[i * 8 + 1];
-            float z = assigned_mesh->vertices[i * 8 + 2];
+        for (size_t i = 0; i < assigned_object->mesh->vertex_count; i++) {
+            float x = assigned_object->mesh->vertices[i * 8 + 0];
+            float y = assigned_object->mesh->vertices[i * 8 + 1];
+            float z = assigned_object->mesh->vertices[i * 8 + 2];
 
             HMM_Vec4 vertex = {x, y, z, 1.0f};
-            HMM_Vec4 transformed = {vertex.X*assigned_mesh->scale.X, vertex.Y*assigned_mesh->scale.Y, vertex.Z*assigned_mesh->scale.Z, 1.0f};
+            HMM_Vec4 transformed = {vertex.X*assigned_object->scale.X, vertex.Y*assigned_object->scale.Y, vertex.Z*assigned_object->scale.Z, 1.0f};
 
             minX = std::min(minX, transformed.X);
             minY = std::min(minY, transformed.Y);
@@ -56,15 +56,15 @@ public:
         body->addCollider(boxShape, colliderTransform);
     }
 
-    void assign_mesh(Mesh* mesh) {
-        assigned_mesh = mesh;
-        position.x = mesh->position.X;
-        position.y = mesh->position.Y;
-        position.z = mesh->position.Z;
-        orientation.x = mesh->rotation.X;
-        orientation.y = mesh->rotation.Y;
-        orientation.z = mesh->rotation.Z;
-        orientation.w = mesh->rotation.W;
+    void assign_mesh(Object* obj) {
+        assigned_object = obj;
+        position.x = obj->position.X;
+        position.y = obj->position.Y;
+        position.z = obj->position.Z;
+        orientation.x = obj->rotation.X;
+        orientation.y = obj->rotation.Y;
+        orientation.z = obj->rotation.Z;
+        orientation.w = obj->rotation.W;
         transform = Transform(position, orientation);
 
         if (body) {
@@ -74,29 +74,29 @@ public:
 
         cout << "-----" << endl;
 
-        if (mesh->vertices && mesh->vertex_count > 0) {
+        if (obj->mesh->vertices && obj->mesh->vertex_count > 0) {
             std::vector<Vector3> vertices;
-            vertices.reserve(mesh->vertex_count);
+            vertices.reserve(obj->mesh->vertex_count);
 
-            for (size_t i = 0; i < mesh->vertex_count; i++) {
-                float x = mesh->vertices[i * 8 + 0];
-                float y = mesh->vertices[i * 8 + 1];
-                float z = mesh->vertices[i * 8 + 2];
+            for (size_t i = 0; i < obj->mesh->vertex_count; i++) {
+                float x = obj->mesh->vertices[i * 8 + 0];
+                float y = obj->mesh->vertices[i * 8 + 1];
+                float z = obj->mesh->vertices[i * 8 + 2];
 
                 HMM_Vec4 vertex = {x, y, z, 1.0f};
-                HMM_Vec4 scaled = {vertex.X*assigned_mesh->scale.X, vertex.Y*assigned_mesh->scale.Y, vertex.Z*assigned_mesh->scale.Z, 1.0f};
+                HMM_Vec4 scaled = {vertex.X*assigned_object->scale.X, vertex.Y*assigned_object->scale.Y, vertex.Z*assigned_object->scale.Z, 1.0f};
 
                 vertices.emplace_back(scaled.X, scaled.Y, scaled.Z);
             }
 
             std::vector<uint32_t> indices_vec;
-            if (mesh->use_uint16_indices && mesh->indices16) {
-                indices_vec.reserve(mesh->index_count);
-                for (size_t i = 0; i < mesh->index_count; i++) {
-                    indices_vec.push_back(static_cast<uint32_t>(mesh->indices16[i]));
+            if (obj->mesh->use_uint16_indices && obj->mesh->indices16) {
+                indices_vec.reserve(obj->mesh->index_count);
+                for (size_t i = 0; i < obj->mesh->index_count; i++) {
+                    indices_vec.push_back(static_cast<uint32_t>(obj->mesh->indices16[i]));
                 }
-            } else if (mesh->indices) {
-                indices_vec.assign(mesh->indices, mesh->indices + mesh->index_count);
+            } else if (obj->mesh->indices) {
+                indices_vec.assign(obj->mesh->indices, obj->mesh->indices + obj->mesh->index_count);
             }
 
             if (indices_vec.size() % 3 != 0) {
@@ -146,14 +146,14 @@ public:
     }
 
     void update() {
-        if (assigned_mesh != nullptr && body != nullptr) {
-            assigned_mesh->position.X = body->getTransform().getPosition().x;
-            assigned_mesh->position.Y = body->getTransform().getPosition().y;
-            assigned_mesh->position.Z = body->getTransform().getPosition().z;
-            assigned_mesh->rotation.X = body->getTransform().getOrientation().x;
-            assigned_mesh->rotation.Y = body->getTransform().getOrientation().y;
-            assigned_mesh->rotation.Z = body->getTransform().getOrientation().z;
-            assigned_mesh->rotation.W = body->getTransform().getOrientation().w;
+        if (assigned_object != nullptr && body != nullptr) {
+            assigned_object->position.X = body->getTransform().getPosition().x;
+            assigned_object->position.Y = body->getTransform().getPosition().y;
+            assigned_object->position.Z = body->getTransform().getPosition().z;
+            assigned_object->rotation.X = body->getTransform().getOrientation().x;
+            assigned_object->rotation.Y = body->getTransform().getOrientation().y;
+            assigned_object->rotation.Z = body->getTransform().getOrientation().z;
+            assigned_object->rotation.W = body->getTransform().getOrientation().w;
         }
     }
 };
