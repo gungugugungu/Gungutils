@@ -9,6 +9,7 @@ layout(location = 0) out vec2 TexCoord;
 layout(location = 1) out float v_opacity;
 layout(location = 2) out vec3 vNormal;
 layout(location = 3) flat out int venable_shading;
+layout(location = 4) out vec3 vWorldPos;
 
 layout(binding = 0) uniform vs_params {
     mat4 model;
@@ -28,6 +29,8 @@ void main() {
     vNormal = normalize(normalMat * aNormal);
 
     venable_shading = enable_shading;
+
+    vWorldPos = (model * vec4(aPos, 1.0)).xyz;
 }
 @end
 
@@ -38,6 +41,7 @@ layout(location = 0) in vec2 TexCoord;
 layout(location = 1) in float v_opacity;
 layout(location = 2) in vec3 vNormal;
 layout(location = 3) flat in int venable_shading;
+layout(location = 4) in vec3 vWorldPos;
 
 layout(binding = 0) uniform texture2D _diffuse_tex2D;
 layout(binding = 0) uniform sampler diffuse_tex_smp;
@@ -47,7 +51,9 @@ layout(binding = 1) uniform sampler specular_tex_smp;
 layout(binding = 2) uniform model_fs_params {
     int has_diffuse_tex;
     int has_specular_tex;
-    float specular; // in case of no specular texture, just render it with this setting instead of a map. 0f to 1f
+    float specular;
+    float shininess;
+    vec4 camera_pos; // 16 bytes (x,y,z,w(=unused))
 };
 
 #define diffuse_texture2D sampler2D(_diffuse_tex2D, diffuse_tex_smp)
@@ -83,11 +89,11 @@ void main() {
     const float AMBIENT_STRENGTH = 0.35;
     const float TOON_BANDS = 4.0;
 
+    // DIFFUSE
     vec3 N = normalize(vNormal);
-    vec3 L = normalize(-LIGHT_DIR); // from point toward light
+    vec3 L = normalize(-LIGHT_DIR);
     float ndl = max(dot(N, L), 0.0);
 
-    // dither only the lighting bands.
     float bands = max(TOON_BANDS - 1.0, 1.0);
     float bandStep = 1.0 / bands;
 
@@ -97,17 +103,24 @@ void main() {
     float ndlDithered = clamp(ndl + dither, 0.0, 1.0);
     float q = round(ndlDithered * bands) / bands;
 
-    // combine ambient + toon diffuse (dithered)
     vec3 lighting = AMBIENT_COLOR * AMBIENT_STRENGTH + LIGHT_COLOR * q;
 
-    vec3 finalRgb;
-    if (venable_shading == 1) {
-        finalRgb = clamp(diffuse_tex_color.rgb * lighting, 0.0, 1.0);
-    } else {
-        finalRgb = diffuse_tex_color.rgb;
-    }
+    // SPECULAR
+    vec3 ambientTerm = AMBIENT_COLOR * AMBIENT_STRENGTH * diffuse_tex_color.rgb;
+    vec3 diffuseTerm = LIGHT_COLOR * q * diffuse_tex_color.rgb;
 
-    FragColor = vec4(finalRgb, diffuse_tex_color.a * v_opacity);
+    float spec_strength = (has_specular_tex == 1) ? specular_tex_color.r : specular;
+    vec3 V = normalize(camera_pos.xyz - vWorldPos);
+    vec3 H = normalize(L + V);
+    float spec = 0.0;
+    if (ndl > 0.0 && spec_strength > 0.0) {
+        spec = pow(max(dot(N, H), 0.0), shininess) * spec_strength;
+    }
+    vec3 specularTerm = LIGHT_COLOR * spec;
+
+    // final
+    vec3 finalRgb = ambientTerm + diffuseTerm + specularTerm;
+    FragColor = vec4(clamp(finalRgb, 0.0, 1.0), diffuse_tex_color.a * v_opacity);
 }
 @end
 

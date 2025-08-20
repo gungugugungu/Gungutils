@@ -400,23 +400,27 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         vs_params.enable_shading = 0;
                     }
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+                    // MODEL FS PARAMS
                     struct model_fs_params_t {
                         int has_diffuse_tex;
                         int has_specular_tex;
                         float specular;
+                        float shininess;
+
+                        float camera_pos_x;
+                        float camera_pos_y;
+                        float camera_pos_z;
+                        float camera_pos_w;
                     };
                     model_fs_params_t model_fs_params;
-                    if (mesh->material->has_diffuse_texture) {
-                        model_fs_params.has_diffuse_tex = 1;
-                    } else {
-                        model_fs_params.has_diffuse_tex = 0;
-                    }
-                    if (mesh->material->has_specular_texture) {
-                        model_fs_params.has_specular_tex = 1;
-                    } else {
-                        model_fs_params.has_specular_tex = 0;
-                    }
+                    if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
+                    if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
                     model_fs_params.specular = mesh->material->specular;
+                    model_fs_params.camera_pos_x = state.camera_pos.X;
+                    model_fs_params.camera_pos_y = state.camera_pos.Y;
+                    model_fs_params.camera_pos_z = state.camera_pos.Z;
+                    model_fs_params.camera_pos_w = 0.0f;
+                    model_fs_params.shininess = 32;
                     sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
                     sg_draw(0, mesh->index_count, 1);
@@ -532,7 +536,7 @@ void render_first_pass() {
 
     sg_apply_pipeline(state.pip);
 
-    render_meshes_batched_streaming(30); // TODO: sort and then automatically instance meshes that are rendered twice
+    render_meshes_batched_streaming(10); // TODO: sort and then automatically instance meshes that are rendered twice
 
     sg_end_pass();
 
