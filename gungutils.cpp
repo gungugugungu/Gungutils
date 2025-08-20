@@ -234,6 +234,31 @@ void prepare_mesh_buffers(Mesh& mesh) {
         exit(-1);
     }
 
+    std::cout << "=== MESH BUFFER DEBUG ===" << std::endl;
+    std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
+    std::cout << "Index count: " << mesh.index_count << std::endl;
+    std::cout << "Buffer size: " << (mesh.vertex_count * 8 * sizeof(float)) << " bytes" << std::endl;
+    std::cout << "Expected layout: 8 floats per vertex (pos=3, norm=3, uv=2)" << std::endl;
+
+    if (mesh.vertices && mesh.vertex_count > 0) {
+        std::cout << "First vertex: pos(" << mesh.vertices[0] << "," << mesh.vertices[1] << "," << mesh.vertices[2]
+                  << ") norm(" << mesh.vertices[3] << "," << mesh.vertices[4] << "," << mesh.vertices[5]
+                  << ") uv(" << mesh.vertices[6] << "," << mesh.vertices[7] << ")" << std::endl;
+    }
+
+    if (mesh.indices && mesh.index_count > 2) {
+        std::cout << "First triangle indices: " << mesh.indices[0] << "," << mesh.indices[1] << "," << mesh.indices[2] << std::endl;
+        std::cout << "Max index should be < " << mesh.vertex_count << std::endl;
+
+        for (size_t i = 0; i < mesh.index_count; i++) {
+            if (mesh.indices[i] >= mesh.vertex_count) {
+                std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
+                break;
+            }
+        }
+    }
+    std::cout << "=========================" << std::endl;
+
     mesh.vertex_buffer_desc = {};
     mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
     mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
@@ -994,7 +1019,13 @@ vector<Object> load_gltf(const std::string& path) {
                 const auto* uvBuf = reinterpret_cast<const float*>(
                     model.buffers[uvView.buffer].data.data() + uvView.byteOffset + uvAcc.byteOffset);
 
+                if (posAcc.count != normAcc.count || posAcc.count != uvAcc.count) {
+                    std::cout << "Warning: Mismatched attribute counts!" << std::endl;
+                    continue;
+                }
+
                 size_t posStride = posView.byteStride ? posView.byteStride / sizeof(float) : 3;
+                if (posStride < 3) posStride = 3;
                 size_t normStride = normView.byteStride ? normView.byteStride / sizeof(float) : 3;
                 size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
 
@@ -1097,6 +1128,9 @@ vector<Object> load_gltf(const std::string& path) {
                 }
 
                 objects.push_back(obj);
+                std::cout << "Loading mesh: vertices=" << vcount << ", indices=" << icount << std::endl;
+                std::cout << "Using uint16 indices: " << (obj.mesh->use_uint16_indices ? "yes" : "no") << std::endl;
+                std::cout << "Strides: pos=" << posStride << ", norm=" << normStride << ", uv=" << uvStride << std::endl;
             }
         }
 
@@ -1249,6 +1283,9 @@ vector<Object> load_gltf(const std::string& path) {
                 }
 
                 objects.push_back(obj);
+                std::cout << "Loading mesh: vertices=" << vcount << ", indices=" << icount << std::endl;
+                std::cout << "Using uint16 indices: " << (obj.mesh->use_uint16_indices ? "yes" : "no") << std::endl;
+                std::cout << "Strides: pos=" << posStride << ", norm=" << normStride << ", uv=" << uvStride << std::endl;
             }
         }
     }
@@ -2519,7 +2556,7 @@ void _init() {
     pip_desc.layout.attrs[ATTR_main_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
     pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    pip_desc.index_type = SG_INDEXTYPE_UINT16;
+    pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
     pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky, only use it if you avoided issues with it in scenes
     pip_desc.label = "main-pipeline";
