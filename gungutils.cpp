@@ -36,6 +36,7 @@
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
 #include <reactphysics3d/reactphysics3d.h>
+#include "meshoptimizer/src/meshoptimizer.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
@@ -259,42 +260,76 @@ void prepare_mesh_buffers(Mesh& mesh) {
     }
     std::cout << "=========================" << std::endl;
 
+    const size_t index_count  = mesh.index_count;
+    const size_t vertex_count = mesh.vertex_count;
+    const size_t vertex_size  = 8 * sizeof(float);
+    const float* vertices_src = mesh.vertices;
+    const uint32_t* indices_src = mesh.indices;
+
+    uint32_t* tmp_indices_1 = new uint32_t[index_count];
+    uint32_t* tmp_indices_2 = new uint32_t[index_count];
+
+    meshopt_optimizeVertexCache(tmp_indices_1, indices_src, index_count, vertex_count);
+
+    meshopt_optimizeOverdraw(tmp_indices_2, tmp_indices_1, index_count, vertices_src, vertex_count, vertex_size, 1.05f);
+
+    unsigned int* remap = new unsigned int[vertex_count];
+    size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count,
+                                                          vertices_src, vertex_count, vertex_size);
+
+    float* vertices_remapped = new float[new_vertex_count * 8]; // 8 floats per vertex
+    meshopt_remapVertexBuffer(vertices_remapped, vertices_src, vertex_count, vertex_size, remap);
+
+    uint32_t* indices_remapped = new uint32_t[index_count];
+    meshopt_remapIndexBuffer(indices_remapped, tmp_indices_2, index_count, remap);
+
+    delete[] tmp_indices_1;
+    delete[] tmp_indices_2;
+    delete[] remap;
+
+    bool can_use_uint16 = true;
+    for (size_t i = 0; i < index_count; ++i) {
+        if (indices_remapped[i] > 0xFFFFu) { can_use_uint16 = false; break; }
+    }
+
+    delete[] mesh.vertices;
+    delete[] mesh.indices;
+    delete[] mesh.indices16;
+    mesh.indices16 = nullptr;
+
+    mesh.vertices = vertices_remapped;
+    mesh.vertex_count = new_vertex_count;
+
+    mesh.index_buffer_desc = {}; // reset
+    mesh.index_buffer_desc.usage.immutable = true;
+    mesh.index_buffer_desc.usage.index_buffer = true;
+
+    if (can_use_uint16) {
+        mesh.use_uint16_indices = true;
+        mesh.indices16 = new uint16_t[index_count];
+        for (size_t i = 0; i < index_count; ++i) {
+            mesh.indices16[i] = static_cast<uint16_t>(indices_remapped[i]);
+        }
+        mesh.indices = nullptr;
+        mesh.index_buffer_desc.size = index_count * sizeof(uint16_t);
+        mesh.index_buffer_desc.data.ptr  = mesh.indices16;
+        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
+
+        delete[] indices_remapped;
+    } else {
+        mesh.use_uint16_indices = false;
+        mesh.indices = indices_remapped; // take ownership
+        mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
+        mesh.index_buffer_desc.data.ptr  = mesh.indices;
+        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
+    }
+
     mesh.vertex_buffer_desc = {};
-    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
-    mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
+    mesh.vertex_buffer_desc.size = mesh.vertex_count * vertex_size;
+    mesh.vertex_buffer_desc.data.ptr  = mesh.vertices;
     mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
     mesh.vertex_buffer_desc.usage.immutable = true;
     mesh.vertex_buffer_desc.usage.vertex_buffer = true;
-
-    mesh.use_uint16_indices = true;
-    for (size_t i = 0; i < mesh.index_count; i++) {
-        if (mesh.indices[i] > 65535) {
-            mesh.use_uint16_indices = false;
-            break;
-        }
-    }
-
-    if (mesh.use_uint16_indices) {
-        mesh.indices16 = new uint16_t[mesh.index_count];
-        for (size_t i = 0; i < mesh.index_count; i++) {
-            mesh.indices16[i] = static_cast<uint16_t>(mesh.indices[i]);
-        }
-    }
-
-    mesh.index_buffer_desc = {};
-    mesh.index_buffer_desc.usage.immutable = true;
-    mesh.index_buffer_desc.usage.vertex_buffer = false;
-    mesh.index_buffer_desc.usage.index_buffer = true;
-
-    if (mesh.use_uint16_indices) {
-        mesh.index_buffer_desc.size = mesh.index_count * sizeof(uint16_t);
-        mesh.index_buffer_desc.data.ptr = mesh.indices16;
-        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
-    } else {
-        mesh.index_buffer_desc.size = mesh.index_count * sizeof(uint32_t);
-        mesh.index_buffer_desc.data.ptr = mesh.indices;
-        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
-    }
 
     if (!mesh.material->has_diffuse_texture) {
         mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
@@ -302,6 +337,9 @@ void prepare_mesh_buffers(Mesh& mesh) {
         mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
         mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
     }
+
+    std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count
+              << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
 }
 
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {

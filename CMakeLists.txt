@@ -14,12 +14,13 @@ file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp)
 add_library(ImGui STATIC ${IMGUI_SOURCES})
 target_include_directories(ImGui PUBLIC ${IMGUI_PATH})
 
-file(GLOB TINYFD_SOURCES include/libtinyfiledialogs/*.c)
+file(GLOB TINYFD_SOURCES ${CMAKE_SOURCE_DIR}/include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
 
 add_executable(Gungutils main.cpp)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/ozz-animation)
+add_subdirectory(${CMAKE_SOURCE_DIR}/include/meshoptimizer)
 
 # FMOD
 set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
@@ -47,6 +48,7 @@ target_link_libraries(Gungutils
         dl
         pthread
         ReactPhysics3D::ReactPhysics3D
+        meshoptimizer
 )
 
 target_include_directories(Gungutils
@@ -57,5 +59,4 @@ target_include_directories(Gungutils
         ${X11_INCLUDE_DIR}
         ${XCURSOR_INCLUDE_DIRS}
         ${JOLT_SOURCE_DIR}
-
 )

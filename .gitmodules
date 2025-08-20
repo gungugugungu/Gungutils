@@ -28,3 +28,6 @@
 [submodule "include/ozz-animation"]
 	path = include/ozz-animation
 	url = https://github.com/guillaumeblanc/ozz-animation.gi
+[submodule "include/meshoptimizer"]
+	path = include/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
