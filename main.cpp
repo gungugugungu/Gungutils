@@ -34,13 +34,7 @@ void frame() {
     }
 }
 
-void event(SDL_Event* e) {
-    if (e->type == SDL_EVENT_KEY_DOWN && e->key.repeat == 0) {
-        if (e->key.key == SDLK_ESCAPE) {
-            state.running = false;
-        }
-    }
-}
+void event(SDL_Event* e) {}
 
 void (*init_callback)() = init;
 void (*frame_callback)() = frame;
