@@ -118,8 +118,11 @@ void main() {
     }
     vec3 specularTerm = LIGHT_COLOR * spec;
 
-    // final
-    vec3 finalRgb = ambientTerm + diffuseTerm + specularTerm;
+    vec3 finalRgb = diffuse_tex_color.rgb;
+    if (venable_shading == 1) {
+        finalRgb = ambientTerm + diffuseTerm + specularTerm;
+    }
+
     FragColor = vec4(clamp(finalRgb, 0.0, 1.0), diffuse_tex_color.a * v_opacity);
 }
 @end
