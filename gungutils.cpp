@@ -2173,6 +2173,13 @@ void render_editor() {
                 }
 
                 ImGui::Separator();
+                if (ImGui::Button("Look at")) {
+                    HMM_Vec3 target = selected_object->position;
+                    HMM_Vec3 direction = HMM_NormV3(HMM_SubV3(target, state.camera_pos));
+                    state.camera_front = direction;
+                    state.yaw = atan2f(direction.Z, direction.X) * 180.0f / HMM_PI;
+                    state.pitch = asinf(direction.Y) * 180.0f / HMM_PI;
+                }
                 if (ImGui::Button("Duplicate")) {
                     if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
                         const Object selected_object = vis_groups[selected_mesh_visgroup].objects[selected_object_index];
@@ -2205,13 +2212,15 @@ void render_editor() {
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
                 }
-                if (selected_object->mesh->material->has_diffuse_texture) { // texture display
-                    ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
-                    ImGui::Image(imtex_id, ImVec2(128, 128));
-                }
-                if (selected_object->mesh->material->has_specular_texture) {
-                    ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
-                    ImGui::Image(imtex_id, ImVec2(128, 128));
+                if (ImGui::CollapsingHeader("Textures")) {
+                    if (selected_object->mesh->material->has_diffuse_texture) { // texture display
+                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
+                        ImGui::Image(imtex_id, ImVec2(128, 128));
+                    }
+                    if (selected_object->mesh->material->has_specular_texture) {
+                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
+                        ImGui::Image(imtex_id, ImVec2(128, 128));
+                    }
                 }
             } else {
                 ImGui::Text("No mesh selected");
