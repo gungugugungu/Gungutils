@@ -2007,373 +2007,8 @@ void render_editor() {
     SDL_GetWindowSize(state.win, &w_width, &w_height);
     int last_window_height = 0;
     if (state.editor_open) {
-        // Mesh editor
-        ImGui::SetNextWindowPos(ImVec2(w_width, 0), 0, ImVec2(1.0f, 0.0f));
-        ImGui::Begin("Mesh list", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
-        last_window_height = ImGui::GetWindowSize().y;
-
-        ImGui::BeginChild("Meshes", ImVec2(256, 300), true);
-
-        for (int v = 0; v < vis_groups.size(); v++) {
-            VisGroup visgroup = vis_groups[v];
-            for (int i = 0; i < visgroup.objects.size(); i++) {
-                Object obj = visgroup.objects[i];
-                Mesh* mesh = obj.mesh;
-                string label = "Mesh " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh->vertex_count);
-
-                bool is_selected = (selected_object_index == i);
-                if (ImGui::Selectable(label.c_str(), is_selected)) {
-                    selected_object_index = i;
-                    selected_mesh_visgroup = v;
-                    if (vis_groups[v].objects[i].mesh->material->has_diffuse_texture) {
-                        editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->diffuse_texture_desc);
-                        editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->diffuse_sampler_desc);
-                    }
-                    if (vis_groups[v].objects[i].mesh->material->has_specular_texture) {
-                        editor_specular_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->specular_texture_desc);
-                        editor_specular_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->specular_sampler_desc);
-                    }
-                }
-
-                if (is_selected) {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-        }
-
-        ImGui::EndChild();
-
-        ImGui::SameLine();
-        ImGui::BeginChild("Mesh settings", ImVec2(300, 300), true);
-        if (selected_object_index != -1) {
-            ImGui::Text("Mesh settings");
-            ImGui::Separator();
-
-            Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
-
-            ImGui::Text("Selected: Mesh %d", selected_object_index);
-
-            ImGui::PushItemWidth(200);
-
-            ImGui::DragFloat3("Positon", &selected_object->position.X, 0.01f);
-
-            if (last_selected_mesh != selected_object_index) {
-                mesh_euler_rotations[selected_object_index] = QuatToEulerDegrees(selected_object->rotation);
-                last_selected_mesh = selected_object_index;
-            }
-
-            HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_object_index];
-
-            if (ImGui::DragFloat3("Rotation", &euler_rotation.X, 0.5f)) {
-                selected_object->rotation = EulerDegreesToQuat(euler_rotation);
-            }
-            HMM_Vec3 current_euler = QuatToEulerDegrees(selected_object->rotation);
-            if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
-
-            ImGui::DragFloat3("Scale", &selected_object->scale.X, 0.01f);
-
-            ImGui::SliderFloat("Opacity", &selected_object->opacity, 0.0f, 1.0f);
-
-            ImGui::Checkbox("Shading", &selected_object->mesh->enable_shading);
-
-            ImGui::PopItemWidth();
-
-            if (ImGui::BeginCombo("VisGroup", vis_groups[selected_mesh_visgroup].name.c_str())) {
-                for (int i = 0; i < vis_groups.size(); i++) {
-                    bool is_selected = (selected_selectable_visgroup_index == i);
-                    if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
-                        selected_selectable_visgroup_index = i;
-                        if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
-                            Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
-                            vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                            vis_groups[i].objects.push_back(std::move(object_to_move));
-                            selected_object_index = -1;
-                        }
-                    }
-
-                    if (is_selected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            ImGui::Separator();
-            if (ImGui::Button("Duplicate")) {
-                if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
-                    const Object selected_object = vis_groups[selected_mesh_visgroup].objects[selected_object_index];
-                    Object new_object;
-                    new_object.mesh = selected_object.mesh;
-
-                    new_object.position = selected_object.position;
-                    new_object.rotation = selected_object.rotation;
-                    new_object.scale = selected_object.scale;
-                    new_object.opacity = selected_object.opacity;
-
-                    if (selected_object.mesh->vertex_count > 0 && selected_object.mesh->vertices) {
-                        new_object.mesh->vertex_count = selected_object.mesh->vertex_count;
-                        new_object.mesh->vertices = new float[new_object.mesh->vertex_count * 8];
-                        memcpy(new_object.mesh->vertices, selected_object.mesh->vertices,new_object.mesh->vertex_count * 8 * sizeof(float));
-                    }
-
-                    if (selected_object.mesh->index_count > 0 && selected_object.mesh->indices) {
-                        new_object.mesh->index_count = selected_object.mesh->index_count;
-                        new_object.mesh->indices = new uint32_t[new_object.mesh->index_count];
-                        memcpy(new_object.mesh->indices, selected_object.mesh->indices,
-                               new_object.mesh->index_count * sizeof(uint32_t));
-                    }
-
-                    prepare_mesh_buffers(*new_object.mesh);
-                }
-            }
-            if (ImGui::Button("Delete Mesh")) {
-                vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                selected_object_index = -1;
-                selected_mesh_visgroup = -1;
-            }
-            if (selected_object->mesh->material->has_diffuse_texture) { // texture display
-                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
-                ImGui::Image(imtex_id, ImVec2(128, 128));
-            }
-            if (selected_object->mesh->material->has_specular_texture) {
-                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
-                ImGui::Image(imtex_id, ImVec2(128, 128));
-            }
-        } else {
-            ImGui::Text("No mesh selected");
-        }
-        ImGui::EndChild();
-
-        if (ImGui::Button("Load GLTF")) {
-            const char* filter_patterns[] = {"*.glb", "*.gltf"};
-            const char* file_path = tinyfd_openFileDialog(
-                "Select GLTF File",
-                "",
-                2,
-                filter_patterns,
-                "GLTF Files",
-                0
-            );
-
-            if (file_path) {
-                vector<Object> loaded_objects = load_gltf(file_path);
-                for (auto& obj : loaded_objects) {
-                    prepare_mesh_buffers(*obj.mesh);
-                    vis_groups[0].objects.push_back(obj);
-                }
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Load OBJ")) {
-            const char* filter_patterns[] = {"*.obj"};
-            const char* file_path = tinyfd_openFileDialog(
-                "Select OBJ File",
-                "",
-                1,
-                filter_patterns,
-                "OBJ Files",
-                0
-            );
-
-            if (file_path) {
-                float* verts;
-                uint32_t vertex_count;
-                unsigned int* indices;
-                uint32_t index_count;
-
-                if (load_obj(file_path, &verts, &vertex_count, &indices, &index_count)) {
-                    Object loaded_object{};
-                    loaded_object.mesh = new Mesh();
-                    loaded_object.mesh->vertices = verts;
-                    loaded_object.mesh->vertex_count = vertex_count;
-                    loaded_object.mesh->indices = indices;
-                    loaded_object.mesh->index_count = index_count;
-                    loaded_object.position = HMM_V3(0.0f, 0.0f, 0.0f);
-
-                    prepare_mesh_buffers(*loaded_object.mesh);
-                    vis_groups[0].objects.push_back(loaded_object);
-                    std::cout << "Loaded OBJ" << std::endl;
-                }
-            }
-        }
-
-        ImGui::End();
-
-        // Audio sources
-        ImGui::SetNextWindowPos(ImVec2(w_width, last_window_height), 0, ImVec2(1.0f, 0.0f));
-        ImGui::Begin("Audio sources", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
-        last_window_height += ImGui::GetWindowSize().y;
-
-        static int selected_as_index = -1;
-
-        ImGui::BeginChild("Sources", ImVec2(256, 150), true);
-
-        for (int i = 0; i < state.audio_sources.size(); i++) {
-            string label = "Audio source " + to_string(i);
-
-            bool is_selected = (selected_as_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_as_index = i;
-            }
-
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-
-        ImGui::EndChild();
-
-        ImGui::SameLine();
-        ImGui::BeginChild("Src settings", ImVec2(300, 150), true);
-        if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
-            ImGui::Text("Settings");
-            ImGui::Separator();
-
-            auto& selected_as = state.audio_sources[selected_as_index];
-
-            ImGui::Text("Selected: Mesh %d", selected_as_index);
-
-            ImGui::PushItemWidth(200);
-
-            string label = "Position";
-            if (ImGui::DragFloat3(label.c_str(), &selected_as->position.X, 0.01f)) {
-                selected_as->set_position(selected_as->position);
-            }
-
-            ImGui::Separator();
-
-            label = "Play";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->play();
-            }
-
-            ImGui::SameLine();
-            label = "Stop";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->stop();
-            }
-
-            label = "Pause";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->pause();
-            }
-
-            ImGui::SameLine();
-            label = "Unpause";
-            if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
-                selected_as->unpause();
-            }
-
-            ImGui::PopItemWidth();
-            ImGui::Separator();
-            if (ImGui::Button("Delete")) {
-                selected_as->remove();
-                selected_as_index = -1;
-            }
-        } else {
-            ImGui::Text("No source selected");
-        }
-        ImGui::EndChild();
-
-        static int selected_event_index = -1;
-
-        ImGui::BeginChild("Events", ImVec2(512, 150), true);
-
-        for (int i = 0; i < state.event_descriptions.size(); i++) {
-            FMOD_GUID eyedeeznuts;
-            FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
-            print_fmod_error(result);
-
-            string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
-
-            bool is_selected = (selected_event_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_event_index = i;
-            }
-
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-
-        ImGui::EndChild();
-
-        if (ImGui::Button("Add Source")) {
-            make_audiosource_by_index(selected_event_index);
-        }
-
-        ImGui::End();
-
-        ImGui::SetNextWindowPos(ImVec2(w_width, last_window_height), 0, ImVec2(1.0f, 0.0f));
-        ImGui::Begin("Helpers", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
-        last_window_height += ImGui::GetWindowSize().y;
-
-        static int selected_helper_index = -1;
-
-        ImGui::BeginChild("Helper list", ImVec2(256, 150), true);
-        for (int i = 0; i < state.helpers.size(); i++) {
-            string label = "Helper " + state.helpers[i]->name;
-
-            bool is_selected = (selected_helper_index == i);
-            if (ImGui::Selectable(label.c_str(), is_selected)) {
-                selected_helper_index = i;
-            }
-
-            if (is_selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndChild();
-
-        ImGui::SameLine();
-        ImGui::BeginChild("Helper settings", ImVec2(300, 150), true);
-        if (selected_helper_index >= 0 && selected_helper_index < state.helpers.size()) {
-            ImGui::Text("Settings");
-            ImGui::Separator();
-
-            auto& selected_helper = state.helpers[selected_helper_index];
-
-            string label = "Selected: Helper "+selected_helper->name;
-            ImGui::Text(label.c_str());
-
-            ImGui::PushItemWidth(200);
-
-            static char name_buffer[256];
-            static int last_selected_helper = -1;
-
-            if (last_selected_helper != selected_helper_index) {
-                strncpy(name_buffer, selected_helper->name.c_str(), sizeof(name_buffer) - 1);
-                name_buffer[sizeof(name_buffer) - 1] = '\0';
-                last_selected_helper = selected_helper_index;
-            }
-
-            if (ImGui::InputText("Name", name_buffer, sizeof(name_buffer))) {
-                selected_helper->name = std::string(name_buffer);
-            }
-
-            if (ImGui::DragFloat3("Position", &selected_helper->position.X, 0.01f)) {
-                selected_helper->set_position(selected_helper->position);
-            }
-
-            ImGui::PopItemWidth();
-            ImGui::Separator();
-            if (ImGui::Button("Delete")) {
-                selected_helper->remove();
-                selected_helper_index = -1;
-            }
-        } else {
-            ImGui::Text("No helper selected");
-        }
-        ImGui::EndChild();
-        if (ImGui::Button("Add Helper")) {
-            Helper* helper = new Helper();
-            helper->initalize("New Helper", {0.0f, 0.0f, 0.0f});
-        }
-
-        ImGui::End();
-
         ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+        ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
         if (ImGui::Button("Save Scene")) {
             const char* filter_patterns[] = {"*.gmap"};
             const char* file_path = tinyfd_saveFileDialog("Select GMap File", "", 1, filter_patterns, "Gungutils Map Files");
@@ -2446,6 +2081,359 @@ void render_editor() {
             if (ImGui::Button("Add VisGroup")) {
                 VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
                 vis_groups.push_back(*new_visgroup);
+            }
+        }
+
+        // Mesh editor
+        if (ImGui::CollapsingHeader("Mesh Editor")) {
+            ImGui::BeginChild("Meshes", ImVec2(256, 300), true);
+
+            for (int v = 0; v < vis_groups.size(); v++) {
+                VisGroup visgroup = vis_groups[v];
+                for (int i = 0; i < visgroup.objects.size(); i++) {
+                    Object obj = visgroup.objects[i];
+                    Mesh* mesh = obj.mesh;
+                    string label = "Mesh " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh->vertex_count);
+
+                    bool is_selected = (selected_object_index == i);
+                    if (ImGui::Selectable(label.c_str(), is_selected)) {
+                        selected_object_index = i;
+                        selected_mesh_visgroup = v;
+                        if (vis_groups[v].objects[i].mesh->material->has_diffuse_texture) {
+                            editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->diffuse_texture_desc);
+                            editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->diffuse_sampler_desc);
+                        }
+                        if (vis_groups[v].objects[i].mesh->material->has_specular_texture) {
+                            editor_specular_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->specular_texture_desc);
+                            editor_specular_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->specular_sampler_desc);
+                        }
+                    }
+
+                    if (is_selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+            }
+
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+            ImGui::BeginChild("Mesh settings", ImVec2(300, 300), true);
+            if (selected_object_index != -1) {
+                ImGui::Text("Mesh settings");
+                ImGui::Separator();
+
+                Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+
+                ImGui::Text("Selected: Mesh %d", selected_object_index);
+
+                ImGui::PushItemWidth(200);
+
+                ImGui::DragFloat3("Positon", &selected_object->position.X, 0.01f);
+
+                if (last_selected_mesh != selected_object_index) {
+                    mesh_euler_rotations[selected_object_index] = QuatToEulerDegrees(selected_object->rotation);
+                    last_selected_mesh = selected_object_index;
+                }
+
+                HMM_Vec3& euler_rotation = mesh_euler_rotations[selected_object_index];
+
+                if (ImGui::DragFloat3("Rotation", &euler_rotation.X, 0.5f)) {
+                    selected_object->rotation = EulerDegreesToQuat(euler_rotation);
+                }
+                HMM_Vec3 current_euler = QuatToEulerDegrees(selected_object->rotation);
+                if (abs(current_euler.X - euler_rotation.X) > 0.1f || abs(current_euler.Y - euler_rotation.Y) > 0.1f || abs(current_euler.Z - euler_rotation.Z) > 0.1f) {euler_rotation = current_euler;}
+
+                ImGui::DragFloat3("Scale", &selected_object->scale.X, 0.01f);
+
+                ImGui::SliderFloat("Opacity", &selected_object->opacity, 0.0f, 1.0f);
+
+                ImGui::Checkbox("Shading", &selected_object->mesh->enable_shading);
+
+                ImGui::PopItemWidth();
+
+                if (ImGui::BeginCombo("VisGroup", vis_groups[selected_mesh_visgroup].name.c_str())) {
+                    for (int i = 0; i < vis_groups.size(); i++) {
+                        bool is_selected = (selected_selectable_visgroup_index == i);
+                        if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
+                            selected_selectable_visgroup_index = i;
+                            if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
+                                Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                                vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                                vis_groups[i].objects.push_back(std::move(object_to_move));
+                                selected_object_index = -1;
+                            }
+                        }
+
+                        if (is_selected) {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::Separator();
+                if (ImGui::Button("Duplicate")) {
+                    if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
+                        const Object selected_object = vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+                        Object new_object;
+                        new_object.mesh = selected_object.mesh;
+
+                        new_object.position = selected_object.position;
+                        new_object.rotation = selected_object.rotation;
+                        new_object.scale = selected_object.scale;
+                        new_object.opacity = selected_object.opacity;
+
+                        if (selected_object.mesh->vertex_count > 0 && selected_object.mesh->vertices) {
+                            new_object.mesh->vertex_count = selected_object.mesh->vertex_count;
+                            new_object.mesh->vertices = new float[new_object.mesh->vertex_count * 8];
+                            memcpy(new_object.mesh->vertices, selected_object.mesh->vertices,new_object.mesh->vertex_count * 8 * sizeof(float));
+                        }
+
+                        if (selected_object.mesh->index_count > 0 && selected_object.mesh->indices) {
+                            new_object.mesh->index_count = selected_object.mesh->index_count;
+                            new_object.mesh->indices = new uint32_t[new_object.mesh->index_count];
+                            memcpy(new_object.mesh->indices, selected_object.mesh->indices,
+                                   new_object.mesh->index_count * sizeof(uint32_t));
+                        }
+
+                        prepare_mesh_buffers(*new_object.mesh);
+                    }
+                }
+                if (ImGui::Button("Delete Mesh")) {
+                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    selected_object_index = -1;
+                    selected_mesh_visgroup = -1;
+                }
+                if (selected_object->mesh->material->has_diffuse_texture) { // texture display
+                    ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
+                    ImGui::Image(imtex_id, ImVec2(128, 128));
+                }
+                if (selected_object->mesh->material->has_specular_texture) {
+                    ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
+                    ImGui::Image(imtex_id, ImVec2(128, 128));
+                }
+            } else {
+                ImGui::Text("No mesh selected");
+            }
+            ImGui::EndChild();
+
+            if (ImGui::Button("Load GLTF")) {
+                const char* filter_patterns[] = {"*.glb", "*.gltf"};
+                const char* file_path = tinyfd_openFileDialog(
+                    "Select GLTF File",
+                    "",
+                    2,
+                    filter_patterns,
+                    "GLTF Files",
+                    0
+                );
+
+                if (file_path) {
+                    vector<Object> loaded_objects = load_gltf(file_path);
+                    for (auto& obj : loaded_objects) {
+                        prepare_mesh_buffers(*obj.mesh);
+                        vis_groups[0].objects.push_back(obj);
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Load OBJ")) {
+                const char* filter_patterns[] = {"*.obj"};
+                const char* file_path = tinyfd_openFileDialog(
+                    "Select OBJ File",
+                    "",
+                    1,
+                    filter_patterns,
+                    "OBJ Files",
+                    0
+                );
+
+                if (file_path) {
+                    float* verts;
+                    uint32_t vertex_count;
+                    unsigned int* indices;
+                    uint32_t index_count;
+
+                    if (load_obj(file_path, &verts, &vertex_count, &indices, &index_count)) {
+                        Object loaded_object{};
+                        loaded_object.mesh = new Mesh();
+                        loaded_object.mesh->vertices = verts;
+                        loaded_object.mesh->vertex_count = vertex_count;
+                        loaded_object.mesh->indices = indices;
+                        loaded_object.mesh->index_count = index_count;
+                        loaded_object.position = HMM_V3(0.0f, 0.0f, 0.0f);
+
+                        prepare_mesh_buffers(*loaded_object.mesh);
+                        vis_groups[0].objects.push_back(loaded_object);
+                        std::cout << "Loaded OBJ" << std::endl;
+                    }
+                }
+            }
+        }
+
+        // Audio sources
+        if (ImGui::CollapsingHeader("Audio Sources")) {
+            static int selected_as_index = -1;
+
+            ImGui::BeginChild("Sources", ImVec2(256, 150), true);
+
+            for (int i = 0; i < state.audio_sources.size(); i++) {
+                string label = "Audio source " + to_string(i);
+
+                bool is_selected = (selected_as_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_as_index = i;
+                }
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+            ImGui::BeginChild("Src settings", ImVec2(300, 150), true);
+            if (selected_as_index >= 0 && selected_as_index < state.audio_sources.size()) {
+                ImGui::Text("Settings");
+                ImGui::Separator();
+
+                auto& selected_as = state.audio_sources[selected_as_index];
+
+                ImGui::Text("Selected: Mesh %d", selected_as_index);
+
+                ImGui::PushItemWidth(200);
+
+                string label = "Position";
+                if (ImGui::DragFloat3(label.c_str(), &selected_as->position.X, 0.01f)) {
+                    selected_as->set_position(selected_as->position);
+                }
+
+                ImGui::Separator();
+
+                label = "Play";
+                if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                    selected_as->play();
+                }
+
+                ImGui::SameLine();
+                label = "Stop";
+                if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                    selected_as->stop();
+                }
+
+                label = "Pause";
+                if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                    selected_as->pause();
+                }
+
+                ImGui::SameLine();
+                label = "Unpause";
+                if (ImGui::Button(label.c_str(), ImVec2(75, 25))) {
+                    selected_as->unpause();
+                }
+
+                ImGui::PopItemWidth();
+                ImGui::Separator();
+                if (ImGui::Button("Delete")) {
+                    selected_as->remove();
+                    selected_as_index = -1;
+                }
+            } else {
+                ImGui::Text("No source selected");
+            }
+            ImGui::EndChild();
+
+            static int selected_event_index = -1;
+
+            ImGui::BeginChild("Events", ImVec2(512, 150), true);
+
+            for (int i = 0; i < state.event_descriptions.size(); i++) {
+                FMOD_GUID eyedeeznuts;
+                FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
+                print_fmod_error(result);
+
+                string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
+
+                bool is_selected = (selected_event_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_event_index = i;
+                }
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndChild();
+
+            if (ImGui::Button("Add Source")) {
+                make_audiosource_by_index(selected_event_index);
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Helpers")) {
+            static int selected_helper_index = -1;
+
+            ImGui::BeginChild("Helper list", ImVec2(256, 150), true);
+            for (int i = 0; i < state.helpers.size(); i++) {
+                string label = "Helper " + state.helpers[i]->name;
+
+                bool is_selected = (selected_helper_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_helper_index = i;
+                }
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+            ImGui::BeginChild("Helper settings", ImVec2(300, 150), true);
+            if (selected_helper_index >= 0 && selected_helper_index < state.helpers.size()) {
+                ImGui::Text("Settings");
+                ImGui::Separator();
+
+                auto& selected_helper = state.helpers[selected_helper_index];
+
+                string label = "Selected: Helper "+selected_helper->name;
+                ImGui::Text(label.c_str());
+
+                ImGui::PushItemWidth(200);
+
+                static char name_buffer[256];
+                static int last_selected_helper = -1;
+
+                if (last_selected_helper != selected_helper_index) {
+                    strncpy(name_buffer, selected_helper->name.c_str(), sizeof(name_buffer) - 1);
+                    name_buffer[sizeof(name_buffer) - 1] = '\0';
+                    last_selected_helper = selected_helper_index;
+                }
+
+                if (ImGui::InputText("Name", name_buffer, sizeof(name_buffer))) {
+                    selected_helper->name = std::string(name_buffer);
+                }
+
+                if (ImGui::DragFloat3("Position", &selected_helper->position.X, 0.01f)) {
+                    selected_helper->set_position(selected_helper->position);
+                }
+
+                ImGui::PopItemWidth();
+                ImGui::Separator();
+                if (ImGui::Button("Delete")) {
+                    selected_helper->remove();
+                    selected_helper_index = -1;
+                }
+            } else {
+                ImGui::Text("No helper selected");
+            }
+            ImGui::EndChild();
+            if (ImGui::Button("Add Helper")) {
+                Helper* helper = new Helper();
+                helper->initalize("New Helper", {0.0f, 0.0f, 0.0f});
             }
         }
         ImGui::End();

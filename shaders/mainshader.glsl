@@ -97,7 +97,6 @@ void main() {
     float bands = max(TOON_BANDS - 1.0, 1.0);
     float bandStep = 1.0 / bands;
 
-    // Bayer in [-0.5, +0.5], then scale by band step for stable band crossing
     float dither = (bayer4x4(gl_FragCoord.xy) - 0.5) * bandStep;
 
     float ndlDithered = clamp(ndl + dither, 0.0, 1.0);
@@ -115,6 +114,7 @@ void main() {
     float spec = 0.0;
     if (ndl > 0.0 && spec_strength > 0.0) {
         spec = pow(max(dot(N, H), 0.0), shininess) * spec_strength;
+        spec = bayer4x4(gl_FragCoord.xy) * spec;
     }
     vec3 specularTerm = LIGHT_COLOR * spec;
 
