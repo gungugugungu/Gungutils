@@ -241,21 +241,20 @@ void prepare_mesh_buffers(Mesh& mesh) {
     std::cout << "Buffer size: " << (mesh.vertex_count * 8 * sizeof(float)) << " bytes" << std::endl;
     std::cout << "Expected layout: 8 floats per vertex (pos=3, norm=3, uv=2)" << std::endl;
 
-    if (mesh.vertices && mesh.vertex_count > 0) {
-        std::cout << "First vertex: pos(" << mesh.vertices[0] << "," << mesh.vertices[1] << "," << mesh.vertices[2]
-                  << ") norm(" << mesh.vertices[3] << "," << mesh.vertices[4] << "," << mesh.vertices[5]
-                  << ") uv(" << mesh.vertices[6] << "," << mesh.vertices[7] << ")" << std::endl;
+    for (size_t i = 0; i < mesh.vertex_count; ++i) {
+        float px = mesh.vertices[i*8 + 0];
+        float py = mesh.vertices[i*8 + 1];
+        float pz = mesh.vertices[i*8 + 2];
+        if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz)) {
+            std::cerr << "ERROR: Invalid vertex position at " << i << std::endl;
+            exit(-1);
+        }
     }
 
-    if (mesh.indices && mesh.index_count > 2) {
-        std::cout << "First triangle indices: " << mesh.indices[0] << "," << mesh.indices[1] << "," << mesh.indices[2] << std::endl;
-        std::cout << "Max index should be < " << mesh.vertex_count << std::endl;
-
-        for (size_t i = 0; i < mesh.index_count; i++) {
-            if (mesh.indices[i] >= mesh.vertex_count) {
-                std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
-                break;
-            }
+    for (size_t i = 0; i < mesh.index_count; ++i) {
+        if (mesh.indices[i] >= mesh.vertex_count) {
+            std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
+            break;
         }
     }
     std::cout << "=========================" << std::endl;
@@ -277,7 +276,7 @@ void prepare_mesh_buffers(Mesh& mesh) {
     size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count,
                                                           vertices_src, vertex_count, vertex_size);
 
-    float* vertices_remapped = new float[new_vertex_count * 8]; // 8 floats per vertex
+    float* vertices_remapped = new float[new_vertex_count * 8];
     meshopt_remapVertexBuffer(vertices_remapped, vertices_src, vertex_count, vertex_size, remap);
 
     uint32_t* indices_remapped = new uint32_t[index_count];
@@ -300,32 +299,18 @@ void prepare_mesh_buffers(Mesh& mesh) {
     mesh.vertices = vertices_remapped;
     mesh.vertex_count = new_vertex_count;
 
-    mesh.index_buffer_desc = {}; // reset
+    mesh.index_buffer_desc = {};
     mesh.index_buffer_desc.usage.immutable = true;
     mesh.index_buffer_desc.usage.index_buffer = true;
 
-    if (can_use_uint16) {
-        mesh.use_uint16_indices = true;
-        mesh.indices16 = new uint16_t[index_count];
-        for (size_t i = 0; i < index_count; ++i) {
-            mesh.indices16[i] = static_cast<uint16_t>(indices_remapped[i]);
-        }
-        mesh.indices = nullptr;
-        mesh.index_buffer_desc.size = index_count * sizeof(uint16_t);
-        mesh.index_buffer_desc.data.ptr  = mesh.indices16;
-        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
-
-        delete[] indices_remapped;
-    } else {
-        mesh.use_uint16_indices = false;
-        mesh.indices = indices_remapped; // take ownership
-        mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
-        mesh.index_buffer_desc.data.ptr  = mesh.indices;
-        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
-    }
+    mesh.use_uint16_indices = false;
+    mesh.indices = indices_remapped;
+    mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
+    mesh.index_buffer_desc.data.ptr  = mesh.indices;
+    mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
 
     mesh.vertex_buffer_desc = {};
-    mesh.vertex_buffer_desc.size = mesh.vertex_count * vertex_size;
+    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
     mesh.vertex_buffer_desc.data.ptr  = mesh.vertices;
     mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
     mesh.vertex_buffer_desc.usage.immutable = true;
@@ -338,8 +323,7 @@ void prepare_mesh_buffers(Mesh& mesh) {
         mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
     }
 
-    std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count
-              << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
+    std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
 }
 
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
