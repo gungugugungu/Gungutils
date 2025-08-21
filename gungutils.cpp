@@ -2241,20 +2241,7 @@ void render_editor() {
                         new_object.scale = selected_object.scale;
                         new_object.opacity = selected_object.opacity;
 
-                        if (selected_object.mesh->vertex_count > 0 && selected_object.mesh->vertices) {
-                            new_object.mesh->vertex_count = selected_object.mesh->vertex_count;
-                            new_object.mesh->vertices = new float[new_object.mesh->vertex_count * 8];
-                            memcpy(new_object.mesh->vertices, selected_object.mesh->vertices,new_object.mesh->vertex_count * 8 * sizeof(float));
-                        }
-
-                        if (selected_object.mesh->index_count > 0 && selected_object.mesh->indices) {
-                            new_object.mesh->index_count = selected_object.mesh->index_count;
-                            new_object.mesh->indices = new uint32_t[new_object.mesh->index_count];
-                            memcpy(new_object.mesh->indices, selected_object.mesh->indices,
-                                   new_object.mesh->index_count * sizeof(uint32_t));
-                        }
-
-                        prepare_mesh_buffers(*new_object.mesh);
+                        vis_groups[0].objects.push_back(new_object);
                     }
                 }
                 if (ImGui::Button("DELETE MESH")) {
