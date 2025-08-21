@@ -300,21 +300,22 @@ void prepare_mesh_buffers(Mesh& mesh) {
     mesh.vertex_count = new_vertex_count;
 
     mesh.index_buffer_desc = {};
-    mesh.index_buffer_desc.usage.immutable = true;
-    mesh.index_buffer_desc.usage.index_buffer = true;
+    mesh.vertex_buffer_desc.usage.immutable = true;
+    mesh.vertex_buffer_desc.usage.vertex_buffer = false;
+    mesh.vertex_buffer_desc.usage.index_buffer = true;
 
     mesh.use_uint16_indices = false;
     mesh.indices = indices_remapped;
     mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
-    mesh.index_buffer_desc.data.ptr  = mesh.indices;
+    mesh.index_buffer_desc.data.ptr = mesh.indices;
     mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
 
     mesh.vertex_buffer_desc = {};
-    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
-    mesh.vertex_buffer_desc.data.ptr  = mesh.vertices;
-    mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
     mesh.vertex_buffer_desc.usage.immutable = true;
     mesh.vertex_buffer_desc.usage.vertex_buffer = true;
+    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
+    mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
+    mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
 
     if (!mesh.material->has_diffuse_texture) {
         mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
@@ -322,6 +323,9 @@ void prepare_mesh_buffers(Mesh& mesh) {
         mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
         mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
     }
+
+    mesh.vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
+    mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
 
     std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
 }
@@ -383,14 +387,14 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                 for (size_t i = start; i < end; i++) {
                     Object obj = visgroup.objects[i];
                     Mesh* mesh = obj.mesh;
-                    sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
-                    sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
+
+                    sg_buffer vb = mesh->vertex_buffer;
+                    sg_buffer ib = mesh->index_buffer;
 
                     if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
                         vertex_buffers.push_back(vb);
                         index_buffers.push_back(ib);
 
-                        // handle texture
                         if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
                             sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
                             sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
@@ -398,7 +402,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                             samplers.push_back(sampler);
                             created_textures.push_back(true);
                             if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
-                                sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular"); // optional wrapper
+                                sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
                                 sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
                                 specular_textures.push_back(texture2);
                                 specular_samplers.push_back(sampler2);
@@ -407,14 +411,11 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                                 specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
                             }
                         } else {
-                            // use default palette texture
-                            textures.push_back(state.bind.images[0]);
-                            samplers.push_back(state.bind.samplers[0]);
+                            textures.push_back(state.default_palette_img);
+                            samplers.push_back(state.default_palette_smp);
                             created_textures.push_back(false);
                         }
                     } else {
-                        if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
-                        if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
                         std::cerr << "Failed to create buffers for mesh " << i << std::endl;
                     }
                 }
@@ -447,7 +448,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         vs_params.enable_shading = 0;
                     }
                     sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-                    // MODEL FS PARAMS
                     struct model_fs_params_t {
                         int has_diffuse_tex;
                         int has_specular_tex;
@@ -473,13 +473,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     sg_draw(0, mesh->index_count, 1);
                 }
 
-                // cleanup
-                for (auto& vb : vertex_buffers) {
-                    sg_destroy_buffer(vb);
-                }
-                for (auto& ib : index_buffers) {
-                    sg_destroy_buffer(ib);
-                }
                 for (size_t i = 0; i < textures.size(); i++) {
                     if (created_textures[i]) {
                         sg_destroy_image(textures[i]);
@@ -2862,6 +2855,12 @@ int main(int argc, char* argv[]) {
     env.defaults.color_format = SG_PIXELFORMAT_RGBA8;
     env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     env.defaults.sample_count = 1;
+    desc.buffer_pool_size = 4096;
+    desc.image_pool_size = 8192;
+    desc.sampler_pool_size = 8192;
+    desc.shader_pool_size = 512;
+    desc.pipeline_pool_size = 1024;
+    desc.attachments_pool_size = 8192;
     desc.environment = env;
     sg_setup(&desc);
     stm_setup();

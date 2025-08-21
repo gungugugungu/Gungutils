@@ -7,7 +7,7 @@
 
 class Mesh {
 public:
-    float*    vertices = nullptr; // 3 floats for position, 3 floats for normals, and 2 floats for vertex coords
+    float*    vertices = nullptr;
     size_t    vertex_count = 0;
     uint32_t* indices  = nullptr;
     size_t    index_count = 0;
@@ -22,9 +22,14 @@ public:
 
     Material* material;
 
+    sg_buffer vertex_buffer = { .id = SG_INVALID_ID };
+    sg_buffer index_buffer = { .id = SG_INVALID_ID };
+
     Mesh() = default;
 
     ~Mesh() {
+        if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+        if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
         delete[] vertices;
         delete[] indices;
         delete[] indices16;
@@ -36,6 +41,9 @@ public:
 
     Mesh& operator=(const Mesh& other) {
         if (this == &other) return *this;
+
+        if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+        if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
 
         delete[] vertices;
         delete[] indices;
@@ -74,6 +82,9 @@ public:
             indices16 = nullptr;
         }
 
+        vertex_buffer = sg_make_buffer(&vertex_buffer_desc);
+        index_buffer = sg_make_buffer(&index_buffer_desc);
+
         return *this;
     }
 
@@ -83,6 +94,9 @@ public:
 
     Mesh& operator=(Mesh&& o) noexcept {
         if (this == &o) return *this;
+
+        if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+        if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
 
         delete[] vertices;
         delete[] indices;
@@ -99,9 +113,14 @@ public:
         vertex_buffer_desc = o.vertex_buffer_desc;
         index_buffer_desc = o.index_buffer_desc;
 
+        vertex_buffer = o.vertex_buffer;
+        index_buffer = o.index_buffer;
+
         o.vertices = nullptr;
         o.indices = nullptr;
         o.indices16 = nullptr;
+        o.vertex_buffer = { .id = SG_INVALID_ID };
+        o.index_buffer = { .id = SG_INVALID_ID };
 
         return *this;
     }
