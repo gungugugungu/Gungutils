@@ -6,6 +6,9 @@
 AudioSource3D* audio_source = new AudioSource3D();
 FPSController player_controller;
 
+float mouse_movement_x = 0.0f;
+float mouse_movement_y = 0.0f;
+
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
@@ -39,13 +42,15 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
-    float mouse_dx = 0.0f;
-    float mouse_dy = 0.0f;
-    SDL_GetRelativeMouseState(&mouse_dx, &mouse_dy);
-    player_controller.update_input(state.inputs, mouse_dx, mouse_dy, &state.camera_pos, &state.camera_front, &state.yaw, &state.pitch);
+    player_controller.update_input(state.inputs, mouse_movement_x, mouse_movement_y, &state.camera_pos, &state.camera_front, &state.yaw, &state.pitch);
 }
 
-void event(SDL_Event* e) {}
+void event(SDL_Event* e) {
+    if (e->type == SDL_EVENT_MOUSE_MOTION) {
+        mouse_movement_x = e->motion.xrel;
+        mouse_movement_y = e->motion.yrel;
+    }
+}
 
 void (*init_callback)() = init;
 void (*frame_callback)() = frame;
