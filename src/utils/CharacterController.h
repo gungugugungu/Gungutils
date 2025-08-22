@@ -42,7 +42,7 @@ public:
 
             struct GroundRaycastCallback : public reactphysics3d::RaycastCallback {
                 bool hit = false;
-                reactphysics3d::decimal reactphysics3d::notifyRaycastHit(const reactphysics3d::RaycastInfo& raycastinfo) override {
+                reactphysics3d::decimal notifyRaycastHit(const reactphysics3d::RaycastInfo& raycastinfo) override {
                     hit = true;
                     return 0.0f;
                 }

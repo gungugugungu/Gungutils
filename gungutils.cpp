@@ -48,6 +48,7 @@
 #include "rendering/Post Processing.h"
 #include "physics/PhysicsHolder.h"
 #include "utils/CharacterController.h"
+#include "utils/FPSController.h"
 
 using namespace std;
 
