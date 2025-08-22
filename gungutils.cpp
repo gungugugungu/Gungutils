@@ -47,6 +47,7 @@
 #include "rendering/VisGroup.h"
 #include "rendering/Post Processing.h"
 #include "physics/PhysicsHolder.h"
+#include "utils/CharacterController.h"
 
 using namespace std;
 
@@ -386,100 +387,102 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                 for (size_t i = start; i < end; i++) {
                     Object obj = visgroup.objects[i];
-                    Mesh* mesh = obj.mesh;
+                    if (obj.mesh != nullptr) {
+                        Mesh* mesh = obj.mesh;
 
-                    sg_buffer vb = mesh->vertex_buffer;
-                    sg_buffer ib = mesh->index_buffer;
+                        sg_buffer vb = mesh->vertex_buffer;
+                        sg_buffer ib = mesh->index_buffer;
 
-                    if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
-                        vertex_buffers.push_back(vb);
-                        index_buffers.push_back(ib);
+                        if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
+                            vertex_buffers.push_back(vb);
+                            index_buffers.push_back(ib);
 
-                        if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
-                            sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
-                            sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
-                            textures.push_back(texture);
-                            samplers.push_back(sampler);
-                            created_textures.push_back(true);
-                            if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
-                                sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
-                                sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
-                                specular_textures.push_back(texture2);
-                                specular_samplers.push_back(sampler2);
+                            if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
+                                sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
+                                sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
+                                textures.push_back(texture);
+                                samplers.push_back(sampler);
+                                created_textures.push_back(true);
+                                if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
+                                    sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
+                                    sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
+                                    specular_textures.push_back(texture2);
+                                    specular_samplers.push_back(sampler2);
+                                } else {
+                                    specular_textures.push_back((sg_image){ .id = SG_INVALID_ID });
+                                    specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
+                                }
                             } else {
-                                specular_textures.push_back((sg_image){ .id = SG_INVALID_ID });
-                                specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
+                                textures.push_back(state.default_palette_img);
+                                samplers.push_back(state.default_palette_smp);
+                                created_textures.push_back(false);
                             }
                         } else {
-                            textures.push_back(state.default_palette_img);
-                            samplers.push_back(state.default_palette_smp);
-                            created_textures.push_back(false);
+                            std::cerr << "Failed to create buffers for mesh " << i << std::endl;
                         }
-                    } else {
-                        std::cerr << "Failed to create buffers for mesh " << i << std::endl;
-                    }
-                }
-
-                for (size_t i = 0; i < vertex_buffers.size(); i++) {
-                    size_t mesh_idx = start + i;
-                    Object obj = visgroup.objects[mesh_idx];
-                    Mesh* mesh = obj.mesh;
-
-                    state.bind.vertex_buffers[0] = vertex_buffers[i];
-                    state.bind.index_buffer = index_buffers[i];
-                    state.bind.images[0] = textures[i];
-                    state.bind.samplers[0] = samplers[i];
-                    if (mesh->material->has_specular_texture) {
-                        state.bind.images[1] = specular_textures[i];
-                        state.bind.samplers[1] = specular_samplers[i];
                     }
 
-                    sg_apply_bindings(&state.bind);
+                    for (size_t i = 0; i < vertex_buffers.size(); i++) {
+                        size_t mesh_idx = start + i;
+                        Object obj = visgroup.objects[mesh_idx];
+                        Mesh* mesh = obj.mesh;
 
-                    HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-                    HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-                    HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-                    HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-                    vs_params.model = model;
-                    vs_params.opacity = obj.opacity*visgroup.opacity;
-                    if (mesh->enable_shading) {
-                        vs_params.enable_shading = 1;
-                    } else {
-                        vs_params.enable_shading = 0;
+                        state.bind.vertex_buffers[0] = vertex_buffers[i];
+                        state.bind.index_buffer = index_buffers[i];
+                        state.bind.images[0] = textures[i];
+                        state.bind.samplers[0] = samplers[i];
+                        if (mesh->material->has_specular_texture) {
+                            state.bind.images[1] = specular_textures[i];
+                            state.bind.samplers[1] = specular_samplers[i];
+                        }
+
+                        sg_apply_bindings(&state.bind);
+
+                        HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+                        HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+                        HMM_Mat4 translate_mat = HMM_Translate(obj.position);
+                        HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+                        vs_params.model = model;
+                        vs_params.opacity = obj.opacity*visgroup.opacity;
+                        if (mesh->enable_shading) {
+                            vs_params.enable_shading = 1;
+                        } else {
+                            vs_params.enable_shading = 0;
+                        }
+                        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+                        struct model_fs_params_t {
+                            int has_diffuse_tex;
+                            int has_specular_tex;
+                            float specular;
+                            float shininess;
+
+                            float camera_pos_x;
+                            float camera_pos_y;
+                            float camera_pos_z;
+                            float camera_pos_w;
+                        };
+                        model_fs_params_t model_fs_params;
+                        if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
+                        if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
+                        model_fs_params.specular = mesh->material->specular;
+                        model_fs_params.camera_pos_x = state.camera_pos.X;
+                        model_fs_params.camera_pos_y = state.camera_pos.Y;
+                        model_fs_params.camera_pos_z = state.camera_pos.Z;
+                        model_fs_params.camera_pos_w = 0.0f;
+                        model_fs_params.shininess = 32;
+                        sg_apply_uniforms(2, SG_RANGE(model_fs_params));
+
+                        sg_draw(0, mesh->index_count, 1);
                     }
-                    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-                    struct model_fs_params_t {
-                        int has_diffuse_tex;
-                        int has_specular_tex;
-                        float specular;
-                        float shininess;
 
-                        float camera_pos_x;
-                        float camera_pos_y;
-                        float camera_pos_z;
-                        float camera_pos_w;
-                    };
-                    model_fs_params_t model_fs_params;
-                    if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
-                    if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
-                    model_fs_params.specular = mesh->material->specular;
-                    model_fs_params.camera_pos_x = state.camera_pos.X;
-                    model_fs_params.camera_pos_y = state.camera_pos.Y;
-                    model_fs_params.camera_pos_z = state.camera_pos.Z;
-                    model_fs_params.camera_pos_w = 0.0f;
-                    model_fs_params.shininess = 32;
-                    sg_apply_uniforms(2, SG_RANGE(model_fs_params));
-
-                    sg_draw(0, mesh->index_count, 1);
-                }
-
-                for (size_t i = 0; i < textures.size(); i++) {
-                    if (created_textures[i]) {
-                        sg_destroy_image(textures[i]);
-                        sg_destroy_sampler(samplers[i]);
-                        if (specular_textures[i].id != SG_INVALID_ID) {
-                            sg_destroy_image(specular_textures[i]);
-                            sg_destroy_sampler(specular_samplers[i]);
+                    for (size_t i = 0; i < textures.size(); i++) {
+                        if (created_textures[i]) {
+                            sg_destroy_image(textures[i]);
+                            sg_destroy_sampler(samplers[i]);
+                            if (specular_textures[i].id != SG_INVALID_ID) {
+                                sg_destroy_image(specular_textures[i]);
+                                sg_destroy_sampler(specular_samplers[i]);
+                            }
                         }
                     }
                 }
@@ -1385,7 +1388,6 @@ bool load_obj(
 
     return true;
 }
-
 
 void print_fmod_error(FMOD_RESULT result) {
     if (result != FMOD_OK)
@@ -2500,6 +2502,8 @@ void _init() {
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
+    //ImGuiIO& io = ImGui::GetIO(); (void)io;
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // FMOD
     FMOD_RESULT result;
@@ -2696,7 +2700,6 @@ void _event(SDL_Event* e) {
         if (e->button.button == SDL_BUTTON_LEFT) {
             state.lmb = true;
             if (state.editor_open && !ImGui::GetIO().WantCaptureMouse) {
-                std::cout << "Raycasting for selection" << std::endl;
                 RaycastResult result = raycast_from_screen(e->button.x, e->button.y);
                 if (result.hit) {
                     selected_object_index = -1;
@@ -2721,10 +2724,6 @@ void _event(SDL_Event* e) {
                             }
                         }
                         if (selected_object_index != -1) break;
-                    }
-
-                    if (selected_object_index != -1) {
-                        std::cout << "Selected object: VisGroup " << selected_mesh_visgroup << ", Object " << selected_object_index << std::endl;
                     }
                 }
             }
@@ -2762,10 +2761,15 @@ void _event(SDL_Event* e) {
         simgui_add_input_characters_utf8(e->text.text);
     }
     if (e->type == SDL_EVENT_KEY_DOWN) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (e->key.key == SDL_KMOD_CTRL) io.KeyCtrl = true;
+        if (e->key.key == SDL_KMOD_SHIFT) io.KeyShift = true;
+        if (e->key.key == SDL_KMOD_ALT) io.KeyAlt = true;
+        if (e->key.key == SDL_KMOD_GUI) io.KeySuper = true;
         ImGuiKey imgui_key = ImGui_ImplSDL3_KeyEventToImGuiKey(e->key.key, e->key.scancode);
         simgui_add_key_event(static_cast<int>(imgui_key), true);
 
-        if (!ImGui::GetIO().WantCaptureKeyboard) {
+        if (!io.WantCaptureKeyboard) {
             state.inputs[e->key.key] = true;
         }
         if (e->key.key == SDLK_0) {
@@ -2781,9 +2785,13 @@ void _event(SDL_Event* e) {
         }
     }
     if (e->type == SDL_EVENT_KEY_UP) {
+        ImGuiIO& io = ImGui::GetIO();
+        if (e->key.key == SDL_KMOD_CTRL) io.KeyCtrl = false;
+        if (e->key.key == SDL_KMOD_SHIFT) io.KeyShift = false;
+        if (e->key.key == SDL_KMOD_ALT) io.KeyAlt = false;
+        if (e->key.key == SDL_KMOD_GUI) io.KeySuper = false;
         state.inputs[e->key.key] = false;
         ImGuiKey imgui_key = ImGui_ImplSDL3_KeyEventToImGuiKey(e->key.key, e->key.scancode);
-        //printf("Key down: scancode=%d, keycode=%d, imgui_key=%d\n", e->key.scancode, e->key.key, imgui_key);
         simgui_add_key_event(static_cast<int>(imgui_key), false);
     }
     if (e->type == SDL_EVENT_WINDOW_FOCUS_GAINED) {

@@ -22,8 +22,6 @@ After cloning, you only need to run it with CMake and it should work. Make sure 
 - Instanced rendering
 - Particle system
 - Skybox
-- Asset streaming
-- Object pooling sys
 - Multithreaded physics and rendering
 - Source-like game state saving and loading
 - Build system and game packaging
