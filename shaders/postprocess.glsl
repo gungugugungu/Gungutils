@@ -121,7 +121,7 @@ vec3(-0.4776, 0.2847, -0.0271)
 );
 
 int outline_size = 2;
-float outline_trigger_dist = 0.1;
+float outline_trigger_dist = 0.5;
 
 void main() {
     vec3 color = texture(texture2D, uv).rgb;

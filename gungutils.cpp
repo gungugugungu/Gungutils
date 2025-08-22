@@ -302,9 +302,9 @@ void prepare_mesh_buffers(Mesh& mesh) {
     mesh.vertex_count = new_vertex_count;
 
     mesh.index_buffer_desc = {};
-    mesh.vertex_buffer_desc.usage.immutable = true;
-    mesh.vertex_buffer_desc.usage.vertex_buffer = false;
-    mesh.vertex_buffer_desc.usage.index_buffer = true;
+    mesh.index_buffer_desc.usage.immutable = true;
+    mesh.index_buffer_desc.usage.vertex_buffer = false;
+    mesh.index_buffer_desc.usage.index_buffer = true;
 
     mesh.use_uint16_indices = false;
     mesh.indices = indices_remapped;
@@ -422,68 +422,69 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                             std::cerr << "Failed to create buffers for mesh " << i << std::endl;
                         }
                     }
+                }
 
-                    for (size_t i = 0; i < vertex_buffers.size(); i++) {
-                        size_t mesh_idx = start + i;
-                        Object obj = visgroup.objects[mesh_idx];
-                        Mesh* mesh = obj.mesh;
+                for (size_t i = 0; i < vertex_buffers.size(); i++) {
+                    size_t mesh_idx = start + i;
+                    Object obj = visgroup.objects[mesh_idx];
+                    Mesh* mesh = obj.mesh;
 
-                        state.bind.vertex_buffers[0] = vertex_buffers[i];
-                        state.bind.index_buffer = index_buffers[i];
-                        state.bind.images[0] = textures[i];
-                        state.bind.samplers[0] = samplers[i];
-                        if (mesh->material->has_specular_texture) {
-                            state.bind.images[1] = specular_textures[i];
-                            state.bind.samplers[1] = specular_samplers[i];
-                        }
-
-                        sg_apply_bindings(&state.bind);
-
-                        HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-                        HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-                        HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-                        HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-                        vs_params.model = model;
-                        vs_params.opacity = obj.opacity*visgroup.opacity;
-                        if (mesh->enable_shading) {
-                            vs_params.enable_shading = 1;
-                        } else {
-                            vs_params.enable_shading = 0;
-                        }
-                        sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-                        struct model_fs_params_t {
-                            int has_diffuse_tex;
-                            int has_specular_tex;
-                            float specular;
-                            float shininess;
-
-                            float camera_pos_x;
-                            float camera_pos_y;
-                            float camera_pos_z;
-                            float camera_pos_w;
-                        };
-                        model_fs_params_t model_fs_params;
-                        if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
-                        if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
-                        model_fs_params.specular = mesh->material->specular;
-                        model_fs_params.camera_pos_x = state.camera_pos.X;
-                        model_fs_params.camera_pos_y = state.camera_pos.Y;
-                        model_fs_params.camera_pos_z = state.camera_pos.Z;
-                        model_fs_params.camera_pos_w = 0.0f;
-                        model_fs_params.shininess = 32;
-                        sg_apply_uniforms(2, SG_RANGE(model_fs_params));
-
-                        sg_draw(0, mesh->index_count, 1);
+                    state.bind.vertex_buffers[0] = vertex_buffers[i];
+                    state.bind.index_buffer = index_buffers[i];
+                    state.bind.images[0] = textures[i];
+                    state.bind.samplers[0] = samplers[i];
+                    if (mesh->material->has_specular_texture) {
+                        state.bind.images[1] = specular_textures[i];
+                        state.bind.samplers[1] = specular_samplers[i];
                     }
 
-                    for (size_t i = 0; i < textures.size(); i++) {
-                        if (created_textures[i]) {
-                            sg_destroy_image(textures[i]);
-                            sg_destroy_sampler(samplers[i]);
-                            if (specular_textures[i].id != SG_INVALID_ID) {
-                                sg_destroy_image(specular_textures[i]);
-                                sg_destroy_sampler(specular_samplers[i]);
-                            }
+                    sg_apply_bindings(&state.bind);
+
+                    HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+                    HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+                    HMM_Mat4 translate_mat = HMM_Translate(obj.position);
+                    HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+                    vs_params.model = model;
+                    vs_params.opacity = obj.opacity*visgroup.opacity;
+                    if (mesh->enable_shading) {
+                        vs_params.enable_shading = 1;
+                    } else {
+                        vs_params.enable_shading = 0;
+                    }
+                    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+                    struct model_fs_params_t {
+                        int has_diffuse_tex;
+                        int has_specular_tex;
+                        float specular;
+                        float shininess;
+
+                        float camera_pos_x;
+                        float camera_pos_y;
+                        float camera_pos_z;
+                        float camera_pos_w;
+                    };
+                    model_fs_params_t model_fs_params;
+                    if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
+                    if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
+                    model_fs_params.specular = mesh->material->specular;
+                    model_fs_params.camera_pos_x = state.camera_pos.X;
+                    model_fs_params.camera_pos_y = state.camera_pos.Y;
+                    model_fs_params.camera_pos_z = state.camera_pos.Z;
+                    model_fs_params.camera_pos_w = 0.0f;
+                    model_fs_params.shininess = 32;
+                    sg_apply_uniforms(2, SG_RANGE(model_fs_params));
+
+                    sg_draw(0, mesh->index_count, 1);
+                }
+
+                // Now clean up (after all drawing)
+                for (size_t i = 0; i < textures.size(); i++) {
+                    if (created_textures[i]) {
+                        sg_destroy_image(textures[i]);
+                        sg_destroy_sampler(samplers[i]);
+                        if (specular_textures[i].id != SG_INVALID_ID) {
+                            sg_destroy_image(specular_textures[i]);
+                            sg_destroy_sampler(specular_samplers[i]);
                         }
                     }
                 }
@@ -688,7 +689,7 @@ HMM_Vec3 transform_vertex(const HMM_Vec3& vertex, const Object& obj) {
 struct RaycastResult {
     bool hit;
     HMM_Vec3 point;
-    const Mesh* mesh;
+    const Object* obj;
 };
 
 RaycastResult raycast_from_screen(float screen_x, float screen_y) {
@@ -714,7 +715,7 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
 
     float closest_distance = FLT_MAX;
     HMM_Vec3 closest_point = HMM_V3(0, 0, 0);
-    const Mesh* hit_mesh = nullptr;
+    const Object* hit_obj = nullptr;
     bool hit_found = false;
 
     for (const auto& visgroup : vis_groups) {
@@ -757,7 +758,7 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
                     if (distance < closest_distance) {
                         closest_distance = distance;
                         closest_point = HMM_AddV3(ray_origin, HMM_MulV3F(ray_direction, distance));
-                        hit_mesh = mesh;
+                        hit_obj = &obj;
                         hit_found = true;
                     }
                 }
@@ -767,7 +768,7 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
 
     if (hit_found) {
         std::cout << "raycast at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
-        return {true, closest_point, hit_mesh};
+        return {true, closest_point, hit_obj};
     } else {
         std::cout << "raycast missed" << std::endl;
         return {false, HMM_V3(0, 0, 0), nullptr};
@@ -2262,6 +2263,11 @@ void render_editor() {
                         ImGui::Image(imtex_id, ImVec2(128, 128));
                     }
                 }
+                if (ImGui::CollapsingHeader("DANGER ZONE")) {
+                    if (ImGui::Button("RE-PREPARE BUFFERS")) {
+                        prepare_mesh_buffers(*selected_object->mesh);
+                    }
+                }
             } else {
                 ImGui::Text("NO MESH SELECTED");
             }
@@ -2709,20 +2715,18 @@ void _event(SDL_Event* e) {
                     for (int vg_idx = 0; vg_idx < vis_groups.size(); vg_idx++) {
                         auto& visgroup = vis_groups[vg_idx];
                         for (int obj_idx = 0; obj_idx < visgroup.objects.size(); obj_idx++) {
-                            if (visgroup.objects[obj_idx].mesh == result.mesh) {
-                                selected_object_index = obj_idx;
-                                selected_mesh_visgroup = vg_idx;
+                            selected_object_index = obj_idx;
+                            selected_mesh_visgroup = vg_idx;
 
-                                if (visgroup.objects[obj_idx].mesh->material->has_diffuse_texture) {
-                                    editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->diffuse_texture_desc);
-                                    editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->diffuse_sampler_desc);
-                                }
-                                if (visgroup.objects[obj_idx].mesh->material->has_specular_texture) {
-                                    editor_specular_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->specular_texture_desc);
-                                    editor_specular_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->specular_sampler_desc);
-                                }
-                                break;
+                            if (visgroup.objects[obj_idx].mesh->material->has_diffuse_texture) {
+                                editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->diffuse_texture_desc);
+                                editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->diffuse_sampler_desc);
                             }
+                            if (visgroup.objects[obj_idx].mesh->material->has_specular_texture) {
+                                editor_specular_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->specular_texture_desc);
+                                editor_specular_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->specular_sampler_desc);
+                            }
+                            break;
                         }
                         if (selected_object_index != -1) break;
                     }

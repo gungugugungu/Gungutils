@@ -4,8 +4,7 @@
 #include "gungutils.cpp"
 
 AudioSource3D* audio_source = new AudioSource3D();
-Helper* campos_helper;
-
+FPSController player_controller;
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -23,6 +22,14 @@ void init() {
     state.event_descriptions.resize(event_count);
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
+
+    load_scene("maps/fpscontroller.gmap");
+    for (auto& obj : vis_groups[0].objects) {
+        PhysicsHolder* holder = new PhysicsHolder();
+        holder->assign_mesh(&obj);
+        holder->body->setType(reactphysics3d::BodyType::KINEMATIC);
+    }
+    player_controller.initalize(0.5f, 1.5f);
 }
 
 void frame() {
@@ -32,6 +39,10 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
+    float mouse_dx = 0.0f;
+    float mouse_dy = 0.0f;
+    SDL_GetRelativeMouseState(&mouse_dx, &mouse_dy);
+    player_controller.update_input(state.inputs, mouse_dx, mouse_dy, &state.camera_pos, &state.camera_front, &state.yaw, &state.pitch);
 }
 
 void event(SDL_Event* e) {}
