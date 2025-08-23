@@ -33,6 +33,7 @@ void init() {
         holder->body->setType(reactphysics3d::BodyType::KINEMATIC);
     }
     player_controller.initalize(0.5f, 1.5f);
+    player_controller.relative_camera_height = 1.4f;
 }
 
 void frame() {

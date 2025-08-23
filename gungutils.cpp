@@ -2569,7 +2569,7 @@ void _init() {
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
-    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky, only use it if you avoided issues with it in scenes
+    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky
     pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 

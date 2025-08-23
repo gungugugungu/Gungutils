@@ -9,7 +9,7 @@ class CharacterController {
 public:
     PhysicsHolder holder;
     float speed = 10.0f;
-    float jump_height = 10.0f;
+    float jump_height = 3.0f;
     bool on_ground = false;
     bool can_jump = true;
     bool can_move = true;
