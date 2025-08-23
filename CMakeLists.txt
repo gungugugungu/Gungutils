@@ -47,6 +47,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")  # Windows
         set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio.dll")
         set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod.dll")
     endif()
+elseif(WIN32)
+    set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio_vc.lib")
+    set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod_vc.lib")
 else() # Linux or Mac but ain't no way I'll use mac anytime
     set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
     set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")

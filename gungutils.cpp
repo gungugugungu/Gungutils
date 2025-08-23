@@ -343,7 +343,9 @@ void prepare_mesh_buffers(Mesh& mesh) {
 }
 
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
-    if (!d) { printf("validate: null desc for %s\n", name); return (sg_image){ .id = SG_INVALID_ID }; }
+    sg_image invalid_image{};
+    invalid_image.id = SG_INVALID_ID;
+    if (!d) { printf("validate: null desc for %s\n", name); return invalid_image;}
     // verify dims
     if (d->width <= 0 || d->height <= 0) {
         printf("validate: %s has invalid dims w=%d h=%d\n", name, d->width, d->height);
@@ -426,8 +428,12 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                                     specular_texture_views.push_back(texture2_view);
                                     specular_samplers.push_back(sampler2);
                                 } else {
-                                    specular_texture_views.push_back((sg_view){ .id = SG_INVALID_ID });
-                                    specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
+                                    sg_view invalid_view = {};
+                                    invalid_view.id = SG_INVALID_ID;
+                                    specular_texture_views.push_back(invalid_view);
+                                    sg_sampler invalid_sampler{};
+                                    invalid_sampler.id = SG_INVALID_ID;
+                                    specular_samplers.push_back(invalid_sampler);
                                 }
                             } else {
                                 texture_views.push_back(state.default_palette_view);
@@ -2663,13 +2669,13 @@ void _init() {
     result = FMOD_Studio_System_Create(&state.fmod_system, FMOD_VERSION);
     print_fmod_error(result);
     FMOD_SYSTEM* sys;
-    result = state.fmod_system->getCoreSystem(&sys);
+    result = FMOD_Studio_System_GetCoreSystem(state.fmod_system, &sys);
     print_fmod_error(result);
-    result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
+    result = FMOD_System_SetSoftwareFormat(sys, 0, FMOD_SPEAKERMODE_STEREO, 0);
     print_fmod_error(result);
-    result = state.fmod_system->initialize(512, FMOD_STUDIO_INIT_NORMAL | FMOD_STUDIO_INIT_LIVEUPDATE, FMOD_INIT_NORMAL, 0);
+    result = FMOD_Studio_System_Initialize(state.fmod_system, 512, FMOD_STUDIO_INIT_NORMAL | FMOD_STUDIO_INIT_LIVEUPDATE, FMOD_INIT_NORMAL, 0);
     print_fmod_error(result);
-    result = state.fmod_system->setNumListeners(1);
+    result = FMOD_Studio_System_SetNumListeners(state.fmod_system, 1);
     print_fmod_error(result);
 
     // Set default camera variables
@@ -2742,13 +2748,14 @@ void _frame() {
 
     // FMOD
     FMOD_RESULT result;
-    state.fmod_system->update();
+    FMOD_Studio_System_Update(state.fmod_system);
     FMOD_3D_ATTRIBUTES camera_attributes;
     camera_attributes.position = { -state.camera_pos.X, state.camera_pos.Y, -state.camera_pos.Z };
     camera_attributes.velocity = { 0.0f, 0.0f, 0.0f };
     camera_attributes.forward = { state.camera_front.X, state.camera_front.Y, state.camera_front.Z };
     camera_attributes.up = { state.camera_up.X, state.camera_up.Y, state.camera_up.Z };
-    result = state.fmod_system->setListenerAttributes(0, &camera_attributes);
+    FMOD_VECTOR attpos = {state.camera_pos.X, state.camera_pos.Y, state.camera_pos.Y};
+    result = FMOD_Studio_System_SetListenerAttributes(state.fmod_system, 0, &camera_attributes, &attpos);
     print_fmod_error(result);
 
     // imgui
@@ -3042,7 +3049,7 @@ int main(int argc, char* argv[]) {
         SDL_GL_SwapWindow(state.win);
     }
 
-    state.fmod_system->release();
+    FMOD_Studio_System_Release(state.fmod_system);
     simgui_shutdown();
     sfetch_shutdown();
     sg_shutdown();
