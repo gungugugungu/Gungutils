@@ -10,7 +10,11 @@ struct PostProcessState {
     sg_image rendered_color_img;
     sg_image_desc depth_img;
     sg_image rendered_depth_img;
-    sg_attachments pass_attachments;
+
+    sg_view rendered_color_att_view;
+    sg_view rendered_depth_att_view;
+    sg_view rendered_color_tex_view;
+    sg_view rendered_depth_tex_view;
 
     sg_pipeline post_pipeline;
     sg_bindings post_bindings;
@@ -20,7 +24,6 @@ struct PostProcessState {
     sg_sampler rendered_post_sampler;
     sg_sampler rendered_depth_sampler;
 
-    // post-process uniforms
     struct PostProcessUniforms {
         float vignette_strength;
         float vignette_radius;
@@ -29,8 +32,8 @@ struct PostProcessState {
         float contrast;
         float brightness;
         float saturation;
-        float time; // for animated effects
-        float _padding[2]; // align to 16 bytes
+        float time;
+        float _padding[2];
     } uniforms;
 };
 

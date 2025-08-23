@@ -85,6 +85,7 @@ struct AppState {
     vector<Helper*> helpers;
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
     sg_image default_palette_img{};
+    sg_view default_palette_view{};
     sg_sampler default_palette_smp{};
     vector<DirectionalLight> directional_lights;
     vector<PointLight> point_lights;
@@ -117,7 +118,7 @@ void init_post_processing() {
     post_state.color_img.height = height;
     post_state.color_img.pixel_format = SG_PIXELFORMAT_RGBA8;
     post_state.color_img.sample_count = 1;
-    post_state.color_img.usage.render_attachment = true;
+    post_state.color_img.usage.color_attachment = true;
     post_state.color_img.label = "color-render-target";
 
     post_state.depth_img = {};
@@ -125,13 +126,18 @@ void init_post_processing() {
     post_state.depth_img.height = height;
     post_state.depth_img.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     post_state.depth_img.sample_count = 1;
-    post_state.depth_img.usage.render_attachment = true;
+    post_state.depth_img.usage.depth_stencil_attachment = true;
     post_state.depth_img.label = "depth-render-target";
 
-    // Create the post-processing shader
+    post_state.rendered_color_img = {SG_INVALID_ID};
+    post_state.rendered_depth_img = {SG_INVALID_ID};
+    post_state.rendered_color_att_view = {SG_INVALID_ID};
+    post_state.rendered_depth_att_view = {SG_INVALID_ID};
+    post_state.rendered_color_tex_view = {SG_INVALID_ID};
+    post_state.rendered_depth_tex_view = {SG_INVALID_ID};
+
     sg_shader post_shader = sg_make_shader(postprocess_shader_desc(sg_query_backend()));
 
-    // Create pipeline for fullscreen quad
     sg_pipeline_desc post_pip_desc = {};
     post_pip_desc.shader = post_shader;
 
@@ -363,17 +369,17 @@ sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
 void render_meshes_batched_streaming(size_t batch_size = 10) {
     std::vector<sg_buffer> vertex_buffers;
     std::vector<sg_buffer> index_buffers;
-    std::vector<sg_image> textures;
+    std::vector<sg_view> texture_views;
     std::vector<sg_sampler> samplers;
-    std::vector<sg_image> specular_textures;
+    std::vector<sg_view> specular_texture_views;
     std::vector<sg_sampler> specular_samplers;
     std::vector<bool> created_textures;
 
     vertex_buffers.reserve(batch_size);
     index_buffers.reserve(batch_size);
-    textures.reserve(batch_size);
+    texture_views.reserve(batch_size);
     samplers.reserve(batch_size);
-    specular_textures.reserve(batch_size);
+    specular_texture_views.reserve(batch_size);
     specular_samplers.reserve(batch_size);
     created_textures.reserve(batch_size);
 
@@ -384,9 +390,9 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                 vertex_buffers.clear();
                 index_buffers.clear();
-                textures.clear();
+                texture_views.clear();
                 samplers.clear();
-                specular_textures.clear();
+                specular_texture_views.clear();
                 specular_samplers.clear();
                 created_textures.clear();
 
@@ -404,21 +410,27 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                             if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
                                 sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
+                                sg_view_desc tex_view_desc = {};
+                                tex_view_desc.texture.image = texture;
+                                sg_view texture_view = sg_make_view(&tex_view_desc);
                                 sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
-                                textures.push_back(texture);
+                                texture_views.push_back(texture_view);
                                 samplers.push_back(sampler);
                                 created_textures.push_back(true);
                                 if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
                                     sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
+                                    sg_view_desc tex2_view_desc = {};
+                                    tex2_view_desc.texture.image = texture2;
+                                    sg_view texture2_view = sg_make_view(&tex2_view_desc);
                                     sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
-                                    specular_textures.push_back(texture2);
+                                    specular_texture_views.push_back(texture2_view);
                                     specular_samplers.push_back(sampler2);
                                 } else {
-                                    specular_textures.push_back((sg_image){ .id = SG_INVALID_ID });
+                                    specular_texture_views.push_back((sg_view){ .id = SG_INVALID_ID });
                                     specular_samplers.push_back((sg_sampler){ .id = SG_INVALID_ID });
                                 }
                             } else {
-                                textures.push_back(state.default_palette_img);
+                                texture_views.push_back(state.default_palette_view);
                                 samplers.push_back(state.default_palette_smp);
                                 created_textures.push_back(false);
                             }
@@ -435,10 +447,10 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                     state.bind.vertex_buffers[0] = vertex_buffers[i];
                     state.bind.index_buffer = index_buffers[i];
-                    state.bind.images[0] = textures[i];
+                    state.bind.views[0] = texture_views[i];
                     state.bind.samplers[0] = samplers[i];
                     if (mesh->material->has_specular_texture) {
-                        state.bind.images[1] = specular_textures[i];
+                        state.bind.views[1] = specular_texture_views[i];
                         state.bind.samplers[1] = specular_samplers[i];
                     }
 
@@ -493,7 +505,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
                     int light_idx = 0;
 
-                    // directional lights
                     for (const auto& dl : state.directional_lights) {
                         if (light_idx >= 50) break;
                         lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
@@ -516,7 +527,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         light_idx++;
                     }
 
-                    // point lights
                     for (const auto& pl : state.point_lights) {
                         if (light_idx >= 50) break;
                         lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
@@ -539,7 +549,6 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                         light_idx++;
                     }
 
-                    // spot lights
                     for (const auto& sl : state.spot_lights) {
                         if (light_idx >= 50) break;
                         lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
@@ -574,13 +583,16 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     sg_draw(0, mesh->index_count, 1);
                 }
 
-                // Now clean up (after all drawing)
-                for (size_t i = 0; i < textures.size(); i++) {
+                for (size_t i = 0; i < texture_views.size(); i++) {
                     if (created_textures[i]) {
-                        sg_destroy_image(textures[i]);
+                        sg_image texture = sg_query_view_image(texture_views[i]);
+                        sg_destroy_view(texture_views[i]);
+                        sg_destroy_image(texture);
                         sg_destroy_sampler(samplers[i]);
-                        if (specular_textures[i].id != SG_INVALID_ID) {
-                            sg_destroy_image(specular_textures[i]);
+                        if (specular_texture_views[i].id != SG_INVALID_ID) {
+                            sg_image specular_texture = sg_query_view_image(specular_texture_views[i]);
+                            sg_destroy_view(specular_texture_views[i]);
+                            sg_destroy_image(specular_texture);
                             sg_destroy_sampler(specular_samplers[i]);
                         }
                     }
@@ -602,7 +614,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
-            state.bind.images[0] = state.default_palette_img;
+            state.bind.views[0] = state.default_palette_view;
             state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
@@ -630,22 +642,64 @@ void render_first_pass() {
 
     if (post_state.color_img.width != w_width || post_state.color_img.height != w_height) {
         if (post_state.rendered_color_img.id != SG_INVALID_ID) {
+            sg_destroy_view(post_state.rendered_color_att_view);
             sg_destroy_image(post_state.rendered_color_img);
         }
         if (post_state.rendered_depth_img.id != SG_INVALID_ID) {
+            sg_destroy_view(post_state.rendered_depth_att_view);
             sg_destroy_image(post_state.rendered_depth_img);
+        }
+        if (post_state.rendered_color_tex_view.id != SG_INVALID_ID) {
+            sg_destroy_view(post_state.rendered_color_tex_view);
+        }
+        if (post_state.rendered_depth_tex_view.id != SG_INVALID_ID) {
+            sg_destroy_view(post_state.rendered_depth_tex_view);
         }
 
         post_state.color_img.width = w_width;
         post_state.color_img.height = w_height;
         post_state.depth_img.width = w_width;
         post_state.depth_img.height = w_height;
+        post_state.color_img.usage.color_attachment = true;
+        post_state.depth_img.usage.depth_stencil_attachment = true;
 
         post_state.rendered_color_img = sg_make_image(&post_state.color_img);
         post_state.rendered_depth_img = sg_make_image(&post_state.depth_img);
+
+        sg_view_desc color_att_view_desc = {};
+        color_att_view_desc.color_attachment.image = post_state.rendered_color_img;
+        post_state.rendered_color_att_view = sg_make_view(&color_att_view_desc);
+
+        sg_view_desc depth_att_view_desc = {};
+        depth_att_view_desc.depth_stencil_attachment.image = post_state.rendered_depth_img;
+        post_state.rendered_depth_att_view = sg_make_view(&depth_att_view_desc);
+
+        sg_view_desc color_tex_view_desc = {};
+        color_tex_view_desc.texture.image = post_state.rendered_color_img;
+        post_state.rendered_color_tex_view = sg_make_view(&color_tex_view_desc);
+
+        sg_view_desc depth_tex_view_desc = {};
+        depth_tex_view_desc.texture.image = post_state.rendered_depth_img;
+        post_state.rendered_depth_tex_view = sg_make_view(&depth_tex_view_desc);
     } else if (post_state.rendered_color_img.id == SG_INVALID_ID) {
         post_state.rendered_color_img = sg_make_image(&post_state.color_img);
         post_state.rendered_depth_img = sg_make_image(&post_state.depth_img);
+
+        sg_view_desc color_att_view_desc2 = {};
+        color_att_view_desc2.color_attachment.image = post_state.rendered_color_img;
+        post_state.rendered_color_att_view = sg_make_view(&color_att_view_desc2);
+
+        sg_view_desc depth_att_view_desc2 = {};
+        depth_att_view_desc2.depth_stencil_attachment.image = post_state.rendered_depth_img;
+        post_state.rendered_depth_att_view = sg_make_view(&depth_att_view_desc2);
+
+        sg_view_desc color_tex_view_desc2 = {};
+        color_tex_view_desc2.texture.image = post_state.rendered_color_img;
+        post_state.rendered_color_tex_view = sg_make_view(&color_tex_view_desc2);
+
+        sg_view_desc depth_tex_view_desc2 = {};
+        depth_tex_view_desc2.texture.image = post_state.rendered_depth_img;
+        post_state.rendered_depth_tex_view = sg_make_view(&depth_tex_view_desc2);
     }
 
     if (post_state.rendered_color_img.id == SG_INVALID_ID || post_state.rendered_depth_img.id == SG_INVALID_ID) {
@@ -659,30 +713,18 @@ void render_first_pass() {
     offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     offscreen_pass_action.depth.clear_value = 1.0f;
 
-    sg_attachments_desc attachments_desc = {};
-    attachments_desc.colors[0].image = post_state.rendered_color_img;
-    attachments_desc.depth_stencil.image = post_state.rendered_depth_img;
-    attachments_desc.label = "offscreen-attachments";
-    sg_attachments pass_attachments = sg_make_attachments(&attachments_desc);
-
-    if (pass_attachments.id == SG_INVALID_ID) {
-        printf("ERROR: Failed to create offscreen attachments!\n");
-        return;
-    }
-
     sg_pass pass = {};
     pass.action = offscreen_pass_action;
-    pass.attachments = pass_attachments;
+    pass.attachments.colors[0] = post_state.rendered_color_att_view;
+    pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
-    sg_begin_pass(pass);
+    sg_begin_pass(&pass);
 
     sg_apply_pipeline(state.pip);
 
-    render_meshes_batched_streaming(10); // TODO: sort and then automatically instance meshes that are rendered twice
+    render_meshes_batched_streaming(10);
 
     sg_end_pass();
-
-    sg_destroy_attachments(pass_attachments);
 }
 
 void render_second_pass() {
@@ -691,7 +733,6 @@ void render_second_pass() {
         return;
     }
 
-    // Set up swapchain pass (render to screen)
     sg_pass_action swapchain_pass_action = {};
     swapchain_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     swapchain_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -707,20 +748,20 @@ void render_second_pass() {
     swapchain.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     swapchain.gl.framebuffer = 0;
 
-    sg_pass pass{};
+    sg_pass pass = {};
     pass.action = swapchain_pass_action;
     pass.swapchain = swapchain;
     pass.label = "swapchain-pass";
-    sg_begin_pass(pass);
+    sg_begin_pass(&pass);
 
     sg_apply_pipeline(post_state.post_pipeline);
 
     post_state.uniforms.time = (float)stm_sec(stm_now());
 
-    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID}; // I'm generating the fullscreen quad in the shader
-    post_state.post_bindings.images[0] = post_state.rendered_color_img;
+    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID};
+    post_state.post_bindings.views[0] = post_state.rendered_color_tex_view;
     post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
-    post_state.post_bindings.images[1] = post_state.rendered_depth_img;
+    post_state.post_bindings.views[1] = post_state.rendered_depth_tex_view;
     post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
 
     sg_apply_bindings(&post_state.post_bindings);
@@ -2351,13 +2392,21 @@ void render_editor() {
                     selected_mesh_visgroup = -1;
                 }
                 if (ImGui::CollapsingHeader("TEXTURES")) {
-                    if (selected_object->mesh->material->has_diffuse_texture) { // texture display
-                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_image, editor_display_sampler);
+                    if (selected_object->mesh->material->has_diffuse_texture) {
+                        sg_view_desc editor_view_desc = {};
+                        editor_view_desc.texture.image = editor_display_image;
+                        sg_view editor_display_view = sg_make_view(&editor_view_desc);
+                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, editor_display_sampler);
                         ImGui::Image(imtex_id, ImVec2(128, 128));
+                        sg_destroy_view(editor_display_view);
                     }
                     if (selected_object->mesh->material->has_specular_texture) {
-                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_image, editor_specular_display_sampler);
+                        sg_view_desc editor_specular_view_desc = {};
+                        editor_specular_view_desc.texture.image = editor_specular_display_image;
+                        sg_view editor_specular_display_view = sg_make_view(&editor_specular_view_desc);
+                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_view, editor_specular_display_sampler);
                         ImGui::Image(imtex_id, ImVec2(128, 128));
+                        sg_destroy_view(editor_specular_display_view);
                     }
                 }
                 if (ImGui::CollapsingHeader("DANGER ZONE")) {
@@ -2915,19 +2964,30 @@ void fetch_callback(const sfetch_response_t* response) {
             &num_channels, desired_channels);
 
         if (pixels) {
-            // yay, memory safety!
-            sg_destroy_image(state.bind.images[texture_index]);
+            sg_destroy_view(state.bind.views[texture_index]);
+            sg_image old_img = sg_query_view_image(state.bind.views[texture_index]);
+            if (old_img.id != SG_INVALID_ID) {
+                sg_destroy_image(old_img);
+            }
+
             sg_image_desc img_desc = {};
             img_desc.width = img_width;
             img_desc.height = img_height;
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
+
             if (loaded_is_palette) {
                 loaded_is_palette = false;
                 state.default_palette_img = sg_make_image(&img_desc);
+                sg_view_desc palette_view_desc = {};
+                palette_view_desc.texture.image = state.default_palette_img;
+                state.default_palette_view = sg_make_view(&palette_view_desc);
             } else {
-                state.bind.images[texture_index] = sg_make_image(&img_desc);
+                sg_image new_img = sg_make_image(&img_desc);
+                sg_view_desc tex_view_desc = {};
+                tex_view_desc.texture.image = new_img;
+                state.bind.views[texture_index] = sg_make_view(&tex_view_desc);
             }
 
             stbi_image_free(pixels);
@@ -2957,7 +3017,7 @@ int main(int argc, char* argv[]) {
     desc.sampler_pool_size = 8192;
     desc.shader_pool_size = 512;
     desc.pipeline_pool_size = 1024;
-    desc.attachments_pool_size = 8192;
+    desc.view_pool_size = 8192;
     desc.environment = env;
     sg_setup(&desc);
     stm_setup();

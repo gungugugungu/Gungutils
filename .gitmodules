@@ -9,7 +9,7 @@
 	url = https://github.com/nothings/stb.git
 [submodule "include/tinygltf"]
 	path = include/tinygltf
-	url = https://github.com/syoyo/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
 [submodule "include/tinyobjloader"]
 	path = include/tinyobjloader
 	url = https://github.com/tinyobjloader/tinyobjloader.git
@@ -27,7 +27,10 @@
 	url = https://github.com/nlohmann/json.git
 [submodule "include/ozz-animation"]
 	path = include/ozz-animation
-	url = https://github.com/guillaumeblanc/ozz-animation.gi
+	url = https://github.com/guillaumeblanc/ozz-animation.git
 [submodule "include/meshoptimizer"]
 	path = include/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
+[submodule "include/reactphysics3d"]
+	path = include/reactphysics3d
+	url = https://github.com/DanielChappuis/reactphysics3d.git

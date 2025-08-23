@@ -56,7 +56,7 @@ set(FMOD_INCLUDE_DIRS
 )
 
 # ReactPhysics3D
-find_package(ReactPhysics3D REQUIRED)
+add_subdirectory(${CMAKE_SOURCE_DIR}/include/reactphysics3d)
 
 target_link_libraries(Gungutils
         PRIVATE
@@ -67,7 +67,7 @@ target_link_libraries(Gungutils
         ${FMOD_CORE_LIB}
         ImGui
         TinyFD
-        ReactPhysics3D::ReactPhysics3D
+        reactphysics3d
         meshoptimizer
         ${PLATFORM_LIBS}
 )
