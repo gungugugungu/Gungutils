@@ -1,6 +1,8 @@
 //
 // Created by gungu on 7/23/25.
 //
+#include <memory>
+
 #include "gungutils.cpp"
 
 AudioSource3D* audio_source = new AudioSource3D();
@@ -8,6 +10,8 @@ FPSController player_controller;
 
 float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
+
+DirectionalLight light{};
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -28,12 +32,17 @@ void init() {
 
     load_scene("maps/fpscontroller.gmap");
     for (auto& obj : vis_groups[0].objects) {
-        PhysicsHolder* holder = new PhysicsHolder();
-        holder->assign_mesh(&obj);
-        holder->body->setType(reactphysics3d::BodyType::KINEMATIC);
+        PhysicsHolder holder{};
+        holder.assign_mesh(&obj);
+        holder.body->setType(reactphysics3d::BodyType::KINEMATIC);
+        state.physics_holders.push_back(std::make_unique<PhysicsHolder>(holder));
     }
     player_controller.initalize(0.5f, 1.5f);
     player_controller.relative_camera_height = 1.4f;
+    light.color = {1.0f, 1.0f, 1.0f};
+    light.direction = {0.5f, -1.0f, -0.5f};
+    light.intensity = 1.0f;
+    state.directional_lights.push_back(light);
 }
 
 void frame() {
