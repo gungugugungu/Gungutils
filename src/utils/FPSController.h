@@ -10,14 +10,14 @@ public:
     float mouse_sensitivity = 0.005f;
     float relative_camera_height;
 
-    void update_input(const std::map<SDL_Keycode,
-        bool>& inputs,
+    void update_input(std::map<SDL_Keycode, bool>& inputs,
         float mouse_dx,
         float mouse_dy,
         HMM_Vec3* camera_pos,
         HMM_Vec3* camera_front,
         float* camera_yaw,
         float* camera_pitch) {
+
         update();
 
         *camera_yaw -= mouse_dx * mouse_sensitivity;
@@ -33,10 +33,10 @@ public:
         holder.orientation = reactphysics3d::Quaternion::fromEulerAngles(0.0f, *camera_yaw, 0.0f);
 
         HMM_Vec3 direction = {0.0f, 0.0f, 0.0f};
-        if (inputs.find(SDLK_W) != inputs.end() && inputs.at(SDLK_S)) direction.Y += 1.0f;
-        if (inputs.find(SDLK_S) != inputs.end() && inputs.at(SDLK_S)) direction.Y -= 1.0f;
-        if (inputs.find(SDLK_A) != inputs.end() && inputs.at(SDLK_A)) direction.X -= 1.0f;
-        if (inputs.find(SDLK_D) != inputs.end() && inputs.at(SDLK_D)) direction.X += 1.0f;
+        if (inputs[SDLK_W] == true) direction.X += 1.0f;
+        if (inputs[SDLK_S] == true) direction.X -= 1.0f;
+        if (inputs[SDLK_A] == true) direction.Z -= 1.0f;
+        if (inputs[SDLK_D] == true) direction.Z += 1.0f;
 
         move(direction);
 
