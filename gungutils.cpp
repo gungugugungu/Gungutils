@@ -30,8 +30,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobjloader/tiny_obj_loader.h"
 #include "SDL3/SDL.h"
-#include "FModStudio/api/core/inc/fmod.hpp"
-#include "FModStudio/api/studio/inc/fmod_studio.hpp"
+#include "FModStudio/api/core/inc/fmod.h"
+#include "FModStudio/api/studio/inc/fmod_studio.h"
 #include "FModStudio/api/core/inc/fmod_errors.h"
 #include "libtinyfiledialogs/tinyfiledialogs.h"
 #include "json/include/nlohmann/json.hpp"
@@ -77,10 +77,10 @@ struct AppState {
     float fov;
     map<SDL_Keycode, bool> inputs;
     bool running = true;
-    FMOD::Studio::System* fmod_system = NULL;
+    FMOD_STUDIO_SYSTEM* fmod_system = NULL;
     bool editor_open = false;
-    FMOD::Studio::Bank* bank = nullptr;
-    std::vector<FMOD::Studio::EventDescription*> event_descriptions;
+    FMOD_STUDIO_BANK* bank = nullptr;
+    std::vector<FMOD_STUDIO_EVENTDESCRIPTION*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
@@ -1539,14 +1539,14 @@ void print_fmod_error(FMOD_RESULT result) {
 
 class AudioSource3D {
     public:
-        FMOD::Studio::EventInstance* event_instance;
+        FMOD_STUDIO_EVENTINSTANCE* event_instance;
         HMM_Vec3 position;
         Object* visualizer_object = nullptr;
         int visualizer_mesh_index = -1;
         FMOD_GUID guid;
 
-        void initalize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
-            FMOD_RESULT result = desc->createInstance(&event_instance);
+        void initalize(FMOD_STUDIO_EVENTDESCRIPTION* desc, HMM_Vec3 pos) {
+            FMOD_RESULT result = FMOD_Studio_EventDescription_CreateInstance(desc, &event_instance);
             print_fmod_error(result);
             state.audio_sources.push_back(this);
             position = pos;
@@ -1573,7 +1573,7 @@ class AudioSource3D {
                 delete visualizer_object;
                 visualizer_object = nullptr;
             }
-            desc->getID(&guid);
+            FMOD_Studio_EventDescription_GetID(desc, &guid);
         }
 
         void play() {
@@ -1582,9 +1582,9 @@ class AudioSource3D {
             attributes.velocity = {0.0f, 0.0f, 0.0f};
             attributes.up = {0.0f, 1.0f, 0.0f};
             attributes.forward = {0.0f, 0.0f, 1.0f};
-            FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
+            FMOD_RESULT result = FMOD_Studio_EventInstance_Set3DAttributes(event_instance, &attributes);
             print_fmod_error(result);
-            event_instance->start();
+            FMOD_Studio_EventInstance_Start(event_instance);
         }
 
         void update_visualizer_position() {
@@ -1594,19 +1594,19 @@ class AudioSource3D {
         }
 
         void stop() {
-            event_instance->stop(FMOD_STUDIO_STOP_ALLOWFADEOUT);
+            FMOD_Studio_EventInstance_Stop(event_instance, FMOD_STUDIO_STOP_ALLOWFADEOUT);
         }
 
         void pause() {
-            event_instance->setPaused(true);
+            FMOD_Studio_EventInstance_SetPaused(event_instance, true);
         }
 
         void unpause() {
-            event_instance->setPaused(false);
+            FMOD_Studio_EventInstance_SetPaused(event_instance, false);
         }
 
         void set_volume(float volume) {
-            event_instance->setVolume(volume);
+            FMOD_Studio_EventInstance_SetVolume(event_instance, volume);
         }
 
         void set_position(HMM_Vec3 pos) {
@@ -1616,7 +1616,7 @@ class AudioSource3D {
             attributes.velocity = {0.0f, 0.0f, 0.0f};
             attributes.up = {0.0f, 1.0f, 0.0f};
             attributes.forward = {0.0f, 0.0f, 1.0f};
-            FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
+            FMOD_RESULT result = FMOD_Studio_EventInstance_Set3DAttributes(event_instance, &attributes);
             print_fmod_error(result);
 
             update_visualizer_position();
@@ -1634,7 +1634,7 @@ class AudioSource3D {
                 }
             }
 
-            event_instance->release();
+            FMOD_Studio_EventInstance_Release(event_instance);
             delete visualizer_object;
         }
 };
@@ -2105,7 +2105,7 @@ void load_scene(const string& path) {
 
             for (auto& ed : state.event_descriptions) {
                 FMOD_GUID current_id;
-                ed->getID(&current_id);
+                FMOD_Studio_EventDescription_GetID(ed, &current_id);
                 if (current_id.Data1 == audio_source->guid.Data1 &&
                     current_id.Data2 == audio_source->guid.Data2 &&
                     current_id.Data3 == audio_source->guid.Data3 &&
@@ -2547,7 +2547,7 @@ void render_editor() {
 
             for (int i = 0; i < state.event_descriptions.size(); i++) {
                 FMOD_GUID eyedeeznuts;
-                FMOD_RESULT result = state.event_descriptions[i]->getID(&eyedeeznuts);
+                FMOD_RESULT result = FMOD_Studio_EventDescription_GetID(state.event_descriptions[i], &eyedeeznuts);
                 print_fmod_error(result);
 
                 string label = to_string(i) + ". event, GUID: " + to_string(eyedeeznuts.Data1) + "-" + to_string(eyedeeznuts.Data2) + "-" + to_string(eyedeeznuts.Data3) + "-" + to_string(*eyedeeznuts.Data4);
@@ -2660,9 +2660,9 @@ void _init() {
 
     // FMOD
     FMOD_RESULT result;
-    result = FMOD::Studio::System::create(&state.fmod_system);
+    result = FMOD_Studio_System_Create(&state.fmod_system, FMOD_VERSION);
     print_fmod_error(result);
-    FMOD::System* sys;
+    FMOD_SYSTEM* sys;
     result = state.fmod_system->getCoreSystem(&sys);
     print_fmod_error(result);
     result = sys->setSoftwareFormat(0, FMOD_SPEAKERMODE_STEREO, 0);
