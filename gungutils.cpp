@@ -46,6 +46,7 @@
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
 #include "rendering/Post Processing.h"
+#include "rendering/Light.h"
 #include "physics/PhysicsHolder.h"
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
@@ -85,6 +86,9 @@ struct AppState {
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
     sg_image default_palette_img{};
     sg_sampler default_palette_smp{};
+    vector<DirectionalLight> directional_lights;
+    vector<PointLight> point_lights;
+    vector<SpotLight> spot_lights;
 };
 
 AppState state;
@@ -473,6 +477,99 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
                     model_fs_params.camera_pos_w = 0.0f;
                     model_fs_params.shininess = 32;
                     sg_apply_uniforms(2, SG_RANGE(model_fs_params));
+
+                    struct lighting_params {
+                        int light_types_packed[13][4];
+                        HMM_Vec4 light_positions[50];
+                        HMM_Vec4 light_directions[50];
+                        HMM_Vec4 light_colors[50];
+                        HMM_Vec4 light_att_params[50];
+                        int light_amount;
+                        float padding[3];
+                        HMM_Vec4 ambient_color;
+                    };
+
+                    lighting_params lights = {};
+
+                    int light_idx = 0;
+
+                    // directional lights
+                    for (const auto& dl : state.directional_lights) {
+                        if (light_idx >= 50) break;
+                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
+                        lights.light_positions[light_idx].X = 0.0f;
+                        lights.light_positions[light_idx].Y = 0.0f;
+                        lights.light_positions[light_idx].Z = 0.0f;
+                        lights.light_positions[light_idx].W = 0.0f;
+                        lights.light_directions[light_idx].X = dl.direction.X;
+                        lights.light_directions[light_idx].Y = dl.direction.Y;
+                        lights.light_directions[light_idx].Z = dl.direction.Z;
+                        lights.light_directions[light_idx].W = 0.0f;
+                        lights.light_colors[light_idx].X = dl.color.X;
+                        lights.light_colors[light_idx].Y = dl.color.Y;
+                        lights.light_colors[light_idx].Z = dl.color.Z;
+                        lights.light_colors[light_idx].W = dl.intensity;
+                        lights.light_att_params[light_idx].X = 0.0f;
+                        lights.light_att_params[light_idx].Y = 0.0f;
+                        lights.light_att_params[light_idx].Z = 0.0f;
+                        lights.light_att_params[light_idx].W = 0.0f;
+                        light_idx++;
+                    }
+
+                    // point lights
+                    for (const auto& pl : state.point_lights) {
+                        if (light_idx >= 50) break;
+                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
+                        lights.light_positions[light_idx].X = pl.position.X;
+                        lights.light_positions[light_idx].Y = pl.position.Y;
+                        lights.light_positions[light_idx].Z = pl.position.Z;
+                        lights.light_positions[light_idx].W = 0.0f;
+                        lights.light_directions[light_idx].X = 0.0f;
+                        lights.light_directions[light_idx].Y = 0.0f;
+                        lights.light_directions[light_idx].Z = 0.0f;
+                        lights.light_directions[light_idx].W = 0.0f;
+                        lights.light_colors[light_idx].X = pl.color.X;
+                        lights.light_colors[light_idx].Y = pl.color.Y;
+                        lights.light_colors[light_idx].Z = pl.color.Z;
+                        lights.light_colors[light_idx].W = pl.intensity;
+                        lights.light_att_params[light_idx].X = pl.radius;
+                        lights.light_att_params[light_idx].Y = 0.0f;
+                        lights.light_att_params[light_idx].Z = 0.0f;
+                        lights.light_att_params[light_idx].W = 0.0f;
+                        light_idx++;
+                    }
+
+                    // spot lights
+                    for (const auto& sl : state.spot_lights) {
+                        if (light_idx >= 50) break;
+                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
+                        lights.light_positions[light_idx].X = sl.position.X;
+                        lights.light_positions[light_idx].Y = sl.position.Y;
+                        lights.light_positions[light_idx].Z = sl.position.Z;
+                        lights.light_positions[light_idx].W = 0.0f;
+                        lights.light_directions[light_idx].X = sl.direction.X;
+                        lights.light_directions[light_idx].Y = sl.direction.Y;
+                        lights.light_directions[light_idx].Z = sl.direction.Z;
+                        lights.light_directions[light_idx].W = 0.0f;
+                        lights.light_colors[light_idx].X = sl.color.X;
+                        lights.light_colors[light_idx].Y = sl.color.Y;
+                        lights.light_colors[light_idx].Z = sl.color.Z;
+                        lights.light_colors[light_idx].W = sl.intensity;
+                        lights.light_att_params[light_idx].X = 0.0f;
+                        lights.light_att_params[light_idx].Y = sl.inner_cone_angle;
+                        lights.light_att_params[light_idx].Z = sl.outer_cone_angle;
+                        lights.light_att_params[light_idx].W = 0.0f;
+                        light_idx++;
+                    }
+
+                    lights.light_amount = light_idx;
+
+                    lights.ambient_color.X = 0.1f;
+                    lights.ambient_color.Y = 0.1f;
+                    lights.ambient_color.Z = 0.1f;
+                    lights.ambient_color.W = 0.0f;
+
+                    sg_apply_uniforms(3, SG_RANGE(lights));
 
                     sg_draw(0, mesh->index_count, 1);
                 }
