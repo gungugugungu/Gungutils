@@ -388,14 +388,6 @@ void prepare_mesh_buffers(Mesh& mesh) {
 }
 
 void render_meshes() {
-    struct InstanceData {
-        HMM_Mat4 model;
-        float opacity;
-        float group_opacity;
-        float enable_shading;
-        float padding; // 16 bytes
-    };
-
     struct Instance {
         Object obj;
         float group_opacity;
@@ -529,86 +521,8 @@ void render_meshes() {
             g.views_created = true;
         }
 
-        if (g.items.size() > 1) {
-            std::vector<InstanceData> instance_data;
-            instance_data.reserve(g.items.size());
-
-            for (const auto& inst : g.items) {
-                const Object& obj = inst.obj;
-                HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-                HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-                HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-                HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-
-                InstanceData data;
-                data.model = model;
-                data.opacity = obj.opacity * inst.group_opacity;
-                data.enable_shading = mesh->enable_shading ? 1.0f : 0.0f;
-                data.padding = 0.0f;
-                instance_data.push_back(data);
-            }
-
-            sg_buffer_desc instance_buffer_desc = {};
-            instance_buffer_desc.usage.stream_update = true;
-            instance_buffer_desc.size = instance_data.size() * sizeof(InstanceData);
-            instance_buffer_desc.data.ptr = instance_data.data();
-            instance_buffer_desc.data.size = instance_buffer_desc.size;
-            sg_buffer instance_buffer = sg_make_buffer(instance_buffer_desc);
-
-            state.bind.vertex_buffers[0] = vb;
-            state.bind.vertex_buffers[1] = instance_buffer;
-            state.bind.index_buffer = ib;
-
-            if (g.diffuse_view.id != SG_INVALID_ID) {
-                state.bind.views[0] = g.diffuse_view;
-                state.bind.samplers[0] = mat->diffuse_sampler;
-            } else {
-                state.bind.views[0] = { .id = SG_INVALID_ID };
-                state.bind.samplers[0] = { .id = SG_INVALID_ID };
-            }
-
-            if (g.specular_view.id != SG_INVALID_ID) {
-                state.bind.views[1] = g.specular_view;
-                state.bind.samplers[1] = mat->specular_sampler;
-            } else {
-                state.bind.views[1] = { .id = SG_INVALID_ID };
-                state.bind.samplers[1] = { .id = SG_INVALID_ID };
-            }
-
-            sg_apply_bindings(&state.bind);
-
-            vs_params.use_instancing = 1;
-            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-
-            struct model_fs_params_t {
-                int has_diffuse_tex;
-                int has_specular_tex;
-                float specular;
-                float shininess;
-                float camera_pos_x;
-                float camera_pos_y;
-                float camera_pos_z;
-                float camera_pos_w;
-            } model_fs_params;
-
-            model_fs_params.has_diffuse_tex = (mat && mat->has_diffuse_texture) ? 1 : 0;
-            model_fs_params.has_specular_tex = (mat && mat->has_specular_texture) ? 1 : 0;
-            model_fs_params.specular = (mat) ? mat->specular : 0.0f;
-            model_fs_params.shininess = 32.0f;
-            model_fs_params.camera_pos_x = state.camera_pos.X;
-            model_fs_params.camera_pos_y = state.camera_pos.Y;
-            model_fs_params.camera_pos_z = state.camera_pos.Z;
-            model_fs_params.camera_pos_w = 0.0f;
-            sg_apply_uniforms(2, SG_RANGE(model_fs_params));
-
-            sg_apply_uniforms(3, SG_RANGE(lights));
-
-            sg_draw(0, mesh->index_count, (int)instance_data.size());
-
-            sg_destroy_buffer(instance_buffer);
-        } else {
-            Instance &inst = g.items[0];
-            Object &obj = inst.obj;
+        for (const auto& inst : g.items) {
+            const Object& obj = inst.obj;
 
             state.bind.vertex_buffers[0] = vb;
             state.bind.index_buffer = ib;
@@ -639,7 +553,6 @@ void render_meshes() {
             vs_params.model = model;
             vs_params.opacity = obj.opacity * inst.group_opacity;
             vs_params.enable_shading = mesh->enable_shading ? 1 : 0;
-            vs_params.use_instancing = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             struct model_fs_params_t {

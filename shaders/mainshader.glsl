@@ -1,13 +1,9 @@
 @ctype mat4 HMM_Mat4
 
 @vs vs
-in vec3 aPos;
-in vec3 aNormal;
-in vec2 aTexCoord;
-
-in mat4 instance_model;
-in float instance_opacity;
-in float instance_shading;
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aTexCoord;
 
 layout(location = 0) out vec2 TexCoord;
 layout(location = 1) out float v_opacity;
@@ -21,33 +17,19 @@ layout(binding = 0) uniform vs_params {
     mat4 projection;
     float opacity;
     int enable_shading;
-    int use_instancing;
 };
 
 void main() {
-    mat4 world_matrix;
-    float obj_opacity;
-    int obj_enable_shading;
-
-    if (use_instancing == 1) {
-        world_matrix = instance_model;
-        obj_opacity = instance_opacity;
-        obj_enable_shading = int(instance_shading);
-    } else {
-        world_matrix = model;
-        obj_opacity = opacity;
-        obj_enable_shading = enable_shading;
-    }
-
-    gl_Position = projection * view * world_matrix * vec4(aPos, 1.0);
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
-    v_opacity = obj_opacity;
+    v_opacity = opacity;
 
-    mat3 normalMat = mat3(transpose(inverse(world_matrix)));
+    mat3 normalMat = mat3(transpose(inverse(model)));
     vNormal = normalize(normalMat * aNormal);
 
-    venable_shading = obj_enable_shading;
-    vWorldPos = (world_matrix * vec4(aPos, 1.0)).xyz;
+    venable_shading = enable_shading;
+
+    vWorldPos = (model * vec4(aPos, 1.0)).xyz;
 }
 @end
 
@@ -70,7 +52,7 @@ layout(binding = 2) uniform model_fs_params {
     int has_specular_tex;
     float specular;
     float shininess;
-    vec4 camera_pos; // 16 bytes
+    vec4 camera_pos;
 };
 
 layout(binding = 3) uniform lighting_params {
