@@ -368,7 +368,7 @@ sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
     return sg_make_image(&local_desc);
 };
 
-void render_meshes_batched_streaming(size_t batch_size = 10) {
+void render_meshes(size_t batch_size = 10) {
     std::vector<sg_buffer> vertex_buffers;
     std::vector<sg_buffer> index_buffers;
     std::vector<sg_view> texture_views;
@@ -610,18 +610,26 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
     if (state.editor_open) {
         for (auto& obj : visualizer_objects) {
             Mesh* mesh = obj.mesh;
-            sg_buffer vb = sg_make_buffer(&mesh->vertex_buffer_desc);
-            sg_buffer ib = sg_make_buffer(&mesh->index_buffer_desc);
-            if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) {
-                if (vb.id != SG_INVALID_ID) sg_destroy_buffer(vb);
-                if (ib.id != SG_INVALID_ID) sg_destroy_buffer(ib);
-                continue;
+            state.bind.vertex_buffers[0] = obj.mesh->vertex_buffer;
+            state.bind.index_buffer = obj.mesh->index_buffer;
+            if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
+                sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
+                sg_view_desc tex_view_desc = {};
+                tex_view_desc.texture.image = texture;
+                sg_view texture_view = sg_make_view(&tex_view_desc);
+                sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
+                state.bind.views[0] = texture_view;
+                state.bind.samplers[0] = sampler;
+                if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
+                    sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
+                    sg_view_desc tex2_view_desc = {};
+                    tex2_view_desc.texture.image = texture2;
+                    sg_view texture2_view = sg_make_view(&tex2_view_desc);
+                    sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
+                    state.bind.views[1] = texture2_view;
+                    state.bind.samplers[1] = sampler2;
+                }
             }
-
-            state.bind.vertex_buffers[0] = vb;
-            state.bind.index_buffer = ib;
-            state.bind.views[0] = state.default_palette_view;
-            state.bind.samplers[0] = state.default_palette_smp;
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
@@ -634,11 +642,119 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
             vs_params.enable_shading = 0;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-            sg_draw(0, mesh->index_count, 1);
+            struct model_fs_params_t {
+                int has_diffuse_tex;
+                int has_specular_tex;
+                float specular;
+                float shininess;
 
-            sg_destroy_buffer(vb);
-            sg_destroy_buffer(ib);
-            sg_destroy_buffer(ib);
+                float camera_pos_x;
+                float camera_pos_y;
+                float camera_pos_z;
+                float camera_pos_w;
+            };
+            model_fs_params_t model_fs_params;
+            if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
+            if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
+            model_fs_params.specular = mesh->material->specular;
+            model_fs_params.camera_pos_x = state.camera_pos.X;
+            model_fs_params.camera_pos_y = state.camera_pos.Y;
+            model_fs_params.camera_pos_z = state.camera_pos.Z;
+            model_fs_params.camera_pos_w = 0.0f;
+            model_fs_params.shininess = 32;
+            sg_apply_uniforms(2, SG_RANGE(model_fs_params));
+
+            struct lighting_params {
+                int light_types_packed[13][4];
+                HMM_Vec4 light_positions[50];
+                HMM_Vec4 light_directions[50];
+                HMM_Vec4 light_colors[50];
+                HMM_Vec4 light_att_params[50];
+                int light_amount;
+                float padding[3];
+                HMM_Vec4 ambient_color;
+            };
+
+            lighting_params lights = {};
+
+            int light_idx = 0;
+
+            for (const auto& dl : state.directional_lights) {
+                if (light_idx >= 50) break;
+                lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
+                lights.light_positions[light_idx].X = 0.0f;
+                lights.light_positions[light_idx].Y = 0.0f;
+                lights.light_positions[light_idx].Z = 0.0f;
+                lights.light_positions[light_idx].W = 0.0f;
+                lights.light_directions[light_idx].X = dl.direction.X;
+                lights.light_directions[light_idx].Y = dl.direction.Y;
+                lights.light_directions[light_idx].Z = dl.direction.Z;
+                lights.light_directions[light_idx].W = 0.0f;
+                lights.light_colors[light_idx].X = dl.color.X;
+                lights.light_colors[light_idx].Y = dl.color.Y;
+                lights.light_colors[light_idx].Z = dl.color.Z;
+                lights.light_colors[light_idx].W = dl.intensity;
+                lights.light_att_params[light_idx].X = 0.0f;
+                lights.light_att_params[light_idx].Y = 0.0f;
+                lights.light_att_params[light_idx].Z = 0.0f;
+                lights.light_att_params[light_idx].W = 0.0f;
+                light_idx++;
+            }
+
+            for (const auto& pl : state.point_lights) {
+                if (light_idx >= 50) break;
+                lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
+                lights.light_positions[light_idx].X = pl.position.X;
+                lights.light_positions[light_idx].Y = pl.position.Y;
+                lights.light_positions[light_idx].Z = pl.position.Z;
+                lights.light_positions[light_idx].W = 0.0f;
+                lights.light_directions[light_idx].X = 0.0f;
+                lights.light_directions[light_idx].Y = 0.0f;
+                lights.light_directions[light_idx].Z = 0.0f;
+                lights.light_directions[light_idx].W = 0.0f;
+                lights.light_colors[light_idx].X = pl.color.X;
+                lights.light_colors[light_idx].Y = pl.color.Y;
+                lights.light_colors[light_idx].Z = pl.color.Z;
+                lights.light_colors[light_idx].W = pl.intensity;
+                lights.light_att_params[light_idx].X = pl.radius;
+                lights.light_att_params[light_idx].Y = 0.0f;
+                lights.light_att_params[light_idx].Z = 0.0f;
+                lights.light_att_params[light_idx].W = 0.0f;
+                light_idx++;
+            }
+
+            for (const auto& sl : state.spot_lights) {
+                if (light_idx >= 50) break;
+                lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
+                lights.light_positions[light_idx].X = sl.position.X;
+                lights.light_positions[light_idx].Y = sl.position.Y;
+                lights.light_positions[light_idx].Z = sl.position.Z;
+                lights.light_positions[light_idx].W = 0.0f;
+                lights.light_directions[light_idx].X = sl.direction.X;
+                lights.light_directions[light_idx].Y = sl.direction.Y;
+                lights.light_directions[light_idx].Z = sl.direction.Z;
+                lights.light_directions[light_idx].W = 0.0f;
+                lights.light_colors[light_idx].X = sl.color.X;
+                lights.light_colors[light_idx].Y = sl.color.Y;
+                lights.light_colors[light_idx].Z = sl.color.Z;
+                lights.light_colors[light_idx].W = sl.intensity;
+                lights.light_att_params[light_idx].X = 0.0f;
+                lights.light_att_params[light_idx].Y = sl.inner_cone_angle;
+                lights.light_att_params[light_idx].Z = sl.outer_cone_angle;
+                lights.light_att_params[light_idx].W = 0.0f;
+                light_idx++;
+            }
+
+            lights.light_amount = light_idx;
+
+            lights.ambient_color.X = 1.0f;
+            lights.ambient_color.Y = 1.0f;
+            lights.ambient_color.Z = 1.0f;
+            lights.ambient_color.W = 0.0f;
+
+            sg_apply_uniforms(3, SG_RANGE(lights));
+
+            sg_draw(0, mesh->index_count, 1);
         }
     }
 }
@@ -729,7 +845,7 @@ void render_first_pass() {
 
     sg_apply_pipeline(state.pip);
 
-    render_meshes_batched_streaming(10);
+    render_meshes(10);
 
     sg_end_pass();
 }
@@ -1549,7 +1665,7 @@ class AudioSource3D {
         FMOD::Studio::EventInstance* event_instance;
         HMM_Vec3 position;
         Object* visualizer_object = nullptr;
-        int visualizer_mesh_index = -1;
+        int visualizer_obj_index = -1;
         FMOD_GUID guid;
 
         void initialize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
@@ -1558,28 +1674,15 @@ class AudioSource3D {
             state.audio_sources.push_back(this);
             position = pos;
 
-            // init visualizer mesh
-            /*visualizer_object = new Object();
-            visualizer_object->mesh = new Mesh();
-            float* verts = nullptr;
-            uint32_t vertex_count = 0;
-            uint32_t* indices = nullptr;
-            uint32_t index_count = 0;
+            auto loaded = load_gltf("speaker.glb");
+            if (!loaded.empty()) {
+                visualizer_objects.push_back(loaded[0]);
+                visualizer_obj_index = visualizer_objects.size() - 1;
+                Object &vo = visualizer_objects[visualizer_obj_index];
+                prepare_mesh_buffers(*vo.mesh);
+                visualizer_object = &vo;
+            }
 
-            if (load_obj("speaker.obj", &verts, &vertex_count, &indices, &index_count)) {
-                visualizer_object->mesh->vertices = verts;
-                visualizer_object->mesh->vertex_count = vertex_count;
-                visualizer_object->mesh->indices = indices;
-                visualizer_object->mesh->index_count = index_count;
-                visualizer_object->position = position;
-
-                visualizer_mesh_index = visualizer_objects.size();
-                prepare_mesh_buffers(*visualizer_object->mesh);
-                visualizer_objects.push_back(*visualizer_object);
-
-                delete visualizer_object;
-                visualizer_object = nullptr;
-            }*/
             desc->getID(&guid);
         }
 
@@ -1595,8 +1698,8 @@ class AudioSource3D {
         }
 
         void update_visualizer_position() {
-            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
-                visualizer_objects[visualizer_mesh_index].position = position;
+            if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
+                visualizer_objects[visualizer_obj_index].position = position;
             }
         }
 
@@ -1632,11 +1735,12 @@ class AudioSource3D {
         void remove() {
             state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this),state.audio_sources.end());
 
-            if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
-                visualizer_objects.erase(visualizer_objects.begin() + visualizer_mesh_index);
+            if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
+                delete visualizer_objects[visualizer_obj_index].mesh;
+                visualizer_objects.erase(visualizer_objects.begin() + visualizer_obj_index);
                 for (auto* as : state.audio_sources) {
-                    if (as->visualizer_mesh_index > visualizer_mesh_index) {
-                        as->visualizer_mesh_index--;
+                    if (as->visualizer_obj_index > visualizer_obj_index) {
+                        as->visualizer_obj_index--;
                     }
                 }
             }
@@ -1651,39 +1755,29 @@ public:
     HMM_Vec3 position;
     string name;
     Object* visualizer_obj;
-    int visualizer_mesh_index = -1;
+    int visualizer_obj_index = -1;
     bool operator==(const Helper& other) const { return this == &other; }
 
     void initialize(const string& name, HMM_Vec3 pos) {
         this->name = name;
         position = pos;
-        /*visualizer_obj = new Object();
-        float* verts = nullptr;
-        uint32_t vertex_count = 0;
-        uint32_t* indices = nullptr;
-        uint32_t index_count = 0;
 
-        if (load_obj("helper.obj", &verts, &vertex_count, &indices, &index_count)) {
-            visualizer_obj->mesh->vertices = verts;
-            visualizer_obj->mesh->vertex_count = vertex_count;
-            visualizer_obj->mesh->indices = indices;
-            visualizer_obj->mesh->index_count = index_count;
-            visualizer_obj->position = position;
+        auto loaded = load_gltf("helper.glb");
+        if (!loaded.empty()) {
+            visualizer_objects.push_back(loaded[0]);
+            visualizer_obj_index = visualizer_objects.size() - 1;
+            Object &vo = visualizer_objects[visualizer_obj_index];
+            prepare_mesh_buffers(*vo.mesh);
+            visualizer_obj = &vo;
+        }
 
-            visualizer_mesh_index = visualizer_objects.size();
-            prepare_mesh_buffers(*visualizer_obj->mesh);
-            visualizer_objects.push_back(std::move(*visualizer_obj));
-
-            delete visualizer_obj;
-            visualizer_obj = nullptr;
-        }*/
         state.helpers.push_back(this);
     }
 
 
     void update_visualizer_position() {
-        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
-            visualizer_objects[visualizer_mesh_index].position = position;
+        if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
+            visualizer_objects[visualizer_obj_index].position = position;
         }
     }
 
@@ -1695,11 +1789,12 @@ public:
     void remove() {
         state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), this),state.helpers.end());
 
-        if (visualizer_mesh_index >= 0 && visualizer_mesh_index < visualizer_objects.size()) {
-            visualizer_objects.erase(visualizer_objects.begin() + visualizer_mesh_index);
+        if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
+            delete visualizer_objects[visualizer_obj_index].mesh;
+            visualizer_objects.erase(visualizer_objects.begin() + visualizer_obj_index);
             for (auto* hpr : state.helpers) {
-                if (hpr->visualizer_mesh_index > visualizer_mesh_index) {
-                    hpr->visualizer_mesh_index--;
+                if (hpr->visualizer_obj_index > visualizer_obj_index) {
+                    hpr->visualizer_obj_index--;
                 }
             }
         }
@@ -2568,8 +2663,10 @@ void render_editor() {
 
             ImGui::EndChild();
 
-            if (ImGui::Button("ADD SOURCE")) {
-                make_audiosource_by_index(selected_event_index);
+            if (selected_event_index >= 0 && selected_event_index < state.event_descriptions.size()) {
+                if (ImGui::Button("ADD SOURCE")) {
+                    make_audiosource_by_index(selected_event_index);
+                }
             }
         }
 
@@ -2642,12 +2739,12 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
 
         ImGui::End();
-    } else {
+    } /*else {
         ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         ImGui::Text("Press 0 to open the dev UI");
         ImGui::Text("ALSO, VERY IMPORTANT!! WHEN YOU CLEAR THE SCENE, ADD CREATE A VISGROUP SO GLBS GETS LOADED");
         ImGui::End();
-    } // This is just for the DEMO, feel free to remove it later.
+    }*/ // This is just for the DEMO, feel free to remove it later.
     simgui_render();
 }
 
@@ -2773,7 +2870,6 @@ void _frame() {
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
 
-    // note that we're translating the scene in the reverse direction of where we want to move -- said zeromake
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 50.0f);
 
@@ -3009,7 +3105,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", 1600, 900, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.x, display_bounds.y, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};

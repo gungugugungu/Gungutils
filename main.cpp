@@ -12,9 +12,6 @@ float mouse_movement_y = 0.0f;
 float yrot = 0.0f;
 
 DirectionalLight light{};
-/*PointLight light1{};
-PointLight light2{};
-PointLight light3{};*/
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -38,22 +35,6 @@ void init() {
     light.color = {1.0f, 1.0f, 1.0f};
     light.intensity = 0.75f;
     state.directional_lights.push_back(light);
-    /*light1.color = {1.0f, 0.0f, 0.0f};
-    light1.position = {0.0f, -1.0f, 0.0f};
-    light1.intensity = 0.75f;
-    light1.radius = 3.0f;
-    light2.color = {0.0f, 1.0f, 0.0f};
-    light2.position = {0.0f, 1.0f, 0.0f};
-    light2.intensity = 0.75f;
-    light2.radius = 3.0f;
-    light3.color = {0.0f, 0.0f, 1.0f};
-    light3.position = {1.0f, 0.0f, 0.0f};
-    light3.intensity = 0.75f;
-    light3.radius = 3.0f;
-    state.point_lights.push_back(light1);
-    state.point_lights.push_back(light2);
-    state.point_lights.push_back(light3);*/
-    //state.camera_pos = get_helper_by_name("spawn campos")->position;
 }
 
 void frame() {
@@ -63,8 +44,8 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
-    yrot += 45.0f*time_state.dt;
-    vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});
+    /*yrot += 45.0f*time_state.dt;
+    vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
 }
 
 void event(SDL_Event* e) {
