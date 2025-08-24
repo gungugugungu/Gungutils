@@ -1,12 +1,16 @@
 /*==============================================================================
 FMOD Example Framework
-Copyright (c), Firelight Technologies Pty, Ltd 2014-2025.
+Copyright (c), Firelight Technologies Pty, Ltd 2012-2025.
 ==============================================================================*/
-#include <pthread.h>
-#include <assert.h>
-#include <stdio.h>
+#include <windows.h>
+
+int FMOD_Main();
 
 #define COMMON_PLATFORM_SUPPORTS_FOPEN
 
-#define FMOD_Main() main(int, char**)
-#define Common_TTY(format, ...) fprintf(stderr, format, __VA_ARGS__)
+#define Common_snprintf _snprintf
+#define Common_vsnprintf _vsnprintf
+
+void Common_TTY(const char *format, ...);
+
+

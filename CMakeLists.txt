@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(OpenGL REQUIRED)
 
 # Platform-specific dependencies
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR WIN32)
     set(PLATFORM_LIBS)
     set(PLATFORM_INCLUDE_DIRS)
 else() # Linux or Mac I guess
@@ -41,6 +41,22 @@ if(WIN32)
 else() # Linux or Mac but ain't no way I'll use mac anytime
     set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
     set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
+endif()
+
+if(WIN32)
+    add_custom_command(TARGET Gungutils POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL3::SDL3>
+            $<TARGET_FILE_DIR:Gungutils>)
+
+    add_custom_command(TARGET Gungutils POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod.dll"
+            $<TARGET_FILE_DIR:Gungutils>)
+    add_custom_command(TARGET Gungutils POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio.dll"
+            $<TARGET_FILE_DIR:Gungutils>)
 endif()
 
 set(FMOD_INCLUDE_DIRS
