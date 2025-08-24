@@ -2957,23 +2957,31 @@ void _event(SDL_Event* e) {
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
 
-                    for (int vg_idx = 0; vg_idx < vis_groups.size(); vg_idx++) {
+                    bool found = false;
+                    for (int vg_idx = 0; vg_idx < vis_groups.size(); ++vg_idx) {
                         auto& visgroup = vis_groups[vg_idx];
-                        for (int obj_idx = 0; obj_idx < visgroup.objects.size(); obj_idx++) {
-                            selected_object_index = obj_idx;
-                            selected_mesh_visgroup = vg_idx;
+                        for (int obj_idx = 0; obj_idx < visgroup.objects.size(); ++obj_idx) {
+                            if (&visgroup.objects[obj_idx] == result.obj) {
+                                selected_object_index = obj_idx;
+                                selected_mesh_visgroup = vg_idx;
 
-                            if (visgroup.objects[obj_idx].mesh->material->has_diffuse_texture) {
-                                editor_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->diffuse_texture_desc);
-                                editor_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->diffuse_sampler_desc);
+                                auto* mesh = visgroup.objects[obj_idx].mesh;
+                                if (mesh->material->has_diffuse_texture) {
+                                    editor_display_image = sg_make_image(&mesh->material->diffuse_texture_desc);
+                                    editor_display_sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
+                                }
+                                if (mesh->material->has_specular_texture) {
+                                    editor_specular_display_image = sg_make_image(&mesh->material->specular_texture_desc);
+                                    editor_specular_display_sampler = sg_make_sampler(&mesh->material->specular_sampler_desc);
+                                }
+
+                                found = true;
+                                break;
                             }
-                            if (visgroup.objects[obj_idx].mesh->material->has_specular_texture) {
-                                editor_specular_display_image = sg_make_image(&visgroup.objects[obj_idx].mesh->material->specular_texture_desc);
-                                editor_specular_display_sampler = sg_make_sampler(&visgroup.objects[obj_idx].mesh->material->specular_sampler_desc);
-                            }
+                        }
+                        if (found) {
                             break;
                         }
-                        if (selected_object_index != -1) break;
                     }
                 }
             }
