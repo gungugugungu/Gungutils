@@ -57,6 +57,8 @@ class AudioSource3D;
 class Helper;
 void render_editor();
 
+int mipmap_levels = 4;
+
 struct AppState {
     sg_pipeline pip{};
     sg_bindings bind{};
@@ -236,6 +238,28 @@ vs_params_t vs_params;
 vector<VisGroup> vis_groups;
 vector<Object> visualizer_objects; // TODO: Fix visualizers
 
+sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
+    sg_image invalid_image{};
+    invalid_image.id = SG_INVALID_ID;
+    if (!d) { printf("validate: null desc for %s\n", name); return invalid_image;}
+    if (d->width <= 0 || d->height <= 0) {
+        printf("validate: %s has invalid dims w=%d h=%d\n", name, d->width, d->height);
+    }
+    if (d->pixel_format != SG_PIXELFORMAT_RGBA8) {
+        printf("validate: %s pixel_format = %d (expected RGBA8)\n", name, (int)d->pixel_format);
+    }
+    size_t expected = (size_t)d->width * (size_t)d->height * 4;
+    size_t given = d->data.subimage[0][0].size;
+    const void *ptr = d->data.subimage[0][0].ptr;
+    if (!ptr || given == 0) {
+        printf("validate: %s has null ptr or zero size (ptr=%p size=%zu)\n", name, ptr, given);
+    } else if (given != expected) {
+        printf("validate: %s size mismatch (expected %zu, given %zu)\n", name, expected, given);
+    }
+    sg_image_desc local_desc = *d;
+    return sg_make_image(&local_desc);
+};
+
 void prepare_mesh_buffers(Mesh& mesh) {
     if (!mesh.vertices || mesh.vertex_count == 0) {
         std::cerr << "ERROR: Invalid vertex data!" << std::endl;
@@ -339,34 +363,29 @@ void prepare_mesh_buffers(Mesh& mesh) {
     mesh.vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
     mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
 
+    // now textures !!! yippie
+    Material* material = mesh.material;
+    if (material->has_diffuse_texture) {
+        material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "diffuse");
+        if (material->diffuse_image.id == SG_INVALID_ID) {
+            cout << "Oh no failed to create diffuse image ohhh noooo" << endl;
+            material->has_diffuse_texture = false;
+        } else {
+            material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
+        }
+    }
+    if (material->has_specular_texture) {
+        material->specular_image = validate_and_make_image(&material->specular_texture_desc, "specular");
+        if (material->specular_image.id == SG_INVALID_ID) {
+            cout << "Oh no failed to create specualr image ohhh noooo" << endl;
+            material->has_diffuse_texture = false;
+        } else {
+            material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
+        }
+    }
+
     std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
 }
-
-sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
-    sg_image invalid_image{};
-    invalid_image.id = SG_INVALID_ID;
-    if (!d) { printf("validate: null desc for %s\n", name); return invalid_image;}
-    // verify dims
-    if (d->width <= 0 || d->height <= 0) {
-        printf("validate: %s has invalid dims w=%d h=%d\n", name, d->width, d->height);
-    }
-    // verify pixel format - expecting RGBA8 for your code
-    if (d->pixel_format != SG_PIXELFORMAT_RGBA8) {
-        printf("validate: %s pixel_format = %d (expected RGBA8)\n", name, (int)d->pixel_format);
-    }
-    // verify data pointer/size for a texture (not a render target)
-    size_t expected = (size_t)d->width * (size_t)d->height * 4; // if RGBA8
-    size_t given = d->data.subimage[0][0].size;
-    const void *ptr = d->data.subimage[0][0].ptr;
-    if (!ptr || given == 0) {
-        printf("validate: %s has null ptr or zero size (ptr=%p size=%zu)\n", name, ptr, given);
-    } else if (given != expected) {
-        printf("validate: %s size mismatch (expected %zu, given %zu)\n", name, expected, given);
-    }
-    // make a local copy of the desc before calling sg_make_image (safer)
-    sg_image_desc local_desc = *d;
-    return sg_make_image(&local_desc);
-};
 
 void render_meshes(size_t batch_size = 10) {
     std::vector<sg_buffer> vertex_buffers;
@@ -411,24 +430,20 @@ void render_meshes(size_t batch_size = 10) {
                             index_buffers.push_back(ib);
 
                             if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
-                                sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
-                                sg_view_desc tex_view_desc = {};
-                                tex_view_desc.texture.image = texture;
-                                sg_view texture_view = sg_make_view(&tex_view_desc);
-                                sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
-                                texture_views.push_back(texture_view);
-                                samplers.push_back(sampler);
+                                sg_view_desc tex_view_desc{};
+                                tex_view_desc.texture.image = mesh->material->diffuse_image;
+                                sg_view tex_view = sg_make_view(&tex_view_desc);
+                                texture_views.push_back(tex_view);
+                                samplers.push_back(mesh->material->diffuse_sampler);
                                 created_textures.push_back(true);
-                                if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
-                                    sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
-                                    sg_view_desc tex2_view_desc = {};
-                                    tex2_view_desc.texture.image = texture2;
-                                    sg_view texture2_view = sg_make_view(&tex2_view_desc);
-                                    sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
-                                    specular_texture_views.push_back(texture2_view);
-                                    specular_samplers.push_back(sampler2);
+                                if (mesh->material->has_specular_texture) {
+                                    sg_view_desc specular_tex_view_desc{};
+                                    specular_tex_view_desc.texture.image = mesh->material->specular_image;
+                                    sg_view specular_tex_view = sg_make_view(&specular_tex_view_desc);
+                                    specular_texture_views.push_back(specular_tex_view);
+                                    specular_samplers.push_back(mesh->material->specular_sampler);
                                 } else {
-                                    sg_view invalid_view = {};
+                                    sg_view invalid_view{};
                                     invalid_view.id = SG_INVALID_ID;
                                     specular_texture_views.push_back(invalid_view);
                                     sg_sampler invalid_sampler{};
@@ -439,6 +454,13 @@ void render_meshes(size_t batch_size = 10) {
                                 texture_views.push_back(state.default_palette_view);
                                 samplers.push_back(state.default_palette_smp);
                                 created_textures.push_back(false);
+
+                                sg_view invalid_view{};
+                                invalid_view.id = SG_INVALID_ID;
+                                specular_texture_views.push_back(invalid_view);
+                                sg_sampler invalid_sampler{};
+                                invalid_sampler.id = SG_INVALID_ID;
+                                specular_samplers.push_back(invalid_sampler);
                             }
                         } else {
                             std::cerr << "Failed to create buffers for mesh " << i << std::endl;
@@ -591,16 +613,8 @@ void render_meshes(size_t batch_size = 10) {
 
                 for (size_t i = 0; i < texture_views.size(); i++) {
                     if (created_textures[i]) {
-                        sg_image texture = sg_query_view_image(texture_views[i]);
                         sg_destroy_view(texture_views[i]);
-                        sg_destroy_image(texture);
-                        sg_destroy_sampler(samplers[i]);
-                        if (specular_texture_views[i].id != SG_INVALID_ID) {
-                            sg_image specular_texture = sg_query_view_image(specular_texture_views[i]);
-                            sg_destroy_view(specular_texture_views[i]);
-                            sg_destroy_image(specular_texture);
-                            sg_destroy_sampler(specular_samplers[i]);
-                        }
+                        sg_destroy_view(specular_texture_views[i]);
                     }
                 }
             }
@@ -613,21 +627,18 @@ void render_meshes(size_t batch_size = 10) {
             state.bind.vertex_buffers[0] = obj.mesh->vertex_buffer;
             state.bind.index_buffer = obj.mesh->index_buffer;
             if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
-                sg_image texture = validate_and_make_image(&mesh->material->diffuse_texture_desc, "diffuse");
-                sg_view_desc tex_view_desc = {};
-                tex_view_desc.texture.image = texture;
-                sg_view texture_view = sg_make_view(&tex_view_desc);
-                sg_sampler sampler = sg_make_sampler(&mesh->material->diffuse_sampler_desc);
-                state.bind.views[0] = texture_view;
-                state.bind.samplers[0] = sampler;
-                if (mesh->material->has_specular_texture && mesh->material->specular_texture_data) {
-                    sg_image texture2 = validate_and_make_image(&mesh->material->specular_texture_desc, "specular");
-                    sg_view_desc tex2_view_desc = {};
-                    tex2_view_desc.texture.image = texture2;
-                    sg_view texture2_view = sg_make_view(&tex2_view_desc);
-                    sg_sampler sampler2 = sg_make_sampler(&mesh->material->specular_sampler_desc);
-                    state.bind.views[1] = texture2_view;
-                    state.bind.samplers[1] = sampler2;
+                sg_view_desc tex_view_desc{};
+                tex_view_desc.texture.image = mesh->material->diffuse_image;
+                sg_view tex_view = sg_make_view(&tex_view_desc);
+                texture_views.push_back(tex_view);
+                state.bind.views[0] = tex_view;
+                state.bind.samplers[0] = mesh->material->diffuse_sampler;
+                if (mesh->material->has_specular_texture) {
+                    sg_view_desc specular_tex_view_desc{};
+                    specular_tex_view_desc.texture.image = mesh->material->specular_image;
+                    sg_view specular_tex_view = sg_make_view(&specular_tex_view_desc);
+                    state.bind.views[0] = specular_tex_view;
+                    state.bind.samplers[0] = mesh->material->specular_sampler;
                 }
             }
             sg_apply_bindings(&state.bind);
@@ -2294,6 +2305,7 @@ sg_image editor_specular_display_image;
 sg_sampler editor_specular_display_sampler;
 
 void render_editor() {
+    std::vector<sg_view> temp_editor_views;
     if (state.editor_open) {
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
@@ -2483,32 +2495,42 @@ void render_editor() {
                         vis_groups[0].objects.push_back(new_object);
                     }
                 }
-                if (ImGui::Button("DELETE")) {
-                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                    selected_object_index = -1;
-                    selected_mesh_visgroup = -1;
-                }
                 if (ImGui::CollapsingHeader("TEXTURES")) {
                     if (selected_object->mesh->material->has_diffuse_texture) {
                         sg_view_desc editor_view_desc = {};
-                        editor_view_desc.texture.image = editor_display_image;
+                        editor_view_desc.texture.image = selected_object->mesh->material->diffuse_image;
                         sg_view editor_display_view = sg_make_view(&editor_view_desc);
-                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, editor_display_sampler);
-                        ImGui::Image(imtex_id, ImVec2(128, 128));
-                        sg_destroy_view(editor_display_view);
+                        if (editor_display_view.id == SG_INVALID_ID) {
+                            ImGui::Text("Failed to create diffuse view!");
+                        } else {
+                            ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, selected_object->mesh->material->diffuse_sampler);
+                            ImGui::Image(imtex_id, ImVec2(128, 128));
+                            temp_editor_views.push_back(editor_display_view);
+                        }
                     }
                     if (selected_object->mesh->material->has_specular_texture) {
                         sg_view_desc editor_specular_view_desc = {};
-                        editor_specular_view_desc.texture.image = editor_specular_display_image;
+                        editor_specular_view_desc.texture.image = selected_object->mesh->material->specular_image;
                         sg_view editor_specular_display_view = sg_make_view(&editor_specular_view_desc);
-                        ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_view, editor_specular_display_sampler);
-                        ImGui::Image(imtex_id, ImVec2(128, 128));
-                        sg_destroy_view(editor_specular_display_view);
+                        if (editor_specular_display_view.id == SG_INVALID_ID) {
+                            ImGui::Text("Failed to create specular view!");
+                        } else {
+                            ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_specular_display_view, selected_object->mesh->material->specular_sampler);
+                            ImGui::Image(imtex_id, ImVec2(128, 128));
+                            temp_editor_views.push_back(editor_specular_display_view);
+                        }
                     }
                 }
                 if (ImGui::CollapsingHeader("DANGER ZONE")) {
                     if (ImGui::Button("RE-PREPARE BUFFERS")) {
                         prepare_mesh_buffers(*selected_object->mesh);
+                    }
+                    ImGui::SameLine();
+                    ImGui::Text("This wastes memory");
+                    if (ImGui::Button("DELETE")) {
+                        vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                        selected_object_index = -1;
+                        selected_mesh_visgroup = -1;
                     }
                 }
             } else {
@@ -2744,6 +2766,9 @@ void render_editor() {
         ImGui::End();
     }*/ // This is just for the DEMO, feel free to remove it later.
     simgui_render();
+    for (auto& view : temp_editor_views) {
+        sg_destroy_view(view);
+    }
 }
 
 void _init() {

@@ -18,8 +18,22 @@ public:
     uint8_t* specular_texture_data = nullptr;
     size_t specular_texture_data_size = 0;
 
+    sg_image diffuse_image = { .id = SG_INVALID_ID };
+    sg_sampler diffuse_sampler = { .id = SG_INVALID_ID };
+    sg_image specular_image = { .id = SG_INVALID_ID };
+    sg_sampler specular_sampler = { .id = SG_INVALID_ID };
+
     float diffuse = 0.5f;
     float specular = 0.5f;
+
+    ~Material() {
+        if (diffuse_image.id != SG_INVALID_ID) sg_destroy_image(diffuse_image);
+        if (diffuse_sampler.id != SG_INVALID_ID) sg_destroy_sampler(diffuse_sampler);
+        if (specular_image.id != SG_INVALID_ID) sg_destroy_image(specular_image);
+        if (specular_sampler.id != SG_INVALID_ID) sg_destroy_sampler(specular_sampler);
+        delete[] diffuse_texture_data;
+        delete[] specular_texture_data;
+    }
 };
 
 #endif //MATERIAL_H
