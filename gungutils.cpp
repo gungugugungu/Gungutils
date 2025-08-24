@@ -387,275 +387,197 @@ void prepare_mesh_buffers(Mesh& mesh) {
     std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
 }
 
-void render_meshes(size_t batch_size = 10) {
-    std::vector<sg_buffer> vertex_buffers;
-    std::vector<sg_buffer> index_buffers;
-    std::vector<sg_view> texture_views;
-    std::vector<sg_sampler> samplers;
-    std::vector<sg_view> specular_texture_views;
-    std::vector<sg_sampler> specular_samplers;
-    std::vector<bool> created_textures;
+void render_meshes() {
+    struct InstanceData {
+        HMM_Mat4 model;
+        float opacity;
+        float group_opacity;
+        float enable_shading;
+        float padding; // 16 bytes
+    };
 
-    vertex_buffers.reserve(batch_size);
-    index_buffers.reserve(batch_size);
-    texture_views.reserve(batch_size);
-    samplers.reserve(batch_size);
-    specular_texture_views.reserve(batch_size);
-    specular_samplers.reserve(batch_size);
-    created_textures.reserve(batch_size);
+    struct Instance {
+        Object obj;
+        float group_opacity;
+    };
+    std::vector<Instance> instances;
 
     for (auto& visgroup : vis_groups) {
-        if (visgroup.enabled) {
-            for (size_t start = 0; start < visgroup.objects.size(); start += batch_size) {
-                size_t end = std::min(start + batch_size, visgroup.objects.size());
-
-                vertex_buffers.clear();
-                index_buffers.clear();
-                texture_views.clear();
-                samplers.clear();
-                specular_texture_views.clear();
-                specular_samplers.clear();
-                created_textures.clear();
-
-                for (size_t i = start; i < end; i++) {
-                    Object obj = visgroup.objects[i];
-                    if (obj.mesh != nullptr) {
-                        Mesh* mesh = obj.mesh;
-
-                        sg_buffer vb = mesh->vertex_buffer;
-                        sg_buffer ib = mesh->index_buffer;
-
-                        if (vb.id != SG_INVALID_ID && ib.id != SG_INVALID_ID) {
-                            vertex_buffers.push_back(vb);
-                            index_buffers.push_back(ib);
-
-                            if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
-                                sg_view_desc tex_view_desc{};
-                                tex_view_desc.texture.image = mesh->material->diffuse_image;
-                                sg_view tex_view = sg_make_view(&tex_view_desc);
-                                texture_views.push_back(tex_view);
-                                samplers.push_back(mesh->material->diffuse_sampler);
-                                created_textures.push_back(true);
-                                if (mesh->material->has_specular_texture) {
-                                    sg_view_desc specular_tex_view_desc{};
-                                    specular_tex_view_desc.texture.image = mesh->material->specular_image;
-                                    sg_view specular_tex_view = sg_make_view(&specular_tex_view_desc);
-                                    specular_texture_views.push_back(specular_tex_view);
-                                    specular_samplers.push_back(mesh->material->specular_sampler);
-                                } else {
-                                    sg_view invalid_view{};
-                                    invalid_view.id = SG_INVALID_ID;
-                                    specular_texture_views.push_back(invalid_view);
-                                    sg_sampler invalid_sampler{};
-                                    invalid_sampler.id = SG_INVALID_ID;
-                                    specular_samplers.push_back(invalid_sampler);
-                                }
-                            } else {
-                                texture_views.push_back(state.default_palette_view);
-                                samplers.push_back(state.default_palette_smp);
-                                created_textures.push_back(false);
-
-                                sg_view invalid_view{};
-                                invalid_view.id = SG_INVALID_ID;
-                                specular_texture_views.push_back(invalid_view);
-                                sg_sampler invalid_sampler{};
-                                invalid_sampler.id = SG_INVALID_ID;
-                                specular_samplers.push_back(invalid_sampler);
-                            }
-                        } else {
-                            std::cerr << "Failed to create buffers for mesh " << i << std::endl;
-                        }
-                    }
-                }
-
-                for (size_t i = 0; i < vertex_buffers.size(); i++) {
-                    size_t mesh_idx = start + i;
-                    Object obj = visgroup.objects[mesh_idx];
-                    Mesh* mesh = obj.mesh;
-
-                    state.bind.vertex_buffers[0] = vertex_buffers[i];
-                    state.bind.index_buffer = index_buffers[i];
-                    state.bind.views[0] = texture_views[i];
-                    state.bind.samplers[0] = samplers[i];
-                    if (mesh->material->has_specular_texture) {
-                        state.bind.views[1] = specular_texture_views[i];
-                        state.bind.samplers[1] = specular_samplers[i];
-                    }
-
-                    sg_apply_bindings(&state.bind);
-
-                    HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-                    HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-                    HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-                    HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-                    vs_params.model = model;
-                    vs_params.opacity = obj.opacity*visgroup.opacity;
-                    if (mesh->enable_shading) {
-                        vs_params.enable_shading = 1;
-                    } else {
-                        vs_params.enable_shading = 0;
-                    }
-                    sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
-                    struct model_fs_params_t {
-                        int has_diffuse_tex;
-                        int has_specular_tex;
-                        float specular;
-                        float shininess;
-
-                        float camera_pos_x;
-                        float camera_pos_y;
-                        float camera_pos_z;
-                        float camera_pos_w;
-                    };
-                    model_fs_params_t model_fs_params;
-                    if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
-                    if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
-                    model_fs_params.specular = mesh->material->specular;
-                    model_fs_params.camera_pos_x = state.camera_pos.X;
-                    model_fs_params.camera_pos_y = state.camera_pos.Y;
-                    model_fs_params.camera_pos_z = state.camera_pos.Z;
-                    model_fs_params.camera_pos_w = 0.0f;
-                    model_fs_params.shininess = 32;
-                    sg_apply_uniforms(2, SG_RANGE(model_fs_params));
-
-                    struct lighting_params {
-                        int light_types_packed[13][4];
-                        HMM_Vec4 light_positions[50];
-                        HMM_Vec4 light_directions[50];
-                        HMM_Vec4 light_colors[50];
-                        HMM_Vec4 light_att_params[50];
-                        int light_amount;
-                        float padding[3];
-                        HMM_Vec4 ambient_color;
-                    };
-
-                    lighting_params lights = {};
-
-                    int light_idx = 0;
-
-                    for (const auto& dl : state.directional_lights) {
-                        if (light_idx >= 50) break;
-                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
-                        lights.light_positions[light_idx].X = 0.0f;
-                        lights.light_positions[light_idx].Y = 0.0f;
-                        lights.light_positions[light_idx].Z = 0.0f;
-                        lights.light_positions[light_idx].W = 0.0f;
-                        lights.light_directions[light_idx].X = dl.direction.X;
-                        lights.light_directions[light_idx].Y = dl.direction.Y;
-                        lights.light_directions[light_idx].Z = dl.direction.Z;
-                        lights.light_directions[light_idx].W = 0.0f;
-                        lights.light_colors[light_idx].X = dl.color.X;
-                        lights.light_colors[light_idx].Y = dl.color.Y;
-                        lights.light_colors[light_idx].Z = dl.color.Z;
-                        lights.light_colors[light_idx].W = dl.intensity;
-                        lights.light_att_params[light_idx].X = 0.0f;
-                        lights.light_att_params[light_idx].Y = 0.0f;
-                        lights.light_att_params[light_idx].Z = 0.0f;
-                        lights.light_att_params[light_idx].W = 0.0f;
-                        light_idx++;
-                    }
-
-                    for (const auto& pl : state.point_lights) {
-                        if (light_idx >= 50) break;
-                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
-                        lights.light_positions[light_idx].X = pl.position.X;
-                        lights.light_positions[light_idx].Y = pl.position.Y;
-                        lights.light_positions[light_idx].Z = pl.position.Z;
-                        lights.light_positions[light_idx].W = 0.0f;
-                        lights.light_directions[light_idx].X = 0.0f;
-                        lights.light_directions[light_idx].Y = 0.0f;
-                        lights.light_directions[light_idx].Z = 0.0f;
-                        lights.light_directions[light_idx].W = 0.0f;
-                        lights.light_colors[light_idx].X = pl.color.X;
-                        lights.light_colors[light_idx].Y = pl.color.Y;
-                        lights.light_colors[light_idx].Z = pl.color.Z;
-                        lights.light_colors[light_idx].W = pl.intensity;
-                        lights.light_att_params[light_idx].X = pl.radius;
-                        lights.light_att_params[light_idx].Y = 0.0f;
-                        lights.light_att_params[light_idx].Z = 0.0f;
-                        lights.light_att_params[light_idx].W = 0.0f;
-                        light_idx++;
-                    }
-
-                    for (const auto& sl : state.spot_lights) {
-                        if (light_idx >= 50) break;
-                        lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
-                        lights.light_positions[light_idx].X = sl.position.X;
-                        lights.light_positions[light_idx].Y = sl.position.Y;
-                        lights.light_positions[light_idx].Z = sl.position.Z;
-                        lights.light_positions[light_idx].W = 0.0f;
-                        lights.light_directions[light_idx].X = sl.direction.X;
-                        lights.light_directions[light_idx].Y = sl.direction.Y;
-                        lights.light_directions[light_idx].Z = sl.direction.Z;
-                        lights.light_directions[light_idx].W = 0.0f;
-                        lights.light_colors[light_idx].X = sl.color.X;
-                        lights.light_colors[light_idx].Y = sl.color.Y;
-                        lights.light_colors[light_idx].Z = sl.color.Z;
-                        lights.light_colors[light_idx].W = sl.intensity;
-                        lights.light_att_params[light_idx].X = 0.0f;
-                        lights.light_att_params[light_idx].Y = sl.inner_cone_angle;
-                        lights.light_att_params[light_idx].Z = sl.outer_cone_angle;
-                        lights.light_att_params[light_idx].W = 0.0f;
-                        light_idx++;
-                    }
-
-                    lights.light_amount = light_idx;
-
-                    lights.ambient_color.X = 0.1f;
-                    lights.ambient_color.Y = 0.1f;
-                    lights.ambient_color.Z = 0.1f;
-                    lights.ambient_color.W = 0.0f;
-
-                    sg_apply_uniforms(3, SG_RANGE(lights));
-
-                    sg_draw(0, mesh->index_count, 1);
-                }
-
-                for (size_t i = 0; i < texture_views.size(); i++) {
-                    if (created_textures[i]) {
-                        sg_destroy_view(texture_views[i]);
-                        sg_destroy_view(specular_texture_views[i]);
-                    }
-                }
+        if (!visgroup.enabled) continue;
+        float group_opacity = visgroup.opacity;
+        for (size_t i = 0; i < visgroup.objects.size(); i++) {
+            Object obj = visgroup.objects[i];
+            if (obj.mesh != nullptr) {
+                instances.push_back({ obj, group_opacity });
             }
         }
     }
 
-    if (state.editor_open) {
-        for (auto& obj : visualizer_objects) {
-            Mesh* mesh = obj.mesh;
-            state.bind.vertex_buffers[0] = obj.mesh->vertex_buffer;
-            state.bind.index_buffer = obj.mesh->index_buffer;
+    for (size_t i = 0; i < visualizer_objects.size(); ++i) {
+        Object obj = visualizer_objects[i];
+        if (obj.mesh != nullptr) {
+            instances.push_back({ obj, 1.0f });
+        }
+    }
 
-            sg_view created_diffuse_view{};
-            created_diffuse_view.id = SG_INVALID_ID;
-            sg_view created_specular_view{};
-            created_specular_view.id = SG_INVALID_ID;
+    if (instances.empty()) return;
 
-            if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
-                sg_view_desc tex_view_desc{};
-                tex_view_desc.texture.image = mesh->material->diffuse_image;
-                created_diffuse_view = sg_make_view(&tex_view_desc);
-                state.bind.views[0] = created_diffuse_view;
-                state.bind.samplers[0] = mesh->material->diffuse_sampler;
-                if (mesh->material->has_specular_texture) {
-                    sg_view_desc specular_tex_view_desc{};
-                    specular_tex_view_desc.texture.image = mesh->material->specular_image;
-                    created_specular_view = sg_make_view(&specular_tex_view_desc);
-                    state.bind.views[1] = created_specular_view;
-                    state.bind.samplers[1] = mesh->material->specular_sampler;
+    struct MeshGroup {
+        Mesh* mesh;
+        std::vector<Instance> items;
+        sg_view diffuse_view;
+        sg_view specular_view;
+        bool views_created = false;
+    };
+    std::vector<MeshGroup> groups;
+
+    for (auto &inst : instances) {
+        Mesh* mesh = inst.obj.mesh;
+        if (!mesh || !mesh->vertices) continue;
+
+        bool placed = false;
+        for (auto &g : groups) {
+            if (g.mesh->vertex_count == mesh->vertex_count) {
+                size_t bytes = (size_t)mesh->vertex_count * 8 * sizeof(float);
+                if (bytes > 0 && g.mesh->vertices && mesh->vertices) {
+                    if (memcmp(g.mesh->vertices, mesh->vertices, bytes) == 0) {
+                        g.items.push_back(inst);
+                        placed = true;
+                        break;
+                    }
                 }
             }
+        }
+        if (!placed) {
+            MeshGroup mg;
+            mg.mesh = mesh;
+            mg.items.push_back(inst);
+            mg.views_created = false;
+            groups.push_back(std::move(mg));
+        }
+    }
+
+    struct lighting_params {
+        int light_types_packed[13][4];
+        HMM_Vec4 light_positions[50];
+        HMM_Vec4 light_directions[50];
+        HMM_Vec4 light_colors[50];
+        HMM_Vec4 light_att_params[50];
+        int light_amount;
+        float padding[3];
+        HMM_Vec4 ambient_color;
+    } lights = {};
+
+    int light_idx = 0;
+    for (const auto& dl : state.directional_lights) {
+        if (light_idx >= 50) break;
+        lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
+        lights.light_positions[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        lights.light_directions[light_idx] = { dl.direction.X, dl.direction.Y, dl.direction.Z, 0.0f };
+        lights.light_colors[light_idx] = { dl.color.X, dl.color.Y, dl.color.Z, dl.intensity };
+        lights.light_att_params[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        light_idx++;
+    }
+
+    for (const auto& pl : state.point_lights) {
+        if (light_idx >= 50) break;
+        lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
+        lights.light_positions[light_idx] = { pl.position.X, pl.position.Y, pl.position.Z, 0.0f };
+        lights.light_directions[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        lights.light_colors[light_idx] = { pl.color.X, pl.color.Y, pl.color.Z, pl.intensity };
+        lights.light_att_params[light_idx] = { pl.radius, 0.0f, 0.0f, 0.0f };
+        light_idx++;
+    }
+
+    for (const auto& sl : state.spot_lights) {
+        if (light_idx >= 50) break;
+        lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
+        lights.light_positions[light_idx] = { sl.position.X, sl.position.Y, sl.position.Z, 0.0f };
+        lights.light_directions[light_idx] = { sl.direction.X, sl.direction.Y, sl.direction.Z, 0.0f };
+        lights.light_colors[light_idx] = { sl.color.X, sl.color.Y, sl.color.Z, sl.intensity };
+        lights.light_att_params[light_idx] = { 0.0f, sl.inner_cone_angle, sl.outer_cone_angle, 0.0f };
+        light_idx++;
+    }
+
+    lights.light_amount = light_idx;
+    lights.ambient_color = { 0.1f, 0.1f, 0.1f, 0.0f };
+
+    for (auto &g : groups) {
+        Mesh* mesh = g.mesh;
+        if (!mesh || g.items.empty()) continue;
+
+        sg_buffer vb = mesh->vertex_buffer;
+        sg_buffer ib = mesh->index_buffer;
+        if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) continue;
+
+        Material* mat = mesh->material;
+        if (!g.views_created && mat) {
+            g.diffuse_view = { .id = SG_INVALID_ID };
+            g.specular_view = { .id = SG_INVALID_ID };
+
+            if (mat->has_diffuse_texture && mat->diffuse_image.id != SG_INVALID_ID) {
+                sg_view_desc diffuse_view_desc = {};
+                diffuse_view_desc.texture.image = mat->diffuse_image;
+                g.diffuse_view = sg_make_view(&diffuse_view_desc);
+            }
+
+            if (mat->has_specular_texture && mat->specular_image.id != SG_INVALID_ID) {
+                sg_view_desc specular_view_desc = {};
+                specular_view_desc.texture.image = mat->specular_image;
+                g.specular_view = sg_make_view(&specular_view_desc);
+            }
+            g.views_created = true;
+        }
+
+        if (g.items.size() > 1) {
+            std::vector<InstanceData> instance_data;
+            instance_data.reserve(g.items.size());
+
+            for (const auto& inst : g.items) {
+                const Object& obj = inst.obj;
+                HMM_Mat4 translate_mat = HMM_Translate(obj.position);
+                HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+                HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+                HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+
+                InstanceData data;
+                data.model = model;
+                data.opacity = obj.opacity * inst.group_opacity;
+                data.enable_shading = mesh->enable_shading ? 1.0f : 0.0f;
+                data.padding = 0.0f;
+                instance_data.push_back(data);
+            }
+
+            sg_buffer_desc instance_buffer_desc = {};
+            instance_buffer_desc.usage.stream_update = true;
+            instance_buffer_desc.size = instance_data.size() * sizeof(InstanceData);
+            instance_buffer_desc.data.ptr = instance_data.data();
+            instance_buffer_desc.data.size = instance_buffer_desc.size;
+            sg_buffer instance_buffer = sg_make_buffer(instance_buffer_desc);
+
+            state.bind.vertex_buffers[0] = vb;
+            state.bind.vertex_buffers[1] = instance_buffer;
+            state.bind.index_buffer = ib;
+
+            if (g.diffuse_view.id != SG_INVALID_ID) {
+                state.bind.views[0] = g.diffuse_view;
+                state.bind.samplers[0] = mat->diffuse_sampler;
+            } else {
+                state.bind.views[0] = { .id = SG_INVALID_ID };
+                state.bind.samplers[0] = { .id = SG_INVALID_ID };
+            }
+
+            if (g.specular_view.id != SG_INVALID_ID) {
+                state.bind.views[1] = g.specular_view;
+                state.bind.samplers[1] = mat->specular_sampler;
+            } else {
+                state.bind.views[1] = { .id = SG_INVALID_ID };
+                state.bind.samplers[1] = { .id = SG_INVALID_ID };
+            }
+
             sg_apply_bindings(&state.bind);
 
-            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
-            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
-            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
-            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
-
-            vs_params.model = model;
-            vs_params.opacity = obj.opacity;
-            vs_params.enable_shading = 0;
+            vs_params.use_instancing = 1;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             struct model_fs_params_t {
@@ -663,120 +585,97 @@ void render_meshes(size_t batch_size = 10) {
                 int has_specular_tex;
                 float specular;
                 float shininess;
-
                 float camera_pos_x;
                 float camera_pos_y;
                 float camera_pos_z;
                 float camera_pos_w;
-            };
-            model_fs_params_t model_fs_params;
-            if (mesh->material->has_diffuse_texture) model_fs_params.has_diffuse_tex = 1; else model_fs_params.has_diffuse_tex = 0;
-            if (mesh->material->has_specular_texture) model_fs_params.has_specular_tex = 1; else model_fs_params.has_specular_tex = 0;
-            model_fs_params.specular = mesh->material->specular;
+            } model_fs_params;
+
+            model_fs_params.has_diffuse_tex = (mat && mat->has_diffuse_texture) ? 1 : 0;
+            model_fs_params.has_specular_tex = (mat && mat->has_specular_texture) ? 1 : 0;
+            model_fs_params.specular = (mat) ? mat->specular : 0.0f;
+            model_fs_params.shininess = 32.0f;
             model_fs_params.camera_pos_x = state.camera_pos.X;
             model_fs_params.camera_pos_y = state.camera_pos.Y;
             model_fs_params.camera_pos_z = state.camera_pos.Z;
             model_fs_params.camera_pos_w = 0.0f;
-            model_fs_params.shininess = 32;
             sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
-            struct lighting_params {
-                int light_types_packed[13][4];
-                HMM_Vec4 light_positions[50];
-                HMM_Vec4 light_directions[50];
-                HMM_Vec4 light_colors[50];
-                HMM_Vec4 light_att_params[50];
-                int light_amount;
-                float padding[3];
-                HMM_Vec4 ambient_color;
-            };
+            sg_apply_uniforms(3, SG_RANGE(lights));
 
-            lighting_params lights = {};
+            sg_draw(0, mesh->index_count, (int)instance_data.size());
 
-            int light_idx = 0;
+            sg_destroy_buffer(instance_buffer);
+        } else {
+            Instance &inst = g.items[0];
+            Object &obj = inst.obj;
 
-            for (const auto& dl : state.directional_lights) {
-                if (light_idx >= 50) break;
-                lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
-                lights.light_positions[light_idx].X = 0.0f;
-                lights.light_positions[light_idx].Y = 0.0f;
-                lights.light_positions[light_idx].Z = 0.0f;
-                lights.light_positions[light_idx].W = 0.0f;
-                lights.light_directions[light_idx].X = dl.direction.X;
-                lights.light_directions[light_idx].Y = dl.direction.Y;
-                lights.light_directions[light_idx].Z = dl.direction.Z;
-                lights.light_directions[light_idx].W = 0.0f;
-                lights.light_colors[light_idx].X = dl.color.X;
-                lights.light_colors[light_idx].Y = dl.color.Y;
-                lights.light_colors[light_idx].Z = dl.color.Z;
-                lights.light_colors[light_idx].W = dl.intensity;
-                lights.light_att_params[light_idx].X = 0.0f;
-                lights.light_att_params[light_idx].Y = 0.0f;
-                lights.light_att_params[light_idx].Z = 0.0f;
-                lights.light_att_params[light_idx].W = 0.0f;
-                light_idx++;
+            state.bind.vertex_buffers[0] = vb;
+            state.bind.index_buffer = ib;
+
+            if (g.diffuse_view.id != SG_INVALID_ID) {
+                state.bind.views[0] = g.diffuse_view;
+                state.bind.samplers[0] = mat->diffuse_sampler;
+            } else {
+                state.bind.views[0] = { .id = SG_INVALID_ID };
+                state.bind.samplers[0] = { .id = SG_INVALID_ID };
             }
 
-            for (const auto& pl : state.point_lights) {
-                if (light_idx >= 50) break;
-                lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
-                lights.light_positions[light_idx].X = pl.position.X;
-                lights.light_positions[light_idx].Y = pl.position.Y;
-                lights.light_positions[light_idx].Z = pl.position.Z;
-                lights.light_positions[light_idx].W = 0.0f;
-                lights.light_directions[light_idx].X = 0.0f;
-                lights.light_directions[light_idx].Y = 0.0f;
-                lights.light_directions[light_idx].Z = 0.0f;
-                lights.light_directions[light_idx].W = 0.0f;
-                lights.light_colors[light_idx].X = pl.color.X;
-                lights.light_colors[light_idx].Y = pl.color.Y;
-                lights.light_colors[light_idx].Z = pl.color.Z;
-                lights.light_colors[light_idx].W = pl.intensity;
-                lights.light_att_params[light_idx].X = pl.radius;
-                lights.light_att_params[light_idx].Y = 0.0f;
-                lights.light_att_params[light_idx].Z = 0.0f;
-                lights.light_att_params[light_idx].W = 0.0f;
-                light_idx++;
+            if (g.specular_view.id != SG_INVALID_ID) {
+                state.bind.views[1] = g.specular_view;
+                state.bind.samplers[1] = mat->specular_sampler;
+            } else {
+                state.bind.views[1] = { .id = SG_INVALID_ID };
+                state.bind.samplers[1] = { .id = SG_INVALID_ID };
             }
 
-            for (const auto& sl : state.spot_lights) {
-                if (light_idx >= 50) break;
-                lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
-                lights.light_positions[light_idx].X = sl.position.X;
-                lights.light_positions[light_idx].Y = sl.position.Y;
-                lights.light_positions[light_idx].Z = sl.position.Z;
-                lights.light_positions[light_idx].W = 0.0f;
-                lights.light_directions[light_idx].X = sl.direction.X;
-                lights.light_directions[light_idx].Y = sl.direction.Y;
-                lights.light_directions[light_idx].Z = sl.direction.Z;
-                lights.light_directions[light_idx].W = 0.0f;
-                lights.light_colors[light_idx].X = sl.color.X;
-                lights.light_colors[light_idx].Y = sl.color.Y;
-                lights.light_colors[light_idx].Z = sl.color.Z;
-                lights.light_colors[light_idx].W = sl.intensity;
-                lights.light_att_params[light_idx].X = 0.0f;
-                lights.light_att_params[light_idx].Y = sl.inner_cone_angle;
-                lights.light_att_params[light_idx].Z = sl.outer_cone_angle;
-                lights.light_att_params[light_idx].W = 0.0f;
-                light_idx++;
-            }
+            sg_apply_bindings(&state.bind);
 
-            lights.light_amount = light_idx;
+            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
+            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
 
-            lights.ambient_color.X = 1.0f;
-            lights.ambient_color.Y = 1.0f;
-            lights.ambient_color.Z = 1.0f;
-            lights.ambient_color.W = 0.0f;
+            vs_params.model = model;
+            vs_params.opacity = obj.opacity * inst.group_opacity;
+            vs_params.enable_shading = mesh->enable_shading ? 1 : 0;
+            vs_params.use_instancing = 0;
+            sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
+
+            struct model_fs_params_t {
+                int has_diffuse_tex;
+                int has_specular_tex;
+                float specular;
+                float shininess;
+                float camera_pos_x;
+                float camera_pos_y;
+                float camera_pos_z;
+                float camera_pos_w;
+            } model_fs_params;
+
+            model_fs_params.has_diffuse_tex = (mat && mat->has_diffuse_texture) ? 1 : 0;
+            model_fs_params.has_specular_tex = (mat && mat->has_specular_texture) ? 1 : 0;
+            model_fs_params.specular = (mat) ? mat->specular : 0.0f;
+            model_fs_params.shininess = 32.0f;
+            model_fs_params.camera_pos_x = state.camera_pos.X;
+            model_fs_params.camera_pos_y = state.camera_pos.Y;
+            model_fs_params.camera_pos_z = state.camera_pos.Z;
+            model_fs_params.camera_pos_w = 0.0f;
+            sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
             sg_apply_uniforms(3, SG_RANGE(lights));
 
             sg_draw(0, mesh->index_count, 1);
+        }
+    }
 
-            if (created_diffuse_view.id != SG_INVALID_ID) {
-                sg_destroy_view(created_diffuse_view);
+    for (auto &g : groups) {
+        if (g.views_created) {
+            if (g.diffuse_view.id != SG_INVALID_ID) {
+                sg_destroy_view(g.diffuse_view);
             }
-            if (created_specular_view.id != SG_INVALID_ID) {
-                sg_destroy_view(created_specular_view);
+            if (g.specular_view.id != SG_INVALID_ID) {
+                sg_destroy_view(g.specular_view);
             }
         }
     }
@@ -849,7 +748,7 @@ void render_first_pass() {
     }
 
     if (post_state.rendered_color_img.id == SG_INVALID_ID || post_state.rendered_depth_img.id == SG_INVALID_ID) {
-        printf("ERROR: Failed to create offscreen render targets!\n");
+        cout << "Could create offscreen image, sorry" << endl;
         return;
     }
 
@@ -868,7 +767,7 @@ void render_first_pass() {
 
     sg_apply_pipeline(state.pip);
 
-    render_meshes(10);
+    render_meshes();
 
     sg_end_pass();
 }
