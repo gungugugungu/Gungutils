@@ -1664,7 +1664,7 @@ class AudioSource3D {
     public:
         FMOD::Studio::EventInstance* event_instance;
         HMM_Vec3 position;
-        Object* visualizer_object = nullptr;
+        Object visualizer_object;
         int visualizer_obj_index = -1;
         FMOD_GUID guid;
 
@@ -1678,9 +1678,9 @@ class AudioSource3D {
             if (!loaded.empty()) {
                 visualizer_objects.push_back(loaded[0]);
                 visualizer_obj_index = visualizer_objects.size() - 1;
-                Object &vo = visualizer_objects[visualizer_obj_index];
+                Object vo = visualizer_objects[visualizer_obj_index];
                 prepare_mesh_buffers(*vo.mesh);
-                visualizer_object = &vo;
+                visualizer_object = vo;
             }
 
             desc->getID(&guid);
@@ -1746,7 +1746,6 @@ class AudioSource3D {
             }
 
             event_instance->release();
-            delete visualizer_object;
         }
 };
 
@@ -1754,7 +1753,7 @@ class Helper {
 public:
     HMM_Vec3 position;
     string name;
-    Object* visualizer_obj;
+    Object visualizer_obj;
     int visualizer_obj_index = -1;
     bool operator==(const Helper& other) const { return this == &other; }
 
@@ -1766,9 +1765,9 @@ public:
         if (!loaded.empty()) {
             visualizer_objects.push_back(loaded[0]);
             visualizer_obj_index = visualizer_objects.size() - 1;
-            Object &vo = visualizer_objects[visualizer_obj_index];
+            Object vo = visualizer_objects[visualizer_obj_index];
             prepare_mesh_buffers(*vo.mesh);
-            visualizer_obj = &vo;
+            visualizer_obj = vo;
         }
 
         state.helpers.push_back(this);
@@ -1798,7 +1797,6 @@ public:
                 }
             }
         }
-        delete visualizer_obj;
     }
 };
 
