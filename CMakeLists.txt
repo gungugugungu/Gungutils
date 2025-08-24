@@ -35,19 +35,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
 #add_subdirectory(${CMAKE_SOURCE_DIR}/include/ozz-animation)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/meshoptimizer)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows")  # Windows
-    set(FMOD_STUDIO_A "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/libfmodstudio.a")
-    set(FMOD_CORE_A   "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/libfmod.a")
-
-    if(EXISTS "${FMOD_STUDIO_A}" AND EXISTS "${FMOD_CORE_A}")
-        message(STATUS "using mingw import libs: ${FMOD_STUDIO_A}, ${FMOD_CORE_A}")
-        set(FMOD_STUDIO_LIB "${FMOD_STUDIO_A}")
-        set(FMOD_CORE_LIB "${FMOD_CORE_A}")
-    else()
-        set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio.dll")
-        set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod.dll")
-    endif()
-elseif(WIN32)
+if(WIN32)
     set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio_vc.lib")
     set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod_vc.lib")
 else() # Linux or Mac but ain't no way I'll use mac anytime

@@ -19,14 +19,14 @@ void init() {
     world->setGravity({0.0f, -9.81f, 0.0f});
 
     FMOD_RESULT result;
-    result = FMOD_Studio_System_LoadBankFile(state.fmod_system, "fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank);
+    result = state.fmod_system->loadBankFile("fmodproject/Build/Desktop/Master.bank", FMOD_STUDIO_LOAD_BANK_NORMAL, &state.bank);
     print_fmod_error(result);
-    
+
     int event_count = 0;
-    result = FMOD_Studio_Bank_GetEventCount(state.bank, &event_count);
+    result = state.bank->getEventCount(&event_count);
     print_fmod_error(result);
     state.event_descriptions.resize(event_count);
-    result = FMOD_Studio_Bank_GetEventList(state.bank, state.event_descriptions.data(), event_count, &event_count);
+    result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
     load_scene("maps/fpscontroller.gmap");
