@@ -34,3 +34,6 @@
 [submodule "include/reactphysics3d"]
 	path = include/reactphysics3d
 	url = https://github.com/DanielChappuis/reactphysics3d.git
+[submodule "ozz-animation"]
+	path = ozz-animation
+	url = https://github.com/guillaumeblanc/ozz-animation.git
