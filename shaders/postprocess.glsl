@@ -30,7 +30,7 @@ layout(binding = 1) uniform sampler u_depth_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
 #define depth2D sampler2D(u_depth2D, u_depth_smp)
 
-layout(binding = 2) uniform fs_params {
+layout(binding = 2) uniform fs_params { // add post processing into the shader
     float vignette_strength;
     float vignette_radius;
     vec3 color_tint;
@@ -41,9 +41,8 @@ layout(binding = 2) uniform fs_params {
     float time;
 };
 
-// ssao-specific params block (binding = 3)
 layout(binding = 3) uniform ssao_params {
-    float ao_radius; // world-space radius of occlusion sampling (e.g. 0.5 - 3.0)
+    float ao_radius; // radius of occlusion sampling
     float ao_bias; // bias to avoid self-occlusion (e.g. 0.02)
     float ao_strength; // how strongly ao darkens (0..1)
     float ao_power; // final power curve for aesthetic
@@ -64,11 +63,11 @@ float rand(vec2 co){
 float linearize_reversed_depth(float d, float near, float far){
     float denom = max((far - d * (far - near)), 1e-6);
     float viewZ = (near * far) / denom;
-    return viewZ; // positive distance from camera
+    return viewZ;
 }
 
 vec3 reconstruct_view_pos(vec2 uvcoord, float depth_sample){
-    float viewZ = linearize_reversed_depth(depth_sample, u_near, u_far); // positive
+    float viewZ = linearize_reversed_depth(depth_sample, u_near, u_far);
     vec2 ndc = uvcoord * 2.0 - 1.0;
     vec3 viewPos;
     viewPos.x = ndc.x * viewZ * proj.x;
@@ -77,7 +76,6 @@ vec3 reconstruct_view_pos(vec2 uvcoord, float depth_sample){
     return viewPos;
 }
 
-// estimate normal by sampling two neighboring offsets and cross product
 vec3 estimate_normal(vec2 uvcoord, float center_depth){
     vec2 px = 1.0 / screen_size;
     float depth_r = texture(depth2D, uvcoord + vec2(px.x, 0.0)).r;
@@ -88,7 +86,6 @@ vec3 estimate_normal(vec2 uvcoord, float center_depth){
     vec3 vx = pr - p;
     vec3 vy = pu - p;
     vec3 n = normalize(cross(vx, vy));
-    // fallback if degenerate
     if(length(n) < 1e-3) return vec3(0.0, 0.0, 1.0);
     return n;
 }

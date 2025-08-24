@@ -236,7 +236,7 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 vs_params_t vs_params;
 
 vector<VisGroup> vis_groups;
-vector<Object> visualizer_objects; // TODO: Fix visualizers
+vector<Object> visualizer_objects;
 
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
     sg_image invalid_image{};
@@ -626,19 +626,24 @@ void render_meshes(size_t batch_size = 10) {
             Mesh* mesh = obj.mesh;
             state.bind.vertex_buffers[0] = obj.mesh->vertex_buffer;
             state.bind.index_buffer = obj.mesh->index_buffer;
+
+            sg_view created_diffuse_view{};
+            created_diffuse_view.id = SG_INVALID_ID;
+            sg_view created_specular_view{};
+            created_specular_view.id = SG_INVALID_ID;
+
             if (mesh->material->has_diffuse_texture && mesh->material->diffuse_texture_data) {
                 sg_view_desc tex_view_desc{};
                 tex_view_desc.texture.image = mesh->material->diffuse_image;
-                sg_view tex_view = sg_make_view(&tex_view_desc);
-                texture_views.push_back(tex_view);
-                state.bind.views[0] = tex_view;
+                created_diffuse_view = sg_make_view(&tex_view_desc);
+                state.bind.views[0] = created_diffuse_view;
                 state.bind.samplers[0] = mesh->material->diffuse_sampler;
                 if (mesh->material->has_specular_texture) {
                     sg_view_desc specular_tex_view_desc{};
                     specular_tex_view_desc.texture.image = mesh->material->specular_image;
-                    sg_view specular_tex_view = sg_make_view(&specular_tex_view_desc);
-                    state.bind.views[0] = specular_tex_view;
-                    state.bind.samplers[0] = mesh->material->specular_sampler;
+                    created_specular_view = sg_make_view(&specular_tex_view_desc);
+                    state.bind.views[1] = created_specular_view;
+                    state.bind.samplers[1] = mesh->material->specular_sampler;
                 }
             }
             sg_apply_bindings(&state.bind);
@@ -766,6 +771,13 @@ void render_meshes(size_t batch_size = 10) {
             sg_apply_uniforms(3, SG_RANGE(lights));
 
             sg_draw(0, mesh->index_count, 1);
+
+            if (created_diffuse_view.id != SG_INVALID_ID) {
+                sg_destroy_view(created_diffuse_view);
+            }
+            if (created_specular_view.id != SG_INVALID_ID) {
+                sg_destroy_view(created_specular_view);
+            }
         }
     }
 }
