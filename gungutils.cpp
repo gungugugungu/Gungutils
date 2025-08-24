@@ -638,6 +638,7 @@ void render_meshes_batched_streaming(size_t batch_size = 10) {
 
             sg_destroy_buffer(vb);
             sg_destroy_buffer(ib);
+            sg_destroy_buffer(ib);
         }
     }
 }
@@ -1551,14 +1552,14 @@ class AudioSource3D {
         int visualizer_mesh_index = -1;
         FMOD_GUID guid;
 
-        void initalize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
+        void initialize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
             FMOD_RESULT result = desc->createInstance(&event_instance);
             print_fmod_error(result);
             state.audio_sources.push_back(this);
             position = pos;
 
             // init visualizer mesh
-            visualizer_object = new Object();
+            /*visualizer_object = new Object();
             visualizer_object->mesh = new Mesh();
             float* verts = nullptr;
             uint32_t vertex_count = 0;
@@ -1578,7 +1579,7 @@ class AudioSource3D {
 
                 delete visualizer_object;
                 visualizer_object = nullptr;
-            }
+            }*/
             desc->getID(&guid);
         }
 
@@ -1653,10 +1654,10 @@ public:
     int visualizer_mesh_index = -1;
     bool operator==(const Helper& other) const { return this == &other; }
 
-    void initalize(const string& name, HMM_Vec3 pos) {
+    void initialize(const string& name, HMM_Vec3 pos) {
         this->name = name;
         position = pos;
-        visualizer_obj = new Object();
+        /*visualizer_obj = new Object();
         float* verts = nullptr;
         uint32_t vertex_count = 0;
         uint32_t* indices = nullptr;
@@ -1675,7 +1676,7 @@ public:
 
             delete visualizer_obj;
             visualizer_obj = nullptr;
-        }
+        }*/
         state.helpers.push_back(this);
     }
 
@@ -1708,7 +1709,7 @@ public:
 
 void make_audiosource_by_index(int index) {
     AudioSource3D* audio_source = new AudioSource3D();
-    audio_source->initalize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
+    audio_source->initialize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
 }
 
 void clear_scene() {
@@ -1718,9 +1719,6 @@ void clear_scene() {
     state.audio_sources.clear();
 
     for (auto& visgroup : vis_groups) {
-        for (auto& obj : visgroup.objects) {
-            delete obj.mesh;
-        }
         visgroup.objects.clear();
     }
     vis_groups.clear();
@@ -2116,7 +2114,7 @@ void load_scene(const string& path) {
                     current_id.Data2 == audio_source->guid.Data2 &&
                     current_id.Data3 == audio_source->guid.Data3 &&
                     memcmp(current_id.Data4, audio_source->guid.Data4, 8) == 0) {
-                    audio_source->initalize(ed, audio_source->position);
+                    audio_source->initialize(ed, audio_source->position);
                     break;
                 }
             }
@@ -2135,7 +2133,7 @@ void load_scene(const string& path) {
                 auto name = helper_json["name"];
                 helper->name = static_cast<string>(name);
             }
-            helper->initalize(helper->name, helper->position);
+            helper->initialize(helper->name, helper->position);
         }
     }
 
@@ -2288,15 +2286,15 @@ void render_editor() {
         }
 
         // Mesh editor
-        if (ImGui::CollapsingHeader("MESHES")) {
-            ImGui::BeginChild("MESHES", ImVec2(256, 300), true);
+        if (ImGui::CollapsingHeader("OBJECT")) {
+            ImGui::BeginChild("OBJECT", ImVec2(256, 300), true);
 
             for (int v = 0; v < vis_groups.size(); v++) {
                 VisGroup visgroup = vis_groups[v];
                 for (int i = 0; i < visgroup.objects.size(); i++) {
                     Object obj = visgroup.objects[i];
                     Mesh* mesh = obj.mesh;
-                    string label = "MESH " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh->vertex_count);
+                    string label = "OBJECT " + to_string(v) + ":" +  to_string(i) + " with VC: " + to_string(mesh->vertex_count);
 
                     bool is_selected = (selected_object_index == i);
                     if (ImGui::Selectable(label.c_str(), is_selected)) {
@@ -2321,7 +2319,7 @@ void render_editor() {
             ImGui::EndChild();
 
             ImGui::SameLine();
-            ImGui::BeginChild("MESH SETTINGS", ImVec2(300, 300), true);
+            ImGui::BeginChild("OBJECT SETTINGS", ImVec2(300, 300), true);
             if (selected_object_index != -1) {
                 Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
 
@@ -2392,7 +2390,7 @@ void render_editor() {
                         vis_groups[0].objects.push_back(new_object);
                     }
                 }
-                if (ImGui::Button("DELETE MESH")) {
+                if (ImGui::Button("DELETE")) {
                     vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
@@ -2421,7 +2419,7 @@ void render_editor() {
                     }
                 }
             } else {
-                ImGui::Text("NO MESH SELECTED");
+                ImGui::Text("NO OBJECT SELECTED");
             }
             ImGui::EndChild();
 
@@ -2444,7 +2442,7 @@ void render_editor() {
                     }
                 }
             }
-            ImGui::SameLine();
+            /*ImGui::SameLine();
             if (ImGui::Button("LOAD OBJ")) {
                 const char* filter_patterns[] = {"*.obj"};
                 const char* file_path = tinyfd_openFileDialog(
@@ -2476,7 +2474,7 @@ void render_editor() {
                         std::cout << "Loaded OBJ" << std::endl;
                     }
                 }
-            }
+            }*/
         }
 
         // Audio sources
@@ -2629,7 +2627,7 @@ void render_editor() {
             ImGui::EndChild();
             if (ImGui::Button("ADD HELPER")) {
                 Helper* helper = new Helper();
-                helper->initalize("New Helper", {0.0f, 0.0f, 0.0f});
+                helper->initialize("New Helper", {0.0f, 0.0f, 0.0f});
             }
         }
         ImGui::Separator();
@@ -2644,11 +2642,12 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
 
         ImGui::End();
-    } /*else {
-        ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs);
+    } else {
+        ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         ImGui::Text("Press 0 to open the dev UI");
+        ImGui::Text("ALSO, VERY IMPORTANT!! WHEN YOU CLEAR THE SCENE, ADD CREATE A VISGROUP SO GLBS GETS LOADED");
         ImGui::End();
-    }*/ // This is just for the DEMO, feel free to remove it later.
+    } // This is just for the DEMO, feel free to remove it later.
     simgui_render();
 }
 
@@ -3010,7 +3009,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
+    state.win = SDL_CreateWindow("Gungutils", 1600, 900, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};

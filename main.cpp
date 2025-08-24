@@ -5,12 +5,16 @@
 #include "gungutils.cpp"
 
 AudioSource3D* audio_source = new AudioSource3D();
-FPSController player_controller;
+//FPSController player_controller;
 
 float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
+float yrot = 0.0f;
 
 DirectionalLight light{};
+/*PointLight light1{};
+PointLight light2{};
+PointLight light3{};*/
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -29,19 +33,27 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
-    load_scene("maps/fpscontroller.gmap");
-    for (auto& obj : vis_groups[0].objects) {
-        PhysicsHolder holder{};
-        holder.assign_mesh(&obj);
-        holder.body->setType(reactphysics3d::BodyType::KINEMATIC);
-        state.physics_holders.push_back(std::make_unique<PhysicsHolder>(holder));
-    }
-    player_controller.initalize(0.5f, 1.5f);
-    player_controller.relative_camera_height = 1.4f;
+    load_scene("maps/boxes.gmap");
+    light.direction = {1.0f, -1.0f, -1.0f};
     light.color = {1.0f, 1.0f, 1.0f};
-    light.direction = {0.5f, -1.0f, -0.5f};
-    light.intensity = 1.0f;
+    light.intensity = 0.75f;
     state.directional_lights.push_back(light);
+    /*light1.color = {1.0f, 0.0f, 0.0f};
+    light1.position = {0.0f, -1.0f, 0.0f};
+    light1.intensity = 0.75f;
+    light1.radius = 3.0f;
+    light2.color = {0.0f, 1.0f, 0.0f};
+    light2.position = {0.0f, 1.0f, 0.0f};
+    light2.intensity = 0.75f;
+    light2.radius = 3.0f;
+    light3.color = {0.0f, 0.0f, 1.0f};
+    light3.position = {1.0f, 0.0f, 0.0f};
+    light3.intensity = 0.75f;
+    light3.radius = 3.0f;
+    state.point_lights.push_back(light1);
+    state.point_lights.push_back(light2);
+    state.point_lights.push_back(light3);*/
+    //state.camera_pos = get_helper_by_name("spawn campos")->position;
 }
 
 void frame() {
@@ -51,7 +63,8 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
-    player_controller.update_input(state.inputs, mouse_movement_x, mouse_movement_y, &state.camera_pos, &state.camera_front, &state.yaw, &state.pitch);
+    yrot += 45.0f*time_state.dt;
+    vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});
 }
 
 void event(SDL_Event* e) {
