@@ -136,10 +136,8 @@ void init_post_processing() {
 
     sg_pipeline_desc post_pip_desc = {};
     post_pip_desc.shader = post_shader;
-
     post_pip_desc.layout.attrs[ATTR_postprocess_position].format = SG_VERTEXFORMAT_FLOAT3;
     post_pip_desc.layout.attrs[ATTR_postprocess_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
-
     post_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     post_pip_desc.color_count = 1;
     post_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
@@ -2589,7 +2587,6 @@ void _init() {
     result = state.fmod_system->setNumListeners(1);
     print_fmod_error(result);
 
-    // Set default camera variables
     state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
@@ -2624,6 +2621,7 @@ void _init() {
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
+    pip_desc.sample_count = 1;
     pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky
     pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
@@ -2670,7 +2668,7 @@ void _frame() {
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
 
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 250.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 1050.0f);
 
     vs_params = {.view = view, .projection = projection};
     HMM_Vec2 ssao_proj{};
@@ -2679,7 +2677,7 @@ void _frame() {
     ssao_params.proj = ssao_proj;
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
     ssao_params.u_near = 0.1f;
-    ssao_params.u_far = 250.0f;
+    ssao_params.u_far = 1050.0f;
 
     render_first_pass();
     render_second_pass();
