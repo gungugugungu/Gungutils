@@ -70,7 +70,6 @@ struct AppState {
     HMM_Vec3 camera_front;
     HMM_Vec3 camera_up;
     uint64_t last_time;
-    uint64_t delta_time;
     HMM_Vec3 background_color;
     bool lmb;
     bool rmb;
@@ -86,9 +85,6 @@ struct AppState {
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
-    sg_image default_palette_img{};
-    sg_view default_palette_view{};
-    sg_sampler default_palette_smp{};
     vector<DirectionalLight> directional_lights;
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
@@ -102,9 +98,7 @@ int mesh_index = 0;
 int num_elements = 0;
 bool loaded_is_palette = false;
 
-// full-screen quad vertices
 static float quad_vertices[] = {
-    // positions        // texture coords
     -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
      1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
     -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
@@ -1233,15 +1227,6 @@ vector<Object> load_gltf(const std::string& path) {
                     }
                 }
 
-                // if no texture was loaded, set up for default palette.png
-                if (!obj.mesh->material->has_diffuse_texture) {
-                    obj.mesh->material->has_diffuse_texture = false;
-                    obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                }
-
                 objects.push_back(obj);
                 std::cout << "Loading mesh: vertices=" << vcount << ", indices=" << icount << std::endl;
                 std::cout << "Using uint16 indices: " << (obj.mesh->use_uint16_indices ? "yes" : "no") << std::endl;
@@ -1386,15 +1371,6 @@ vector<Object> load_gltf(const std::string& path) {
                             obj.mesh->material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                         }
                     }
-                }
-
-                // if no texture was loaded, set up for default palette.png
-                if (!obj.mesh->material->has_diffuse_texture) {
-                    obj.mesh->material->has_diffuse_texture = false;
-                    obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
 
                 objects.push_back(obj);
@@ -1858,7 +1834,6 @@ void load_scene(const string& path) {
                             mesh->enable_shading = mesh_json["enable_shading"];
                         }
 
-                        // Load vertex and index data
                         if (mesh_json.contains("vertex_count") &&
                             mesh_json.contains("index_count") &&
                             mesh_json.contains("vertices") &&
@@ -1885,7 +1860,6 @@ void load_scene(const string& path) {
                             Material* material = new Material();
                             mesh->material = material;
 
-                            // Load material properties
                             if (material_json.contains("diffuse")) {
                                 material->diffuse = material_json["diffuse"];
                             }
@@ -1894,7 +1868,6 @@ void load_scene(const string& path) {
                                 material->specular = material_json["specular"];
                             }
 
-                            // Load diffuse texture
                             if (material_json.contains("has_diffuse_texture") && material_json["has_diffuse_texture"]) {
                                 material->has_diffuse_texture = true;
 
@@ -1919,7 +1892,6 @@ void load_scene(const string& path) {
                                     material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
                                     material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
 
-                                    // Load diffuse sampler settings
                                     if (material_json.contains("diffuse_sampler_min_filter")) {
                                         material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(material_json["diffuse_sampler_min_filter"]);
                                         material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["diffuse_sampler_mag_filter"]);
@@ -1936,7 +1908,6 @@ void load_scene(const string& path) {
                                 material->has_diffuse_texture = false;
                             }
 
-                            // Load specular texture
                             if (material_json.contains("has_specular_texture") && material_json["has_specular_texture"]) {
                                 material->has_specular_texture = true;
 
@@ -1978,7 +1949,6 @@ void load_scene(const string& path) {
                                 material->has_specular_texture = false;
                             }
 
-                            // Set default sampler settings if no textures
                             if (!material->has_diffuse_texture) {
                                 material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
                                 material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
@@ -1993,7 +1963,6 @@ void load_scene(const string& path) {
                                 material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                             }
                         } else {
-                            // Create default material if none exists
                             mesh->material = new Material();
                         }
 
@@ -2635,14 +2604,6 @@ void _init() {
     fetch_desc.num_lanes = 1;
     sfetch_setup(&fetch_desc);
 
-    // create sampler
-    sg_sampler_desc sampler_desc = {};
-    sampler_desc.min_filter = SG_FILTER_LINEAR;
-    sampler_desc.mag_filter = SG_FILTER_LINEAR;
-    sampler_desc.wrap_u = SG_WRAP_REPEAT;
-    sampler_desc.wrap_v = SG_WRAP_REPEAT;
-    state.default_palette_smp = sg_make_sampler(&sampler_desc);
-
     sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
 
     sg_pipeline_desc pip_desc = {};
@@ -2671,14 +2632,6 @@ void _init() {
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
     state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     state.pass_action.depth.clear_value = 1.0f;
-
-    loaded_is_palette = true;
-    sfetch_request_t request = {};
-    request.path = "notex.png"; // notex.png MUST exist
-    request.callback = fetch_callback;
-    request.buffer.ptr = state.file_buffer.data();
-    request.buffer.size = state.file_buffer.size();
-    sfetch_send(&request);
 
     init_post_processing();
 }
@@ -2717,7 +2670,7 @@ void _frame() {
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
 
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 50.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 250.0f);
 
     vs_params = {.view = view, .projection = projection};
     HMM_Vec2 ssao_proj{};
@@ -2726,7 +2679,7 @@ void _frame() {
     ssao_params.proj = ssao_proj;
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
     ssao_params.u_near = 0.1f;
-    ssao_params.u_far = 50.0f;
+    ssao_params.u_far = 250.0f;
 
     render_first_pass();
     render_second_pass();
@@ -2932,18 +2885,10 @@ void fetch_callback(const sfetch_response_t* response) {
             img_desc.data.subimage[0][0].ptr = pixels;
             img_desc.data.subimage[0][0].size = img_width * img_height * 4;
 
-            if (loaded_is_palette) {
-                loaded_is_palette = false;
-                state.default_palette_img = sg_make_image(&img_desc);
-                sg_view_desc palette_view_desc = {};
-                palette_view_desc.texture.image = state.default_palette_img;
-                state.default_palette_view = sg_make_view(&palette_view_desc);
-            } else {
-                sg_image new_img = sg_make_image(&img_desc);
-                sg_view_desc tex_view_desc = {};
-                tex_view_desc.texture.image = new_img;
-                state.bind.views[texture_index] = sg_make_view(&tex_view_desc);
-            }
+            sg_image new_img = sg_make_image(&img_desc);
+            sg_view_desc tex_view_desc = {};
+            tex_view_desc.texture.image = new_img;
+            state.bind.views[texture_index] = sg_make_view(&tex_view_desc);
 
             stbi_image_free(pixels);
         }

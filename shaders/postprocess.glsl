@@ -30,7 +30,7 @@ layout(binding = 1) uniform sampler u_depth_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
 #define depth2D sampler2D(u_depth2D, u_depth_smp)
 
-layout(binding = 2) uniform fs_params { // add post processing into the shader
+layout(binding = 2) uniform fs_params { // TODO: add post processing into the shader
     float vignette_strength;
     float vignette_radius;
     vec3 color_tint;
