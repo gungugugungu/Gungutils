@@ -2547,35 +2547,73 @@ void render_editor() {
         }
         if (ImGui::CollapsingHeader("LIGHTS")) {
             ImGui::BeginTabBar("LIGHT TYPES", ImGuiTabBarFlags_None);
-            ImGui::BeginTabItem("Directional");
-            ImGui::BeginChild("LIGHT SELECTION", ImVec2(300, 150), true);
-            for (int i = 0; i < state.directional_lights.size(); i++) {
-                string label = "DIRECTIONAL LIGHT " + to_string(i);
 
-                bool is_selected = (selected_dir_light_index == i);
-                if (ImGui::Selectable(label.c_str(), is_selected)) {
-                    selected_dir_light_index = i;
+            if (ImGui::BeginTabItem("DIRECTIONAL")) {
+                ImGui::BeginChild("DIRECTIONAL LIGHT SELECTION", ImVec2(300, 150), true);
+                for (int i = 0; i < state.directional_lights.size(); i++) {
+                    string label = "DIRECTIONAL LIGHT " + to_string(i);
+
+                    bool is_selected = (selected_dir_light_index == i);
+                    if (ImGui::Selectable(label.c_str(), is_selected)) {
+                        selected_dir_light_index = i;
+                    }
+
+                    if (is_selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
                 }
+                ImGui::EndChild();
 
-                if (is_selected) {
-                    ImGui::SetItemDefaultFocus();
+                ImGui::SameLine();
+                ImGui::BeginChild("DIRECTIONAL LIGHT SETTINGS", ImVec2(300, 150), true);
+                if (selected_dir_light_index >= 0 && selected_dir_light_index < state.directional_lights.size()) {
+                    auto& selected_dir_light = state.directional_lights[selected_dir_light_index];
+                    ImGui::PushItemWidth(200);
+                    ImGui::SliderFloat3("DIRECTION", &selected_dir_light.direction.X, -1.0f, 1.0f, "%.1f");
+                    ImGui::ColorEdit3("COLOR", &selected_dir_light.color.X);
+                    ImGui::DragFloat("INTENSITY", &selected_dir_light.intensity, 0.01f);
+                    if (ImGui::Button("DELETE")) {
+                        state.directional_lights.erase(state.directional_lights.begin() + selected_dir_light_index);
+                    }
+                    ImGui::PopItemWidth();
                 }
+                ImGui::EndChild();
             }
-            ImGui::EndChild();
-
-            ImGui::SameLine();
-            ImGui::BeginChild("LIGHT SETTINGS", ImVec2(300, 150), true);
-            if (selected_dir_light_index >= 0 && selected_dir_light_index < state.directional_lights.size()) {
-                auto& selected_dir_light = state.directional_lights[selected_dir_light_index];
-                ImGui::PushItemWidth(200);
-                ImGui::SliderFloat3("DIRECTION", &selected_dir_light.direction.X, -1.0f, 1.0f, "%.1f");
-                ImGui::ColorEdit3("COLOR", &selected_dir_light.color.X);
-                ImGui::PopItemWidth();
-            }
-            ImGui::EndChild();
             ImGui::EndTabItem();
 
+            if (ImGui::BeginTabItem("POINT")) {
+                ImGui::BeginChild("POINT LIGHT SELECTION", ImVec2(300, 150), true);
+                for (int i = 0; i < state.point_lights.size(); i++) {
+                    string label = "POINT LIGHT " + to_string(i);
 
+                    bool is_selected = (selected_point_light_index == i);
+                    if (ImGui::Selectable(label.c_str(), is_selected)) {
+                        selected_point_light_index = i;
+                    }
+
+                    if (is_selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndChild();
+
+                ImGui::SameLine();
+                ImGui::BeginChild("POINT LIGHT SETTINGS", ImVec2(300, 150), true);
+                if (selected_point_light_index >= 0 && selected_point_light_index < state.point_lights.size()) {
+                    auto& selected_point_light = state.point_lights[selected_point_light_index];
+                    ImGui::PushItemWidth(200);
+                    ImGui::SliderFloat3("POSITION", &selected_point_light.position.X, -1.0f, 1.0f, "%.1f");
+                    ImGui::ColorEdit3("COLOR", &selected_point_light.color.X);
+                    ImGui::DragFloat("RADIUS", &selected_point_light.radius, 0.01f);
+                    ImGui::DragFloat("INTENSITY", &selected_point_light.intensity, 0.01f);
+                    if (ImGui::Button("DELETE")) {
+                        state.point_lights.erase(state.point_lights.begin() + selected_point_light_index);
+                    }
+                    ImGui::PopItemWidth();
+                }
+                ImGui::EndChild();
+            }
+            ImGui::EndTabItem();
 
             ImGui::EndTabBar();
         }
@@ -2592,7 +2630,6 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
 
         ImGui::End();
-        ImGui::ShowDemoWindow();
     } /*else {
         ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         ImGui::Text("Press 0 to open the dev UI");

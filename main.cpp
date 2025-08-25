@@ -33,7 +33,7 @@ void init() {
     load_scene("maps/boxes.gmap");
     light.direction = {1.0f, -1.0f, -1.0f};
     light.color = {1.0f, 1.0f, 1.0f};
-    light.intensity = 0.75f;
+    light.intensity = 1.0f;
     state.directional_lights.push_back(light);
 }
 
