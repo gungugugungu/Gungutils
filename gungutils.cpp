@@ -521,12 +521,12 @@ void render_meshes() {
             g.views_created = true;
         }
 
+        state.bind.vertex_buffers[0] = vb;
+        state.bind.index_buffer = ib;
+
         for (const auto& inst : g.items) {
             const Object& obj = inst.obj;
-
-            state.bind.vertex_buffers[0] = vb;
-            state.bind.index_buffer = ib;
-
+            // safety feature in case of different textures
             if (g.diffuse_view.id != SG_INVALID_ID) {
                 state.bind.views[0] = g.diffuse_view;
                 state.bind.samplers[0] = mat->diffuse_sampler;
@@ -542,7 +542,6 @@ void render_meshes() {
                 state.bind.views[1] = { .id = SG_INVALID_ID };
                 state.bind.samplers[1] = { .id = SG_INVALID_ID };
             }
-
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 translate_mat = HMM_Translate(obj.position);
