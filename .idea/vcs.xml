@@ -14,5 +14,6 @@
     <mapping directory="$PROJECT_DIR$/include/stb" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/tinygltf" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/tinyobjloader" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ozz-animation" vcs="Git" />
   </component>
 </project>

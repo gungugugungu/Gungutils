@@ -513,6 +513,12 @@ void render_meshes() {
             g.views_created = true;
         }
 
+        if (mesh->material->has_custom_shader) {
+            sg_apply_pipeline(mesh->material->custom_pipeline);
+        } else {
+            sg_apply_pipeline(state.pip);
+        }
+
         state.bind.vertex_buffers[0] = vb;
         state.bind.index_buffer = ib;
 
@@ -568,12 +574,6 @@ void render_meshes() {
             sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
             sg_apply_uniforms(3, SG_RANGE(lights));
-
-            if (mesh->material->has_custom_shader) {
-                sg_apply_pipeline(mesh->material->custom_pipeline);
-            } else {
-                sg_apply_pipeline(state.pip);
-            }
 
             sg_draw(0, mesh->index_count, 1);
         }
@@ -2093,6 +2093,10 @@ string currently_entered_path = "";
 static std::map<int, HMM_Vec3> mesh_euler_rotations;
 static int last_selected_mesh = -1;
 static int selected_selectable_visgroup_index = -1;
+static int selected_dir_light_index = -1;
+static int selected_point_light_index = -1;
+static int selected_spot_light_index = -1;
+
 sg_image editor_display_image;
 sg_sampler editor_display_sampler;
 sg_image editor_specular_display_image;
@@ -2541,6 +2545,41 @@ void render_editor() {
                 helper->initialize("New Helper", {0.0f, 0.0f, 0.0f});
             }
         }
+        if (ImGui::CollapsingHeader("LIGHTS")) {
+            ImGui::BeginTabBar("LIGHT TYPES", ImGuiTabBarFlags_None);
+            ImGui::BeginTabItem("Directional");
+            ImGui::BeginChild("LIGHT SELECTION", ImVec2(300, 150), true);
+            for (int i = 0; i < state.directional_lights.size(); i++) {
+                string label = "DIRECTIONAL LIGHT " + to_string(i);
+
+                bool is_selected = (selected_dir_light_index == i);
+                if (ImGui::Selectable(label.c_str(), is_selected)) {
+                    selected_dir_light_index = i;
+                }
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+            ImGui::BeginChild("LIGHT SETTINGS", ImVec2(300, 150), true);
+            if (selected_dir_light_index >= 0 && selected_dir_light_index < state.directional_lights.size()) {
+                auto& selected_dir_light = state.directional_lights[selected_dir_light_index];
+                ImGui::PushItemWidth(200);
+                ImGui::SliderFloat3("DIRECTION", &selected_dir_light.direction.X, -1.0f, 1.0f, "%.1f");
+                ImGui::ColorEdit3("COLOR", &selected_dir_light.color.X);
+                ImGui::PopItemWidth();
+            }
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+
+
+
+            ImGui::EndTabBar();
+        }
+
         ImGui::Separator();
         if (ImGui::Button("RESET")) {
             state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
@@ -2553,6 +2592,7 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
 
         ImGui::End();
+        ImGui::ShowDemoWindow();
     } /*else {
         ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         ImGui::Text("Press 0 to open the dev UI");

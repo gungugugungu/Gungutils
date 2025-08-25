@@ -63,7 +63,7 @@ public:
         if (diffuse_sampler.id != SG_INVALID_ID) sg_destroy_sampler(diffuse_sampler);
         if (specular_image.id != SG_INVALID_ID) sg_destroy_image(specular_image);
         if (specular_sampler.id != SG_INVALID_ID) sg_destroy_sampler(specular_sampler);
-        if (has_custom_shader == true) {sg_destroy_shader(custom_shader);, sg_destroy_pipeline(custom_pipeline);}
+        if (has_custom_shader == true) {sg_destroy_shader(custom_shader); sg_destroy_pipeline(custom_pipeline);}
         delete[] diffuse_texture_data;
         delete[] specular_texture_data;
     }
