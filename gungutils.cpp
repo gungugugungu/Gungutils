@@ -569,6 +569,12 @@ void render_meshes() {
 
             sg_apply_uniforms(3, SG_RANGE(lights));
 
+            if (mesh->material->has_custom_shader) {
+                sg_apply_pipeline(mesh->material->custom_pipeline);
+            } else {
+                sg_apply_pipeline(state.pip);
+            }
+
             sg_draw(0, mesh->index_count, 1);
         }
     }
@@ -668,8 +674,6 @@ void render_first_pass() {
     pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
     sg_begin_pass(&pass);
-
-    sg_apply_pipeline(state.pip);
 
     render_meshes();
 
@@ -2621,7 +2625,6 @@ void _init() {
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
-    pip_desc.sample_count = 1;
     pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky
     pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
