@@ -40,6 +40,7 @@
 // shaders
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
+#include "shaders/surface.glsl.h"
 // sources
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
@@ -47,6 +48,7 @@
 #include "rendering/VisGroup.h"
 #include "rendering/Post Processing.h"
 #include "rendering/Light.h"
+#include "rendering/Surface.h"
 #include "physics/PhysicsHolder.h"
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
@@ -89,6 +91,9 @@ struct AppState {
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
     HMM_Vec3 ambient_light = {0.5f, 0.5f, 0.5f};
+
+    sg_pipeline surf_pipeline;
+    Surface window_surface{};
 };
 
 AppState state;
@@ -592,6 +597,51 @@ void render_meshes() {
     }
 }
 
+void render_state_surf() {
+    if (state.window_surface.pixels.empty() || state.window_surface.pixels[0].empty()) {
+        cout << "YOU DONE FUCKED UP" << endl;
+        cout << "the window surface is empty which I don't know how you did like what the fuck man?" << endl;
+        return;
+    }
+
+    sg_apply_pipeline(state.surf_pipeline);
+
+    int height = state.window_surface.pixels.size();
+    int width = state.window_surface.pixels[0].size();
+
+    sg_image_desc surf_image{};
+    surf_image.width = width;
+    surf_image.height = height;
+    surf_image.pixel_format = SG_PIXELFORMAT_RGBA8;
+    surf_image.usage.immutable = true;
+    surf_image.data = state.window_surface.get_sokol_image_data();
+    sg_image surf_img = sg_make_image(&surf_image);
+
+    sg_sampler_desc sampler_desc{};
+    sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    sampler_desc.min_filter = SG_FILTER_LINEAR;
+    sampler_desc.mag_filter = SG_FILTER_LINEAR;
+    sampler_desc.label = "surf_sampler";
+    sg_sampler surf_sampler = sg_make_sampler(&sampler_desc);
+
+    sg_view_desc surf_view_desc{};
+    surf_view_desc.texture.image = surf_img;
+    surf_view_desc.label = "surf_view";
+    sg_view surf_view = sg_make_view(&surf_view_desc);
+
+    state.bind.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    state.bind.views[0] = surf_view;
+    state.bind.samplers[0] = surf_sampler;
+    sg_apply_bindings(&state.bind);
+
+    sg_draw(0, 3, 1);
+
+    sg_destroy_view(surf_view);
+    sg_destroy_sampler(surf_sampler);
+    sg_destroy_image(surf_img);
+}
+
 void render_first_pass() {
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
@@ -677,6 +727,8 @@ void render_first_pass() {
     sg_begin_pass(&pass);
 
     render_meshes();
+
+    render_state_surf();
 
     sg_end_pass();
 }
@@ -2904,6 +2956,10 @@ void _init() {
     stbi_set_flip_vertically_on_load(true);
     stbi_set_flip_vertically_on_load_thread(true);
 
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    state.window_surface.initialize(w_width, w_height);
+
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
@@ -2930,7 +2986,7 @@ void _init() {
     state.yaw = -90.0f;
     state.pitch = 0.0f;
     state.last_time = stm_now();
-    state.fov = 95.0f;
+    state.fov = 75.0f;
 
     sfetch_desc_t fetch_desc = {};
     fetch_desc.max_requests = 1;
@@ -2968,6 +3024,22 @@ void _init() {
     state.pass_action.depth.clear_value = 1.0f;
 
     init_post_processing();
+
+    // 2d rendering pipeline
+    sg_shader surf_shader = sg_make_shader(surface_shader_desc(sg_query_backend()));
+    sg_pipeline_desc surface_pipeline_desc = {};
+    surface_pipeline_desc.shader = surf_shader;
+    surface_pipeline_desc.layout.attrs[ATTR_postprocess_position].format = SG_VERTEXFORMAT_FLOAT3;
+    surface_pipeline_desc.layout.attrs[ATTR_postprocess_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    surface_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    surface_pipeline_desc.color_count = 1;
+    surface_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    surface_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    surface_pipeline_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    surface_pipeline_desc.depth.write_enabled = true;
+    surface_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    surface_pipeline_desc.label = "surface-pipeline";
+    state.surf_pipeline = sg_make_pipeline(&surface_pipeline_desc);
 }
 
 void _frame() {
