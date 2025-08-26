@@ -2882,7 +2882,7 @@ void render_editor() {
         }
         ImGui::SameLine();
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
-        ImGui::DragFloat("FOV", &state.fov, 1.0f);
+        ImGui::SliderFloat("FOV", &state.fov, 1.0f, 179.0, "%.0f");
         ImGui::ColorEdit3("AMBIENT COLOR", &state.ambient_light.X);
 
         ImGui::End();
