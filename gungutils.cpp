@@ -2578,8 +2578,13 @@ void render_editor() {
                     ImGui::PopItemWidth();
                 }
                 ImGui::EndChild();
+                if (ImGui::Button("ADD")) {
+                    DirectionalLight* new_light = new DirectionalLight();
+                    state.directional_lights.push_back(*new_light);
+                }
+
+                ImGui::EndTabItem();
             }
-            ImGui::EndTabItem();
 
             if (ImGui::BeginTabItem("POINT")) {
                 ImGui::BeginChild("POINT LIGHT SELECTION", ImVec2(300, 150), true);
@@ -2602,7 +2607,7 @@ void render_editor() {
                 if (selected_point_light_index >= 0 && selected_point_light_index < state.point_lights.size()) {
                     auto& selected_point_light = state.point_lights[selected_point_light_index];
                     ImGui::PushItemWidth(200);
-                    ImGui::SliderFloat3("POSITION", &selected_point_light.position.X, -1.0f, 1.0f, "%.1f");
+                    ImGui::DragFloat3("POSITION", &selected_point_light.position.X, 0.1f);
                     ImGui::ColorEdit3("COLOR", &selected_point_light.color.X);
                     ImGui::DragFloat("RADIUS", &selected_point_light.radius, 0.01f);
                     ImGui::DragFloat("INTENSITY", &selected_point_light.intensity, 0.01f);
@@ -2612,8 +2617,56 @@ void render_editor() {
                     ImGui::PopItemWidth();
                 }
                 ImGui::EndChild();
+
+                if (ImGui::Button("ADD")) {
+                    PointLight* new_light = new PointLight();
+                    state.point_lights.push_back(*new_light);
+                }
+
+                ImGui::EndTabItem();
             }
-            ImGui::EndTabItem();
+
+            if (ImGui::BeginTabItem("SPOT")) {
+                ImGui::BeginChild("SPOT LIGHT SELECTION", ImVec2(300, 150), true);
+                for (int i = 0; i < state.spot_lights.size(); i++) {
+                    string label = "SPOT LIGHT " + to_string(i);
+
+                    bool is_selected = (selected_spot_light_index == i);
+                    if (ImGui::Selectable(label.c_str(), is_selected)) {
+                        selected_spot_light_index = i;
+                    }
+
+                    if (is_selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndChild();
+
+                ImGui::SameLine();
+                ImGui::BeginChild("SPOT LIGHT SETTINGS", ImVec2(300, 150), true);
+                if (selected_spot_light_index >= 0 && selected_spot_light_index < state.spot_lights.size()) {
+                    auto& selected_spot_light = state.spot_lights[selected_spot_light_index];
+                    ImGui::PushItemWidth(200);
+                    ImGui::DragFloat3("POSITION", &selected_spot_light.position.X, 0.1f);
+                    ImGui::SliderFloat3("DIRECTION", &selected_spot_light.direction.X, -1.0f, 1.0f, "%.1f");
+                    ImGui::ColorEdit3("COLOR", &selected_spot_light.color.X);
+                    ImGui::DragFloat("INNER CONE ANGLE", &selected_spot_light.inner_cone_angle, 0.01f);
+                    ImGui::DragFloat("OUTER CONE ANGLE", &selected_spot_light.outer_cone_angle, 0.01f);
+                    ImGui::DragFloat("INTENSITY", &selected_spot_light.intensity, 0.01f);
+                    if (ImGui::Button("DELETE")) {
+                        state.spot_lights.erase(state.spot_lights.begin() + selected_spot_light_index);
+                    }
+                    ImGui::PopItemWidth();
+                }
+                ImGui::EndChild();
+
+                if (ImGui::Button("ADD")) {
+                    SpotLight* new_light = new SpotLight();
+                    state.spot_lights.push_back(*new_light);
+                }
+
+                ImGui::EndTabItem();
+            }
 
             ImGui::EndTabBar();
         }
