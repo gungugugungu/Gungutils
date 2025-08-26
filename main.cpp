@@ -16,7 +16,8 @@ void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
     jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
-    state.window_surface.draw(jeff_goldblum, {16.0f, 16.0f});
+    jeff_goldblum.resize_percentage(0.5f, 0.5f);
+    state.window_surface.draw(jeff_goldblum, {32.0f, -128.0f});
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 

@@ -37,6 +37,7 @@
 #include "json/include/nlohmann/json.hpp"
 #include <reactphysics3d/reactphysics3d.h>
 #include "meshoptimizer/src/meshoptimizer.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb/stb_image_resize2.h"
 // shaders
 #include "shaders/mainshader.glsl.h"

@@ -11,7 +11,7 @@ public:
     HMM_Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     mutable vector<uint8_t> sokol_data_u8;
 
-    void initialize(int w, int h) {
+    void clear(int w, int h) {
         pixels.resize(h);
         for (int i = 0; i < h; i++) {
             pixels[i].resize(w);
@@ -21,25 +21,23 @@ public:
         }
     }
 
-    void draw(Surface other_surf, HMM_Vec2 pos) {
+    void draw(const Surface& other_surf, HMM_Vec2 pos) {
         int dest_x = static_cast<int>(pos.X);
         int dest_y = static_cast<int>(pos.Y);
 
-        if (pixels.empty() || pixels[0].empty()) return;
+        if (pixels.empty() || pixels[0].empty() || other_surf.pixels.empty()) return;
 
         int dest_height = pixels.size();
         int dest_width = pixels[0].size();
         int src_height = other_surf.pixels.size();
-        int src_width = other_surf.pixels.empty() ? 0 : other_surf.pixels[0].size();
+        int src_width = other_surf.pixels[0].size();
 
         for (int src_y = 0; src_y < src_height; src_y++) {
             for (int src_x = 0; src_x < src_width; src_x++) {
-                int target_y = dest_y + src_y;
                 int target_x = dest_x + src_x;
+                int target_y = dest_y + src_y;
 
-                if (target_y >= 0 && target_y < dest_height &&
-                    target_x >= 0 && target_x < dest_width) {
-
+                if (target_x >= 0 && target_x < dest_width && target_y >= 0 && target_y < dest_height) {
                     HMM_Vec4 pixel = other_surf.pixels[src_y][src_x];
                     pixel.X *= other_surf.color.X;
                     pixel.Y *= other_surf.color.Y;
