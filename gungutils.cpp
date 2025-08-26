@@ -1633,6 +1633,10 @@ void clear_scene() {
     }
     state.helpers.clear();
 
+    state.directional_lights.clear();
+    state.point_lights.clear();
+    state.spot_lights.clear();
+
     visualizer_objects.clear();
 }
 
@@ -2124,6 +2128,11 @@ void load_scene(const string& path) {
             if (light_json.contains("position")) {
                 auto pos = light_json["position"];
                 light.position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (light_json.contains("direction")) {
+                auto dir = light_json["direction"];
+                light.direction = HMM_V3(dir[0], dir[1], dir[2]);
             }
 
             if (light_json.contains("color")) {

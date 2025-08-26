@@ -11,8 +11,6 @@ float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
 float yrot = 0.0f;
 
-DirectionalLight light{};
-
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
@@ -31,10 +29,6 @@ void init() {
     print_fmod_error(result);
 
     load_scene("maps/boxes.gmap");
-    light.direction = {1.0f, -1.0f, -1.0f};
-    light.color = {1.0f, 1.0f, 1.0f};
-    light.intensity = 1.0f;
-    state.directional_lights.push_back(light);
 }
 
 void frame() {
