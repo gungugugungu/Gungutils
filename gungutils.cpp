@@ -2960,6 +2960,8 @@ void _init() {
     SDL_GetWindowSize(state.win, &w_width, &w_height);
     state.window_surface.initialize(w_width, w_height);
 
+    state.window_surface.load_from_file("jeff goldblum.png");
+
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);

@@ -16,7 +16,7 @@ public:
         for (int i = 0; i < h; i++) {
             pixels[i].resize(w);
             for (int j = 0; j < w; j++) {
-                pixels[i][j] = {1.0f, 1.0f, 0.0f, 0.0f};
+                pixels[i][j] = {1.0f, 1.0f, 1.0f, 0.0f};
             }
         }
     }
