@@ -1102,7 +1102,7 @@ vector<Object> load_gltf(const std::string& path) {
 
         HMM_Mat4 worldTransform = HMM_MulM4(parentTransform, localTransform);
 
-        if (node.extensions.count("KHR_lights_punctual") > 0) {
+        /*if (node.extensions.count("KHR_lights_punctual") > 0) {
             const auto& lightExt = node.extensions.at("KHR_lights_punctual");
             if (lightExt.Has("light")) {
                 int lightIndex = lightExt.Get("light").GetNumberAsInt();
@@ -1178,7 +1178,7 @@ vector<Object> load_gltf(const std::string& path) {
                     }
                 }
             }
-        }
+        }*/
 
         if (node.mesh >= 0 && node.mesh < model.meshes.size()) {
             const auto& meshDef = model.meshes[node.mesh];
@@ -2882,6 +2882,7 @@ void render_editor() {
         }
         ImGui::SameLine();
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
+        ImGui::DragFloat("FOV", &state.fov, 1.0f);
         ImGui::ColorEdit3("AMBIENT COLOR", &state.ambient_light.X);
 
         ImGui::End();
@@ -3002,8 +3003,9 @@ void _frame() {
     sfetch_dowork();
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
 
+    float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, static_cast<float>((int)w_width)/static_cast<float>((int)w_height), 0.1f, 1050.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, aspect, 0.1f, 1050.0f);
 
     vs_params = {.view = view, .projection = projection};
     HMM_Vec2 ssao_proj{};
