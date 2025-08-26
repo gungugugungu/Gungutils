@@ -1102,10 +1102,87 @@ vector<Object> load_gltf(const std::string& path) {
 
         HMM_Mat4 worldTransform = HMM_MulM4(parentTransform, localTransform);
 
+        if (node.extensions.count("KHR_lights_punctual") > 0) {
+            const auto& lightExt = node.extensions.at("KHR_lights_punctual");
+            if (lightExt.Has("light")) {
+                int lightIndex = lightExt.Get("light").GetNumberAsInt();
+
+                if (model.extensions.count("KHR_lights_punctual") > 0) {
+                    const auto& lightsExt = model.extensions.at("KHR_lights_punctual");
+                    if (lightsExt.Has("lights") && lightIndex >= 0) {
+                        const auto& lightsArray = lightsExt.Get("lights");
+                        if (lightIndex < lightsArray.ArrayLen()) {
+                            const auto& light = lightsArray.Get(lightIndex);
+
+                            HMM_Vec3 position, color;
+                            HMM_Quat rotation;
+                            HMM_Vec3 scale;
+                            decompose_matrix(worldTransform, position, rotation, scale);
+
+                            if (light.Has("color")) {
+                                const auto& colorArray = light.Get("color");
+                                if (colorArray.ArrayLen() >= 3) {
+                                    color = {
+                                        (float)colorArray.Get(0).GetNumberAsDouble(),
+                                        (float)colorArray.Get(1).GetNumberAsDouble(),
+                                        (float)colorArray.Get(2).GetNumberAsDouble()
+                                    };
+                                }
+                            } else {
+                                color = {1.0f, 1.0f, 1.0f};
+                            }
+
+                            std::string lightType = light.Get("type").Get<std::string>();
+                            float intensity = light.Has("intensity") ? (float)light.Get("intensity").GetNumberAsDouble() : 1.0f;
+
+                            if (lightType == "point") {
+                                PointLight pointLight;
+                                pointLight.type = 1;
+                                pointLight.position = position;
+                                pointLight.color = color;
+                                pointLight.intensity = intensity;
+                                pointLight.radius = light.Has("range") ? (float)light.Get("range").GetNumberAsDouble() : 10.0f;
+                                state.point_lights.push_back(pointLight);
+                            } else if (lightType == "spot") {
+                                SpotLight spotLight;
+                                spotLight.type = 2;
+                                spotLight.position = position;
+                                spotLight.color = color;
+                                spotLight.intensity = intensity;
+                                HMM_Mat4 rotMat = HMM_QToM4(rotation);
+                                HMM_Vec4 forward = {0.0f, 0.0f, -1.0f, 0.0f};
+                                HMM_Vec4 _direction = HMM_MulM4V4(rotMat, forward);
+                                spotLight.direction = _direction.XYZ;
+
+                                if (light.Has("spot")) {
+                                    const auto& spotData = light.Get("spot");
+                                    spotLight.inner_cone_angle = spotData.Has("innerConeAngle") ? (float)spotData.Get("innerConeAngle").GetNumberAsDouble() : 0.0f;
+                                    spotLight.outer_cone_angle = spotData.Has("outerConeAngle") ? (float)spotData.Get("outerConeAngle").GetNumberAsDouble() : 0.78539816f;
+                                } else {
+                                    spotLight.inner_cone_angle = 0.0f;
+                                    spotLight.outer_cone_angle = 0.78539816f;
+                                }
+                                state.spot_lights.push_back(spotLight);
+                            } else if (lightType == "directional") {
+                                DirectionalLight dirLight;
+                                dirLight.type = 0;
+                                dirLight.color = color;
+                                dirLight.intensity = intensity;
+                                HMM_Mat4 rotMat = HMM_QToM4(rotation);
+                                HMM_Vec4 forward = {0.0f, 0.0f, -1.0f, 0.0f};
+                                HMM_Vec4 _direction = HMM_MulM4V4(rotMat, forward);
+                                dirLight.direction = HMM_NormV3(_direction.XYZ);
+                                state.directional_lights.push_back(dirLight);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (node.mesh >= 0 && node.mesh < model.meshes.size()) {
             const auto& meshDef = model.meshes[node.mesh];
             for (const auto& prim : meshDef.primitives) {
-                // Check if required attributes exist
                 if (prim.attributes.find("POSITION") == prim.attributes.end() ||
                     prim.attributes.find("NORMAL") == prim.attributes.end() ||
                     prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
