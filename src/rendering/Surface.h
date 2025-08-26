@@ -25,7 +25,7 @@ public:
         int dest_x = static_cast<int>(pos.X);
         int dest_y = static_cast<int>(pos.Y);
 
-        if (pixels.empty() || pixels[0].empty() || other_surf.pixels.empty()) return;
+        if (pixels.empty() || pixels[0].empty() || other_surf.pixels.empty() || other_surf.pixels[0].empty()) return;
 
         int dest_height = pixels.size();
         int dest_width = pixels[0].size();
@@ -38,13 +38,15 @@ public:
                 int target_y = dest_y + src_y;
 
                 if (target_x >= 0 && target_x < dest_width && target_y >= 0 && target_y < dest_height) {
-                    HMM_Vec4 pixel = other_surf.pixels[src_y][src_x];
-                    pixel.X *= other_surf.color.X;
-                    pixel.Y *= other_surf.color.Y;
-                    pixel.Z *= other_surf.color.Z;
-                    pixel.W *= other_surf.color.W;
+                    HMM_Vec4 src_pixel = other_surf.pixels[src_y][src_x];
+                    HMM_Vec4 final_pixel = {
+                        src_pixel.X * other_surf.color.X,
+                        src_pixel.Y * other_surf.color.Y,
+                        src_pixel.Z * other_surf.color.Z,
+                        src_pixel.W * other_surf.color.W
+                    };
 
-                    pixels[target_y][target_x] = pixel;
+                    pixels[target_y][target_x] = final_pixel;
                 }
             }
         }

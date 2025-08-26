@@ -61,8 +61,6 @@ class AudioSource3D;
 class Helper;
 void render_editor();
 
-int mipmap_levels = 4;
-
 struct AppState {
     sg_pipeline pip{};
     sg_bindings bind{};
@@ -112,6 +110,8 @@ static float quad_vertices[] = {
     -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
      1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
 };
+
+sg_buffer quad_buffer;
 
 void init_post_processing() {
     int width, height;
@@ -184,6 +184,12 @@ void init_post_processing() {
     ssao_params.ao_strength = 1.0f;
     ssao_params.ao_power = 1.75f;
     ssao_params.ssao_samples = 32;
+
+    sg_buffer_desc quad_buf_desc = {};
+    quad_buf_desc.size = sizeof(quad_vertices);
+    quad_buf_desc.usage.vertex_buffer = true;
+    quad_buf_desc.data.ptr = quad_vertices;
+    quad_buffer = sg_make_buffer(&quad_buf_desc);
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -730,8 +736,6 @@ void render_first_pass() {
 
     render_meshes();
 
-    render_state_surf();
-
     sg_end_pass();
 }
 
@@ -766,7 +770,7 @@ void render_second_pass() {
 
     post_state.uniforms.time = (float)stm_sec(stm_now());
 
-    post_state.post_bindings.vertex_buffers[0] = {SG_INVALID_ID};
+    post_state.post_bindings.vertex_buffers[0] = {.id = SG_INVALID_ID};
     post_state.post_bindings.views[0] = post_state.rendered_color_tex_view;
     post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
     post_state.post_bindings.views[1] = post_state.rendered_depth_tex_view;
@@ -777,6 +781,8 @@ void render_second_pass() {
     sg_apply_uniforms(3, SG_RANGE(ssao_params));
 
     sg_draw(0, 3, 1);
+
+    render_state_surf();
 
     render_editor();
 
@@ -3031,8 +3037,8 @@ void _init() {
     sg_shader surf_shader = sg_make_shader(surface_shader_desc(sg_query_backend()));
     sg_pipeline_desc surface_pipeline_desc = {};
     surface_pipeline_desc.shader = surf_shader;
-    surface_pipeline_desc.layout.attrs[ATTR_postprocess_position].format = SG_VERTEXFORMAT_FLOAT3;
-    surface_pipeline_desc.layout.attrs[ATTR_postprocess_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    surface_pipeline_desc.layout.attrs[ATTR_surface_position].format = SG_VERTEXFORMAT_FLOAT3;
+    surface_pipeline_desc.layout.attrs[ATTR_surface_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
     surface_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     surface_pipeline_desc.color_count = 1;
     surface_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;

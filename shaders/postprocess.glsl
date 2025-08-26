@@ -10,7 +10,6 @@ layout(location = 1) in vec2 texcoord;
 out vec2 uv;
 
 void main() {
-    // fullscreen triangle
     const vec2 pos[3] = vec2[](
     vec2(-1.0, -1.0),
     vec2( 3.0, -1.0),

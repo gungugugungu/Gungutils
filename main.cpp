@@ -16,8 +16,6 @@ void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
     jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
-    jeff_goldblum.resize_percentage(0.5f, 0.5f);
-    state.window_surface.draw(jeff_goldblum, {32.0f, -128.0f});
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 
@@ -42,6 +40,8 @@ void frame() {
     if (!state.editor_open) {
         SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     }
+    state.window_surface.clear(w_width, w_height);
+    state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
 }
