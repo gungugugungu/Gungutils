@@ -31,9 +31,7 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 frag_color;
 
 void main() {
-    vec3 color = texture(texture2D, uv).rgb;
-
-    frag_color = vec4(color, 1.0);
+    frag_color = texture(texture2D, uv);
 }
 @end
 

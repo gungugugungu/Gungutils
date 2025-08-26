@@ -37,6 +37,7 @@
 #include "json/include/nlohmann/json.hpp"
 #include <reactphysics3d/reactphysics3d.h>
 #include "meshoptimizer/src/meshoptimizer.h"
+#include "stb/stb_image_resize2.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
@@ -2958,9 +2959,7 @@ void _init() {
 
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
-    state.window_surface.initialize(w_width, w_height);
-
-    state.window_surface.load_from_file("jeff goldblum.png");
+    state.window_surface.clear(w_width, w_height);
 
     // ImGui
     simgui_desc_t imgui_desc = {};
@@ -3040,6 +3039,13 @@ void _init() {
     surface_pipeline_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
     surface_pipeline_desc.depth.write_enabled = true;
     surface_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    surface_pipeline_desc.colors->blend.enabled = true;
+    surface_pipeline_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    surface_pipeline_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    surface_pipeline_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    surface_pipeline_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    surface_pipeline_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    surface_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     surface_pipeline_desc.label = "surface-pipeline";
     state.surf_pipeline = sg_make_pipeline(&surface_pipeline_desc);
 }
