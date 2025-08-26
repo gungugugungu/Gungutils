@@ -1971,7 +1971,6 @@ void load_scene(const string& path) {
                                     material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
                                     material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
 
-                                    // Load specular sampler settings
                                     if (material_json.contains("specular_sampler_min_filter")) {
                                         material->specular_sampler_desc.min_filter = static_cast<sg_filter>(material_json["specular_sampler_min_filter"]);
                                         material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["specular_sampler_mag_filter"]);
@@ -2069,6 +2068,84 @@ void load_scene(const string& path) {
                 helper->name = static_cast<string>(name);
             }
             helper->initialize(helper->name, helper->position);
+        }
+    }
+
+    if (j.contains("directional_lights")) {
+        for (const auto& light_json : j["directional_lights"]) {
+            DirectionalLight light{};
+            if (light_json.contains("direction")) {
+                auto pos = light_json["direction"];
+                light.direction = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (light_json.contains("color")) {
+                auto color = light_json["color"];
+                light.color = HMM_V3(color[0], color[1], color[2]);
+            }
+
+            if (light_json.contains("intensity")) {
+                auto intensity = light_json["intensity"];
+                light.intensity = static_cast<float>(intensity);
+            }
+            state.directional_lights.push_back(light);
+        }
+    }
+
+    if (j.contains("point_lights")) {
+        for (const auto& light_json : j["point_lights"]) {
+            PointLight light{};
+            if (light_json.contains("position")) {
+                auto pos = light_json["position"];
+                light.position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (light_json.contains("color")) {
+                auto color = light_json["color"];
+                light.color = HMM_V3(color[0], color[1], color[2]);
+            }
+
+            if (light_json.contains("intensity")) {
+                auto intensity = light_json["intensity"];
+                light.intensity = static_cast<float>(intensity);
+            }
+
+            if (light_json.contains("radius")) {
+                auto radius = light_json["radius"];
+                light.radius = static_cast<float>(radius);
+            }
+            state.point_lights.push_back(light);
+        }
+    }
+
+    if (j.contains("spot_lights")) {
+        for (const auto& light_json : j["spot_lights"]) {
+            SpotLight light{};
+            if (light_json.contains("position")) {
+                auto pos = light_json["position"];
+                light.position = HMM_V3(pos[0], pos[1], pos[2]);
+            }
+
+            if (light_json.contains("color")) {
+                auto color = light_json["color"];
+                light.color = HMM_V3(color[0], color[1], color[2]);
+            }
+
+            if (light_json.contains("intensity")) {
+                auto intensity = light_json["intensity"];
+                light.intensity = static_cast<float>(intensity);
+            }
+
+            if (light_json.contains("inner_cone_angle")) {
+                auto ica = light_json["inner_cone_angle"];
+                light.inner_cone_angle = static_cast<float>(ica);
+            }
+
+            if (light_json.contains("outer_cone_angle")) {
+                auto oca = light_json["outer_cone_angle"];
+                light.outer_cone_angle = static_cast<float>(oca);
+            }
+            state.spot_lights.push_back(light);
         }
     }
 
