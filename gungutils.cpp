@@ -3005,7 +3005,7 @@ void _frame() {
 
     float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, aspect, 0.1f, 1050.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), aspect, 0.1f, 1050.0f);
 
     vs_params = {.view = view, .projection = projection};
     HMM_Vec2 ssao_proj{};
