@@ -1773,6 +1773,43 @@ void save_scene(const string& path) {
         j["helpers"].push_back(helper_json);
     }
 
+    j["directional_lights"] = nlohmann::json::array();
+    for (DirectionalLight light : state.directional_lights) {
+        nlohmann::json dir_light_json;
+
+        dir_light_json["direction"] = nlohmann::json::array({light.direction.X, light.direction.Y, light.direction.Z});
+        dir_light_json["intensity"] = light.intensity;
+        dir_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
+
+        j["directional_lights"].push_back(dir_light_json);
+    }
+
+    j["point_lights"] = nlohmann::json::array();
+    for (PointLight light : state.point_lights) {
+        nlohmann::json point_light_json;
+
+        point_light_json["position"] = nlohmann::json::array({light.position.X, light.position.Y, light.position.Z});
+        point_light_json["intensity"] = light.intensity;
+        point_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
+        point_light_json["radius"] = light.radius;
+
+        j["point_lights"].push_back(point_light_json);
+    }
+
+    j["spot_lights"] = nlohmann::json::array();
+    for (SpotLight light : state.spot_lights) {
+        nlohmann::json spot_light_json;
+
+        spot_light_json["position"] = nlohmann::json::array({light.position.X, light.position.Y, light.position.Z});
+        spot_light_json["direction"] = nlohmann::json::array({light.direction.X, light.direction.Y, light.direction.Z});
+        spot_light_json["intensity"] = light.intensity;
+        spot_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
+        spot_light_json["inner_cone_angle"] = light.inner_cone_angle;
+        spot_light_json["outer_cone_angle"] = light.outer_cone_angle;
+
+        j["spot_lights"].push_back(spot_light_json);
+    }
+
     std::ofstream file(path);
     if (file.is_open()) {
         file << j.dump(4);
