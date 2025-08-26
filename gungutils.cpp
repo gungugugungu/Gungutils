@@ -88,6 +88,7 @@ struct AppState {
     vector<DirectionalLight> directional_lights;
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
+    HMM_Vec3 ambient_light = {0.5f, 0.5f, 0.5f};
 };
 
 AppState state;
@@ -484,7 +485,7 @@ void render_meshes() {
     }
 
     lights.light_amount = light_idx;
-    lights.ambient_color = { 0.1f, 0.1f, 0.1f, 0.0f };
+    lights.ambient_color = {state.ambient_light.X, state.ambient_light.Y, state.ambient_light.Y, 0.0f};
 
     for (auto &g : groups) {
         Mesh* mesh = g.mesh;
@@ -1654,7 +1655,6 @@ void save_scene(const string& path) {
         for (const auto& obj : visgroup.objects) {
             nlohmann::json obj_json;
 
-            // Save object transform properties
             obj_json["position"] = {obj.position.X, obj.position.Y, obj.position.Z};
             obj_json["rotation"] = {obj.rotation.X, obj.rotation.Y, obj.rotation.Z, obj.rotation.W};
             obj_json["scale"] = {obj.scale.X, obj.scale.Y, obj.scale.Z};
@@ -1667,7 +1667,6 @@ void save_scene(const string& path) {
 
                 mesh_json["enable_shading"] = mesh->enable_shading;
 
-                // Save vertex and index data
                 if (mesh->vertex_count > 0 && mesh->vertices) {
                     mesh_json["vertex_count"] = mesh->vertex_count;
                     mesh_json["vertices"] = nlohmann::json::array();
@@ -1690,11 +1689,9 @@ void save_scene(const string& path) {
 
                     Material* material = mesh->material;
 
-                    // Save material properties
                     material_json["diffuse"] = material->diffuse;
                     material_json["specular"] = material->specular;
 
-                    // Save diffuse texture
                     material_json["has_diffuse_texture"] = material->has_diffuse_texture;
                     if (material->has_diffuse_texture && material->diffuse_texture_data && material->diffuse_texture_data_size > 0) {
                         material_json["diffuse_texture_width"] = material->diffuse_texture_desc.width;
@@ -1709,14 +1706,12 @@ void save_scene(const string& path) {
                         material_json["diffuse_texture_data"] = hex_stream.str();
                         material_json["diffuse_texture_data_size"] = material->diffuse_texture_data_size;
 
-                        // Save diffuse sampler settings
                         material_json["diffuse_sampler_min_filter"] = static_cast<int>(material->diffuse_sampler_desc.min_filter);
                         material_json["diffuse_sampler_mag_filter"] = static_cast<int>(material->diffuse_sampler_desc.mag_filter);
                         material_json["diffuse_sampler_wrap_u"] = static_cast<int>(material->diffuse_sampler_desc.wrap_u);
                         material_json["diffuse_sampler_wrap_v"] = static_cast<int>(material->diffuse_sampler_desc.wrap_v);
                     }
 
-                    // Save specular texture
                     material_json["has_specular_texture"] = material->has_specular_texture;
                     if (material->has_specular_texture && material->specular_texture_data && material->specular_texture_data_size > 0) {
                         material_json["specular_texture_width"] = material->specular_texture_desc.width;
@@ -1731,7 +1726,6 @@ void save_scene(const string& path) {
                         material_json["specular_texture_data"] = hex_stream.str();
                         material_json["specular_texture_data_size"] = material->specular_texture_data_size;
 
-                        // Save specular sampler settings
                         material_json["specular_sampler_min_filter"] = static_cast<int>(material->specular_sampler_desc.min_filter);
                         material_json["specular_sampler_mag_filter"] = static_cast<int>(material->specular_sampler_desc.mag_filter);
                         material_json["specular_sampler_wrap_u"] = static_cast<int>(material->specular_sampler_desc.wrap_u);
@@ -1813,6 +1807,8 @@ void save_scene(const string& path) {
 
         j["spot_lights"].push_back(spot_light_json);
     }
+
+    j["ambient_light"] = nlohmann::json::array({state.ambient_light.X, state.ambient_light.Y, state.ambient_light.Z});
 
     std::ofstream file(path);
     if (file.is_open()) {
@@ -2156,6 +2152,11 @@ void load_scene(const string& path) {
             }
             state.spot_lights.push_back(light);
         }
+    }
+
+    if (j.contains("ambient_light")) {
+        auto ambient_light = j["ambient_light"];
+        state.ambient_light = HMM_V3(ambient_light[0], ambient_light[1], ambient_light[2]);
     }
 
     std::cout << "Scene loaded from: " << path << std::endl;
@@ -2804,6 +2805,7 @@ void render_editor() {
         }
         ImGui::SameLine();
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
+        ImGui::ColorEdit3("AMBIENT COLOR", &state.ambient_light.X);
 
         ImGui::End();
     } /*else {
