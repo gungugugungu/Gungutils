@@ -1,23 +1,29 @@
 //
 // Created by gungu on 7/23/25.
 //
-#include <memory>
 #include "gungutils.cpp"
-
-AudioSource3D* audio_source = new AudioSource3D();
-//FPSController player_controller;
 
 float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
 float yrot = 0.0f;
 Surface jeff_goldblum;
+Surface jeff_button;
+bool show_jeff = false;
 stbtt_fontinfo font;
+UIButton button;
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
-    SDL_HideCursor();
+    //SDL_HideCursor();
+
     jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
     load_font(&font, "font.ttf");
+
+    button.surface.load_from_file("test button.png");
+    button.position = {100.0f, 100.0f};
+    button.on_click_callback = []() {
+        show_jeff = !show_jeff;
+    };
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 
@@ -39,17 +45,19 @@ void frame() {
     // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
-    if (!state.editor_open) {
-        SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
-    }
+    //SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
     state.window_surface.clear(w_width, w_height);
-    state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
-    state.window_surface.draw_text(&font, "Jeff Goldblum", {400.0f, 128.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
+    if (show_jeff) {
+        state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
+        state.window_surface.draw_text(&font, "Jeff Goldblum", {400.0f, 128.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
+    }
+    button.draw(&state.window_surface);
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
 }
 
 void event(SDL_Event* e) {
+    button.update(e);
     if (e->type == SDL_EVENT_MOUSE_MOTION) {
         mouse_movement_x = e->motion.xrel;
         mouse_movement_y = e->motion.yrel;

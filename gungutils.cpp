@@ -12,6 +12,7 @@
 #include <ranges>
 #include <charconv>
 #include <memory>
+#include <functional>
 #include "imgui/imgui.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
@@ -868,7 +869,7 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     float ndc_y = 1.0f - (2.0f * screen_y) / window_height;
 
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov, (float)window_width / (float)window_height, 0.1f, 100.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
     HMM_Mat4 view_proj = HMM_MulM4(projection, view);
     HMM_Mat4 inv_view_proj = HMM_InvGeneralM4(view_proj);
     HMM_Vec4 near_point_ndc = HMM_V4(ndc_x, ndc_y, -1.0f, 1.0f);
