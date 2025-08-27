@@ -3075,8 +3075,8 @@ void _init() {
     particle_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     particle_pipeline_desc.color_count = 1;
     particle_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    particle_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
-    particle_pipeline_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    particle_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    particle_pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS;
     particle_pipeline_desc.depth.write_enabled = true;
     particle_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
     particle_pipeline_desc.colors->blend.enabled = true;
@@ -3087,7 +3087,7 @@ void _init() {
     particle_pipeline_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
     particle_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     particle_pipeline_desc.label = "particle-pipeline";
-    particle_pipeline = sg_make_pipeline(&surface_pipeline_desc);
+    particle_pipeline = sg_make_pipeline(&particle_pipeline_desc);
 }
 
 void _frame() {

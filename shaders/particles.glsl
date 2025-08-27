@@ -31,7 +31,7 @@ in vec2 uv;
 void main() {
     vec4 color = texture(texture2D, uv);
 
-    FragColor = vec4(color);
+    FragColor = color;
 }
 @end
 

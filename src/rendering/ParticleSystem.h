@@ -64,15 +64,14 @@ public:
     }
 
     void draw_particles(float dt, HMM_Mat4 projection, HMM_Mat4 view) {
-        cout << "drawin particles" << endl;
         sg_bindings bind = {};
         bind.vertex_buffers[0] = vertex_buffer;
-        bind.samplers[0] = sampler;
 
         sg_view_desc view_desc = {};
         view_desc.texture.image = image;
         sg_view image_view = sg_make_view(&view_desc);
         bind.views[0] = image_view;
+        bind.samplers[0] = sampler;
 
         sg_apply_bindings(bind);
         sg_apply_pipeline(particle_pipeline);
@@ -96,6 +95,7 @@ public:
             sg_apply_uniforms(UB_particle_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, 6, 1);
+            cout << "particle drawn at " << particle.position.X << " " << particle.position.Y << " " << particle.position.Z << endl;
         }
 
         sg_destroy_view(image_view);
