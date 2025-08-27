@@ -44,7 +44,7 @@ void frame() {
     }
     state.window_surface.clear(w_width, w_height);
     state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
-    state.window_surface.draw_text(&font, "Jeff Goldblum", {32.0f, 0.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
+    state.window_surface.draw_text(&font, "Jeff Goldblum", {400.0f, 128.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
 }
