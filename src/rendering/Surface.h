@@ -52,6 +52,64 @@ public:
         }
     }
 
+    void draw_text(const stbtt_fontinfo* font, const string& text, HMM_Vec2 pos, float scale, HMM_Vec4 text_color = {1.0f, 1.0f, 1.0f, 1.0f}) {
+    if (pixels.empty() || pixels[0].empty() || !font) return;
+
+    int dest_width = pixels[0].size();
+    int dest_height = pixels.size();
+
+    float x = pos.X;
+    float baseline_y = pos.Y;
+
+    int ascent, descent, line_gap;
+    stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
+    float scaled_ascent = ascent * scale;
+
+    for (size_t i = 0; i < text.length(); i++) {
+        int advance, lsb;
+        stbtt_GetCodepointHMetrics(font, text[i], &advance, &lsb);
+
+        int glyph_width, glyph_height, glyph_xoff, glyph_yoff;
+        unsigned char* glyph_bitmap = stbtt_GetCodepointBitmap(font, 0, scale, text[i], &glyph_width, &glyph_height, &glyph_xoff, &glyph_yoff);
+
+        if (glyph_bitmap) {
+            int start_x = (int)(x + glyph_xoff);
+            int start_y = (int)(baseline_y + scaled_ascent + glyph_yoff);
+
+            for (int gy = 0; gy < glyph_height; gy++) {
+                for (int gx = 0; gx < glyph_width; gx++) {
+                    int target_x = start_x + gx;
+                    int target_y = start_y + gy;
+
+                    if (target_x >= 0 && target_x < dest_width && target_y >= 0 && target_y < dest_height) {
+                        float alpha = glyph_bitmap[gy * glyph_width + gx] / 255.0f;
+
+                        if (alpha > 0.0f) {
+                            HMM_Vec4 bg_pixel = pixels[target_y][target_x];
+                            HMM_Vec4 final_pixel = {
+                                bg_pixel.X * (1.0f - alpha) + text_color.X * alpha,
+                                bg_pixel.Y * (1.0f - alpha) + text_color.Y * alpha,
+                                bg_pixel.Z * (1.0f - alpha) + text_color.Z * alpha,
+                                bg_pixel.W * (1.0f - alpha) + text_color.W * alpha
+                            };
+                            pixels[target_y][target_x] = final_pixel;
+                        }
+                    }
+                }
+            }
+
+            stbtt_FreeBitmap(glyph_bitmap, nullptr);
+        }
+
+        x += advance * scale;
+
+        if (i < text.length() - 1) {
+            int kern = stbtt_GetCodepointKernAdvance(font, text[i], text[i + 1]);
+            x += kern * scale;
+        }
+    }
+}
+
     void load_from_file(string path) {
         int img_width = 0, img_height = 0, num_channels = 0;
         const int desired_channels = 4;

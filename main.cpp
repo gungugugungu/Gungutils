@@ -11,11 +11,13 @@ float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
 float yrot = 0.0f;
 Surface jeff_goldblum;
+stbtt_fontinfo font;
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     SDL_HideCursor();
     jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
+    load_font(&font, "font.ttf");
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 
@@ -42,6 +44,7 @@ void frame() {
     }
     state.window_surface.clear(w_width, w_height);
     state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
+    state.window_surface.draw_text(&font, "Jeff Goldblum", {32.0f, 0.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
 }

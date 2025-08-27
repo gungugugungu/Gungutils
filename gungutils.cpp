@@ -39,6 +39,8 @@
 #include "meshoptimizer/src/meshoptimizer.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb/stb_image_resize2.h"
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb/stb_truetype.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
@@ -113,6 +115,20 @@ static float quad_vertices[] = {
 };
 
 sg_buffer quad_buffer;
+
+void load_font(stbtt_fontinfo *font_info, const char *filename) {
+    FILE* font_file = fopen(filename, "rb");
+    fseek(font_file, 0, SEEK_END);
+    size_t font_size = ftell(font_file);
+    fseek(font_file, 0, SEEK_SET);
+
+    unsigned char* font_buffer = new unsigned char[font_size];
+    fread(font_buffer, 1, font_size, font_file);
+    fclose(font_file);
+
+    stbtt_InitFont(font_info, font_buffer, 0);
+    cout << "loaded font " << filename << endl;
+}
 
 void init_post_processing() {
     int width, height;
