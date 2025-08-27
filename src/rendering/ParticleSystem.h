@@ -5,14 +5,14 @@
 #ifndef PARTICLESYSTEM_H
 #define PARTICLESYSTEM_H
 
-static float quad_vertices[] = {
+float quad_vertices[] = {
     -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
      1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
     -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
      1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
 };
 
-static unsigned int quad_indices[] = {
+unsigned int quad_indices[] = {
     0, 1, 2,
     1, 3, 2
 };
