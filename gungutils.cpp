@@ -52,6 +52,7 @@
 #include "rendering/Light.h"
 #include "rendering/Surface.h"
 #include "physics/PhysicsHolder.h"
+#include "ui/UIButton.h"
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
 

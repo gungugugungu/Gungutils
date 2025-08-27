@@ -11,12 +11,12 @@ public:
     HMM_Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     mutable vector<uint8_t> sokol_data_u8;
 
-    void clear(int w, int h) {
+    void clear(int w, int h, HMM_Vec4 color = {1.0f, 1.0f, 1.0f, 0.0f}) {
         pixels.resize(h);
         for (int i = 0; i < h; i++) {
             pixels[i].resize(w);
             for (int j = 0; j < w; j++) {
-                pixels[i][j] = {1.0f, 1.0f, 1.0f, 0.0f};
+                pixels[i][j] = color;
             }
         }
     }
