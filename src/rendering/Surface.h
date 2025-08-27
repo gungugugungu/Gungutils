@@ -35,7 +35,7 @@ public:
         for (int src_y = 0; src_y < src_height; src_y++) {
             for (int src_x = 0; src_x < src_width; src_x++) {
                 int target_x = dest_x + src_x;
-                int target_y = dest_y + src_y;
+                int target_y = dest_y + (src_height - 1 - src_y);
 
                 if (target_x >= 0 && target_x < dest_width && target_y >= 0 && target_y < dest_height) {
                     HMM_Vec4 src_pixel = other_surf.pixels[src_y][src_x];
@@ -101,7 +101,7 @@ public:
                 for (int gy = 0; gy < glyph_height; gy++) {
                     for (int gx = 0; gx < glyph_width; gx++) {
                         int target_x = start_x + gx;
-                        int target_y = start_y + (glyph_height - 1 - gy);
+                        int target_y = start_y + gy;
 
                         if (target_x >= 0 && target_x < dest_width && target_y >= 0 && target_y < dest_height) {
                             float alpha = glyph_bitmap[gy * glyph_width + gx] / 255.0f;
@@ -220,12 +220,13 @@ public:
         sokol_data_u8.resize(height * width * 4);
 
         for (int i = 0; i < height; i++) {
+            int src_y = height - 1 - i;
             for (int j = 0; j < width; j++) {
                 int idx = (i * width + j) * 4;
-                sokol_data_u8[idx] = static_cast<uint8_t>(pixels[i][j].X * 255.0f);
-                sokol_data_u8[idx + 1] = static_cast<uint8_t>(pixels[i][j].Y * 255.0f);
-                sokol_data_u8[idx + 2] = static_cast<uint8_t>(pixels[i][j].Z * 255.0f);
-                sokol_data_u8[idx + 3] = static_cast<uint8_t>(pixels[i][j].W * 255.0f);
+                sokol_data_u8[idx] = static_cast<uint8_t>(pixels[src_y][j].X * 255.0f);
+                sokol_data_u8[idx + 1] = static_cast<uint8_t>(pixels[src_y][j].Y * 255.0f);
+                sokol_data_u8[idx + 2] = static_cast<uint8_t>(pixels[src_y][j].Z * 255.0f);
+                sokol_data_u8[idx + 3] = static_cast<uint8_t>(pixels[src_y][j].W * 255.0f);
             }
         }
 
