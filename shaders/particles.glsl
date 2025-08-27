@@ -8,13 +8,14 @@ layout(binding = 0) uniform particle_vs_params {
     mat4 model;
     mat4 view;
     mat4 projection;
+    float size;
 };
 
-out vec2 uv;
+layout(location = 0) out vec2 uv;
 
 void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
-    uv = texCoord;
+    uv = aPos.xy;
 }
 @end
 
@@ -24,12 +25,12 @@ out vec4 FragColor;
 layout(binding = 0) uniform texture2D _tex2d;
 layout(binding = 0) uniform sampler tex2d_smp;
 
-#define texture2D sampler2D(_tex2d, tex2d_smp)
+#define texy sampler2D(_tex2d, tex2d_smp)
 
-in vec2 uv;
+layout(location = 0) in vec2 uv;
 
 void main() {
-    vec4 color = texture(texture2D, uv);
+    vec4 color = texture(texy, uv);
 
     FragColor = color;
 }

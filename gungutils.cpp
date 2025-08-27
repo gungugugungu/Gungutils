@@ -110,6 +110,7 @@ int texture_index = 0;
 int mesh_index = 0;
 int num_elements = 0;
 bool loaded_is_palette = false;
+sg_pipeline particle_pipeline{.id = SG_INVALID_ID};
 
 struct TimeState {
     Uint64 freq = 0;
@@ -646,7 +647,6 @@ void render_meshes() {
 
 void render_state_surf() {
     if (state.window_surface.pixels.empty() || state.window_surface.pixels[0].empty()) {
-        cout << "YOU DONE FUCKED UP" << endl;
         cout << "the window surface is empty which I don't know how you did like what the fuck man?" << endl;
         return;
     }
@@ -776,7 +776,7 @@ void render_first_pass() {
     render_meshes();
 
     for (auto& psys : state.particle_systems) {
-        psys.draw_particles(time_state.dt, vs_params.projection, vs_params.view);
+        psys.draw_particles(particle_pipeline, time_state.dt, vs_params.projection, vs_params.view);
     }
 
     sg_end_pass();
@@ -3013,7 +3013,6 @@ void _init() {
     sfetch_setup(&fetch_desc);
 
     sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
-
     sg_pipeline_desc pip_desc = {};
     pip_desc.shader = shd;
     pip_desc.color_count = 1;

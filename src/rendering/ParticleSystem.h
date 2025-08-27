@@ -17,8 +17,6 @@ static unsigned int quad_indices[] = {
     1, 3, 2
 };
 
-sg_pipeline particle_pipeline{.id = SG_INVALID_ID};
-
 struct Particle {
     HMM_Vec3 position{0.0f, 0.0f, 0.0f};
     HMM_Vec3 velocity{0.0f, 0.0f, 0.0f};
@@ -38,12 +36,12 @@ public:
 
     void initialize(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size, float random_offset_size) {
         sg_image_desc image_desc = {};
-        image_desc.height = surface->pixels.size();
         image_desc.width = surface->pixels[0].size();
+        image_desc.height = surface->pixels.size();
         image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-        image_desc.usage.color_attachment = true;
         image_desc.usage.immutable = true;
         image_desc.data = surface->get_sokol_image_data();
+        image_desc.label = "particle-image";
         image = sg_make_image(&image_desc);
 
         sg_sampler_desc sampler_desc = {};
@@ -51,11 +49,11 @@ public:
         sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
         sampler_desc.min_filter = SG_FILTER_LINEAR;
         sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        sampler_desc.label = "particle-sampler";
         sampler = sg_make_sampler(&sampler_desc);
 
         sg_buffer_desc vertex_buffer_desc = {};
         vertex_buffer_desc.usage.vertex_buffer = true;
-        vertex_buffer_desc.usage.immutable = true;
         vertex_buffer_desc.size = sizeof(quad_vertices);
         vertex_buffer_desc.data = SG_RANGE(quad_vertices);
         vertex_buffer = sg_make_buffer(&vertex_buffer_desc);
@@ -80,35 +78,56 @@ public:
         }
     }
 
-    void draw_particles(float dt, HMM_Mat4 projection, HMM_Mat4 view) {
+    void update_one(Particle *particle, float dt) {
+        particle->velocity.Y += gravity * dt;
+        particle->position.X += particle->velocity.X * dt;
+        particle->position.Y += particle->velocity.Y * dt;
+        particle->position.Z += particle->velocity.Z * dt;
+    }
+
+    void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view) {
         sg_bindings bind = {};
         bind.vertex_buffers[0] = vertex_buffer;
         bind.index_buffer = index_buffer;
 
         sg_view_desc view_desc = {};
         view_desc.texture.image = image;
+        view_desc.label = "particle-image-view";
         sg_view image_view = sg_make_view(&view_desc);
         bind.views[0] = image_view;
         bind.samplers[0] = sampler;
+        if (sampler.id == SG_INVALID_ID) {
+            cout << "sampler is invalid" << endl;
+        }
+        if (image_view.id == SG_INVALID_ID) {
+            cout << "view is invalid" << endl;
+        }
+        if (image.id == SG_INVALID_ID) {
+            cout << "image is invalid" << endl;
+        }
+        if (pipeline.id == SG_INVALID_ID) {
+            cout << "pipeline is invalid" << endl;
+        }
+        if (vertex_buffer.id == SG_INVALID_ID) {
+            cout << "vertex buffer is invalid" << endl;
+        }
 
         sg_apply_bindings(bind);
-        sg_apply_pipeline(particle_pipeline);
+        sg_apply_pipeline(pipeline);
 
         particle_vs_params_t vs_params = {};
         vs_params.projection = projection;
         vs_params.view = view;
 
         for (auto& particle : particles) {
-            particle.velocity.Y += gravity * dt;
-            particle.position.X += particle.velocity.X * dt;
-            particle.position.Y += particle.velocity.Y * dt;
-            particle.position.Z += particle.velocity.Z * dt;
+            update_one(&particle, dt);
 
             HMM_Mat4 translate_mat = HMM_Translate(particle.position);
             HMM_Mat4 rot_mat = HMM_QToM4(HMM_Quat{0.0f, 0.0f, 0.0f, 1.0f});
             HMM_Mat4 scale_mat = HMM_Scale({particle.size, particle.size, particle.size});
             HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
             vs_params.model = model;
+            vs_params.size = particle.size;
 
             sg_apply_uniforms(UB_particle_vs_params, SG_RANGE(vs_params));
 
