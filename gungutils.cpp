@@ -3079,6 +3079,7 @@ void _init() {
     particle_pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS;
     particle_pipeline_desc.depth.write_enabled = true;
     particle_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    particle_pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
     particle_pipeline_desc.colors->blend.enabled = true;
     particle_pipeline_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
     particle_pipeline_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
@@ -3356,6 +3357,7 @@ void fetch_callback(const sfetch_response_t* response) {
 }
 
 int main(int argc, char* argv[]) {
+    srand (static_cast <unsigned> (time(0)));
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);

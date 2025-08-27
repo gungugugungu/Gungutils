@@ -12,6 +12,11 @@ static float quad_vertices[] = {
      1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
 };
 
+static unsigned int quad_indices[] = {
+    0, 1, 2,
+    1, 3, 2
+};
+
 sg_pipeline particle_pipeline{.id = SG_INVALID_ID};
 
 struct Particle {
@@ -25,12 +30,13 @@ public:
     vector<Particle> particles;
 
     sg_buffer vertex_buffer{.id = SG_INVALID_ID};
+    sg_buffer index_buffer{.id = SG_INVALID_ID};
     sg_image image{.id = SG_INVALID_ID};
     sg_sampler sampler{.id = SG_INVALID_ID};
 
     float gravity = 0;
 
-    void initialize(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size) {
+    void initialize(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size, float random_offset_size) {
         sg_image_desc image_desc = {};
         image_desc.height = surface->pixels.size();
         image_desc.width = surface->pixels[0].size();
@@ -54,9 +60,20 @@ public:
         vertex_buffer_desc.data = SG_RANGE(quad_vertices);
         vertex_buffer = sg_make_buffer(&vertex_buffer_desc);
 
+        sg_buffer_desc index_buffer_desc = {};
+        index_buffer_desc.usage.vertex_buffer = false;
+        index_buffer_desc.usage.index_buffer = true;
+        index_buffer_desc.usage.immutable = true;
+        index_buffer_desc.size = sizeof(quad_indices);
+        index_buffer_desc.data = SG_RANGE(quad_indices);
+        index_buffer = sg_make_buffer(&index_buffer_desc);
+
         for (int i; i<particle_amount; i++) {
             Particle particle;
-            particle.position = pos;
+            float r1 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
+            float r2 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
+            float r3 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
+            particle.position = {pos.X+r1, pos.Y+r2, pos.Z+r3};
             particle.velocity = initial_vel;
             particle.size = size;
             particles.push_back(particle);
@@ -66,6 +83,7 @@ public:
     void draw_particles(float dt, HMM_Mat4 projection, HMM_Mat4 view) {
         sg_bindings bind = {};
         bind.vertex_buffers[0] = vertex_buffer;
+        bind.index_buffer = index_buffer;
 
         sg_view_desc view_desc = {};
         view_desc.texture.image = image;
@@ -95,7 +113,6 @@ public:
             sg_apply_uniforms(UB_particle_vs_params, SG_RANGE(vs_params));
 
             sg_draw(0, 6, 1);
-            cout << "particle drawn at " << particle.position.X << " " << particle.position.Y << " " << particle.position.Z << endl;
         }
 
         sg_destroy_view(image_view);
@@ -105,6 +122,7 @@ public:
         sg_destroy_image(image);
         sg_destroy_sampler(sampler);
         sg_destroy_buffer(vertex_buffer);
+        sg_destroy_buffer(index_buffer);
     }
 };
 

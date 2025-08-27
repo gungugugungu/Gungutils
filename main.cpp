@@ -34,7 +34,7 @@ void init() {
 
     load_scene("maps/boxes.gmap");
 
-    particle_system.initialize(&jeff_goldblum, 60, {0.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.0f}, 5.0f);
+    particle_system.initialize(&jeff_goldblum, 60, {0.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.0f}, 5.0f, 2.0f);
     state.particle_systems.push_back(particle_system);
 }
 
