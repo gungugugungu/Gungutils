@@ -46,6 +46,7 @@
 #include "shaders/mainshader.glsl.h"
 #include "shaders/postprocess.glsl.h"
 #include "shaders/surface.glsl.h"
+#include "shaders/particles.glsl.h"
 // sources
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
@@ -55,6 +56,7 @@
 #include "rendering/Light.h"
 #include "rendering/Surface.h"
 #include "physics/PhysicsHolder.h"
+#include "rendering/ParticleSystem.h"
 #include "ui/UIButton.h"
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
@@ -98,6 +100,7 @@ struct AppState {
 
     sg_pipeline surf_pipeline;
     Surface window_surface{};
+    vector<ParticleSystem> particle_systems;
 };
 
 AppState state;
@@ -108,14 +111,38 @@ int mesh_index = 0;
 int num_elements = 0;
 bool loaded_is_palette = false;
 
-static float quad_vertices[] = {
-    -1.0f, -1.0f, 0.0f,  0.0f, 0.0f,
-     1.0f, -1.0f, 0.0f,  1.0f, 0.0f,
-    -1.0f,  1.0f, 0.0f,  0.0f, 1.0f,
-     1.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+struct TimeState {
+    Uint64 freq = 0;
+    Uint64 last = 0;
+    float dt = 1.0f / 60.0f; // safe initial value
+    float fps = 60.0f;
 };
 
-sg_buffer quad_buffer;
+TimeState time_state;
+
+void Time_Init(TimeState& t) {
+    t.freq = SDL_GetPerformanceFrequency();
+    t.last = SDL_GetPerformanceCounter();
+}
+
+void Time_BeginFrame(TimeState& t) {
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 diff = now - t.last;
+    t.last = now;
+
+    double dt = (double)diff / (double)t.freq;
+
+    // keep it valid and friendly for ImGui
+    if (!std::isfinite(dt) || dt <= 0.0) {
+        dt = 1.0 / 60.0;
+    } else if (dt > 0.25) {
+        // clamp huge spikes
+        dt = 0.016;
+    }
+
+    t.dt = static_cast<float>(dt);
+    t.fps = 1.0f / t.dt;
+}
 
 void load_font(stbtt_fontinfo *font_info, const char *filename) {
     FILE* font_file = fopen(filename, "rb");
@@ -202,12 +229,6 @@ void init_post_processing() {
     ssao_params.ao_strength = 1.0f;
     ssao_params.ao_power = 1.75f;
     ssao_params.ssao_samples = 32;
-
-    sg_buffer_desc quad_buf_desc = {};
-    quad_buf_desc.size = sizeof(quad_vertices);
-    quad_buf_desc.usage.vertex_buffer = true;
-    quad_buf_desc.data.ptr = quad_vertices;
-    quad_buffer = sg_make_buffer(&quad_buf_desc);
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -753,6 +774,10 @@ void render_first_pass() {
     sg_begin_pass(&pass);
 
     render_meshes();
+
+    for (auto& psys : state.particle_systems) {
+        psys.draw_particles(time_state.dt, vs_params.projection, vs_params.view);
+    }
 
     sg_end_pass();
 }
@@ -2326,39 +2351,6 @@ Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME
     return nullptr;
 }
 
-struct TimeState {
-    Uint64 freq = 0;
-    Uint64 last = 0;
-    float dt = 1.0f / 60.0f; // safe initial value
-    float fps = 60.0f;
-};
-
-TimeState time_state;
-
-void Time_Init(TimeState& t) {
-    t.freq = SDL_GetPerformanceFrequency();
-    t.last = SDL_GetPerformanceCounter();
-}
-
-void Time_BeginFrame(TimeState& t) {
-    Uint64 now = SDL_GetPerformanceCounter();
-    Uint64 diff = now - t.last;
-    t.last = now;
-
-    double dt = (double)diff / (double)t.freq;
-
-    // keep it valid and friendly for ImGui
-    if (!std::isfinite(dt) || dt <= 0.0) {
-        dt = 1.0 / 60.0;
-    } else if (dt > 0.25) {
-        // clamp huge spikes
-        dt = 0.016;
-    }
-
-    t.dt = static_cast<float>(dt);
-    t.fps = 1.0f / t.dt;
-}
-
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -3073,6 +3065,29 @@ void _init() {
     surface_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     surface_pipeline_desc.label = "surface-pipeline";
     state.surf_pipeline = sg_make_pipeline(&surface_pipeline_desc);
+
+    // particle pipeline
+    sg_shader particle_shader = sg_make_shader(particle_shader_desc(sg_query_backend()));
+    sg_pipeline_desc particle_pipeline_desc = {};
+    particle_pipeline_desc.shader = particle_shader;
+    particle_pipeline_desc.layout.attrs[ATTR_particle_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    particle_pipeline_desc.layout.attrs[ATTR_particle_texCoord].format = SG_VERTEXFORMAT_FLOAT2;
+    particle_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    particle_pipeline_desc.color_count = 1;
+    particle_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    particle_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    particle_pipeline_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    particle_pipeline_desc.depth.write_enabled = true;
+    particle_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    particle_pipeline_desc.colors->blend.enabled = true;
+    particle_pipeline_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    particle_pipeline_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    particle_pipeline_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    particle_pipeline_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    particle_pipeline_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    particle_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
+    particle_pipeline_desc.label = "particle-pipeline";
+    particle_pipeline = sg_make_pipeline(&surface_pipeline_desc);
 }
 
 void _frame() {
