@@ -56,7 +56,16 @@ void event(SDL_Event* e) {
 
     if (e->type == SDL_EVENT_KEY_DOWN) {
         if (e->key.key == SDLK_H) {
-            state.particle_systems.emplace_back(&jeff_goldblum, 3, HMM_Vec3{0.0f, 0.0f, 0.0f}, HMM_Vec3{0.0f, 0.5f, 0.0f}, 0.5f, 2.0f);
+            ParticleSystemValues values;
+            values.particle_amount = 50;
+            values.initial_pos = {-10.0f, 10.0f, -10.0f};
+            values.position_random_offset_size = 20.0f;
+            values.initial_vel = {0.0f, 0.0f, 0.0f};
+            values.gravity = -9.81f;
+            values.max_lifetime = 3.0f;
+            values.size = 0.25f;
+
+            state.particle_systems.emplace_back(&jeff_goldblum, values);
         }
     }
 }

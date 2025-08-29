@@ -17,10 +17,36 @@ unsigned int quad_indices[] = {
     1, 3, 2
 };
 
+struct ParticleSystemValues {
+    int particle_amount;
+    HMM_Vec3 initial_pos{0.0f, 0.0f, 0.0f};
+    float position_random_offset_size = 0.0f;
+    HMM_Vec3 initial_vel{0.0f, 0.0f, 0.0f};
+    float velocity_random_multiplier_size = 0.0f;
+    float size = 1.0f;
+    float size_random_offset_size = 0.0f;
+    float gravity = 0.0f;
+    bool emitter = false;
+    float emitter_rate = 1.0f;
+    float max_lifetime = 1.0f;
+};
+
 struct Particle {
     HMM_Vec3 position{0.0f, 0.0f, 0.0f};
     HMM_Vec3 velocity{0.0f, 0.0f, 0.0f};
     float size = 1;
+    float age = 0.0f;
+
+    bool operator==(const Particle& other) const {
+        return position.X == other.position.X &&
+               position.Y == other.position.Y &&
+               position.Z == other.position.Z &&
+               velocity.X == other.velocity.X &&
+               velocity.Y == other.velocity.Y &&
+               velocity.Z == other.velocity.Z &&
+               size == other.size &&
+               age == other.age;
+    }
 };
 
 class ParticleSystem {
@@ -31,10 +57,11 @@ public:
     sg_buffer index_buffer{.id = SG_INVALID_ID};
     sg_image image{.id = SG_INVALID_ID};
     sg_sampler sampler{.id = SG_INVALID_ID};
+    ParticleSystemValues values;
 
-    float gravity = 0;
+    void initialize(Surface *surface, ParticleSystemValues init_values) {
+        values = init_values;
 
-    void initialize(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size, float random_offset_size) {
         sg_image_desc image_desc = {};
         image_desc.width = surface->pixels[0].size();
         image_desc.height = surface->pixels.size();
@@ -66,23 +93,35 @@ public:
         index_buffer_desc.data = SG_RANGE(quad_indices);
         index_buffer = sg_make_buffer(&index_buffer_desc);
 
-        for (int i = 0; i<particle_amount; i++) {
+        for (int i = 0; i<values.particle_amount; i++) {
             Particle particle;
-            float r1 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
-            float r2 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
-            float r3 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
-            particle.position = {pos.X+r1, pos.Y+r2, pos.Z+r3};
-            particle.velocity = initial_vel;
-            particle.size = size;
+            float r1 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+            float r2 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+            float r3 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+            particle.position = {values.initial_pos.X+r1, values.initial_pos.Y+r2, values.initial_pos.Z+r3};
+            particle.velocity = values.initial_vel;
+            particle.size = values.size;
             particles.push_back(particle);
         }
     }
 
-    void update_one(Particle *particle, float dt) {
-        particle->velocity.Y += gravity * dt;
+    const void update_one(Particle *particle, float dt) {
+        particle->velocity.Y += values.gravity * dt;
         particle->position.X += particle->velocity.X * dt;
         particle->position.Y += particle->velocity.Y * dt;
         particle->position.Z += particle->velocity.Z * dt;
+
+        particle->age += dt;
+    }
+
+    const void update(float dt) {
+        if (values.emitter) {
+        }
+
+        particles.erase(
+            std::remove_if(particles.begin(), particles.end(),
+                [this](const Particle& p) { return p.age > values.max_lifetime; }),
+            particles.end());
     }
 
     void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view) {
@@ -119,6 +158,8 @@ public:
         vs_params.projection = projection;
         vs_params.view = view;
 
+        update(dt);
+
         for (auto& particle : particles) {
             update_one(&particle, dt);
 
@@ -146,7 +187,7 @@ public:
         index_buffer = other.index_buffer;
         image = other.image;
         sampler = other.sampler;
-        gravity = other.gravity;
+        values = other.values;
 
         other.vertex_buffer.id = SG_INVALID_ID;
         other.index_buffer.id = SG_INVALID_ID;
@@ -154,8 +195,8 @@ public:
         other.sampler.id = SG_INVALID_ID;
     }
 
-    ParticleSystem(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size, float random_offset_size) {
-        initialize(surface, particle_amount, pos, initial_vel, size, random_offset_size);
+    ParticleSystem(Surface *surface, ParticleSystemValues init_values) {
+        initialize(surface, init_values);
     }
 
     ParticleSystem& operator=(ParticleSystem&& other) noexcept {
@@ -170,7 +211,7 @@ public:
             index_buffer = other.index_buffer;
             image = other.image;
             sampler = other.sampler;
-            gravity = other.gravity;
+            values = other.values;
 
             other.vertex_buffer.id = SG_INVALID_ID;
             other.index_buffer.id = SG_INVALID_ID;
