@@ -66,7 +66,7 @@ public:
         index_buffer_desc.data = SG_RANGE(quad_indices);
         index_buffer = sg_make_buffer(&index_buffer_desc);
 
-        for (int i; i<particle_amount; i++) {
+        for (int i = 0; i<particle_amount; i++) {
             Particle particle;
             float r1 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
             float r2 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/random_offset_size));
@@ -137,11 +137,54 @@ public:
         sg_destroy_view(image_view);
     }
 
+    ParticleSystem(const ParticleSystem&) = delete;
+    ParticleSystem& operator=(const ParticleSystem&) = delete;
+
+    ParticleSystem(ParticleSystem&& other) noexcept {
+        particles = std::move(other.particles);
+        vertex_buffer = other.vertex_buffer;
+        index_buffer = other.index_buffer;
+        image = other.image;
+        sampler = other.sampler;
+        gravity = other.gravity;
+
+        other.vertex_buffer.id = SG_INVALID_ID;
+        other.index_buffer.id = SG_INVALID_ID;
+        other.image.id = SG_INVALID_ID;
+        other.sampler.id = SG_INVALID_ID;
+    }
+
+    ParticleSystem(Surface *surface, int particle_amount, HMM_Vec3 pos, HMM_Vec3 initial_vel, float size, float random_offset_size) {
+        initialize(surface, particle_amount, pos, initial_vel, size, random_offset_size);
+    }
+
+    ParticleSystem& operator=(ParticleSystem&& other) noexcept {
+        if (this != &other) {
+            sg_destroy_buffer(vertex_buffer);
+            sg_destroy_buffer(index_buffer);
+            sg_destroy_image(image);
+            sg_destroy_sampler(sampler);
+
+            particles = std::move(other.particles);
+            vertex_buffer = other.vertex_buffer;
+            index_buffer = other.index_buffer;
+            image = other.image;
+            sampler = other.sampler;
+            gravity = other.gravity;
+
+            other.vertex_buffer.id = SG_INVALID_ID;
+            other.index_buffer.id = SG_INVALID_ID;
+            other.image.id = SG_INVALID_ID;
+            other.sampler.id = SG_INVALID_ID;
+        }
+        return *this;
+    }
+
     ~ParticleSystem() {
-        sg_destroy_image(image);
-        sg_destroy_sampler(sampler);
-        sg_destroy_buffer(vertex_buffer);
-        sg_destroy_buffer(index_buffer);
+        if (vertex_buffer.id != SG_INVALID_ID) sg_destroy_buffer(vertex_buffer);
+        if (index_buffer.id != SG_INVALID_ID) sg_destroy_buffer(index_buffer);
+        if (image.id != SG_INVALID_ID) sg_destroy_image(image);
+        if (sampler.id != SG_INVALID_ID) sg_destroy_sampler(sampler);
     }
 };
 

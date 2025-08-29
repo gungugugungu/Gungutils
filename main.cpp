@@ -10,7 +10,6 @@ Surface jeff_goldblum;
 Surface jeff_button;
 bool show_jeff = false;
 stbtt_fontinfo font;
-ParticleSystem particle_system;
 
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
@@ -47,11 +46,6 @@ void frame() {
     }
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
-    if (particle_pipeline.id != SG_INVALID_ID && state.particle_systems.size() == 0) {
-        particle_system.initialize(&jeff_goldblum, 60, {0.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.0f}, 0.5f, 2.0f);
-        state.particle_systems.push_back(particle_system);
-        cout << "valid" << endl;
-    }
 }
 
 void event(SDL_Event* e) {
@@ -62,8 +56,7 @@ void event(SDL_Event* e) {
 
     if (e->type == SDL_EVENT_KEY_DOWN) {
         if (e->key.key == SDLK_H) {
-            particle_system.initialize(&jeff_goldblum, 60, {0.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.0f}, 0.5f, 2.0f);
-            state.particle_systems.push_back(particle_system);
+            state.particle_systems.emplace_back(&jeff_goldblum, 3, HMM_Vec3{0.0f, 0.0f, 0.0f}, HMM_Vec3{0.0f, 0.5f, 0.0f}, 0.5f, 2.0f);
         }
     }
 }
