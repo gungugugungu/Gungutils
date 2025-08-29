@@ -40,7 +40,7 @@ public:
         image_desc.height = surface->pixels.size();
         image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
         image_desc.usage.immutable = true;
-        image_desc.data = surface->get_sokol_image_data();
+        image_desc.data = surface->get_sokol_image_data_unflipped();
         image_desc.label = "particle-image";
         image = sg_make_image(&image_desc);
 

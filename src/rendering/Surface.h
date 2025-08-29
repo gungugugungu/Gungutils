@@ -234,6 +234,32 @@ public:
 
         return img_data;
     }
+
+    sg_image_data get_sokol_image_data_unflipped() const {
+        sg_image_data img_data = {};
+
+        if (pixels.empty() || pixels[0].empty()) {
+            return img_data;
+        }
+
+        int height = pixels.size();
+        int width = pixels[0].size();
+        sokol_data_u8.resize(height * width * 4);
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                int idx = (i * width + j) * 4;
+                sokol_data_u8[idx] = static_cast<uint8_t>(pixels[i][j].X * 255.0f);
+                sokol_data_u8[idx + 1] = static_cast<uint8_t>(pixels[i][j].Y * 255.0f);
+                sokol_data_u8[idx + 2] = static_cast<uint8_t>(pixels[i][j].Z * 255.0f);
+                sokol_data_u8[idx + 3] = static_cast<uint8_t>(pixels[i][j].W * 255.0f);
+            }
+        }
+
+        img_data.subimage[0][0] = {sokol_data_u8.data(), sokol_data_u8.size()};
+
+        return img_data;
+    }
 };
 
 #endif //SURFACE_H
