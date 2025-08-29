@@ -124,7 +124,7 @@ public:
             particles.end());
     }
 
-    void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view) {
+    void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view, HMM_Vec3 camera_pos) {
         sg_bindings bind = {};
         bind.vertex_buffers[0] = vertex_buffer;
         bind.index_buffer = index_buffer;
@@ -163,10 +163,21 @@ public:
         for (auto& particle : particles) {
             update_one(&particle, dt);
 
+            HMM_Vec3 to_camera = HMM_NormV3(HMM_SubV3(camera_pos, particle.position));
+            HMM_Vec3 up = {0.0f, 1.0f, 0.0f};
+            HMM_Vec3 right = HMM_NormV3(HMM_Cross(up, to_camera));
+            up = HMM_Cross(to_camera, right);
+
+            HMM_Mat4 billboard_mat = {
+                right.X, right.Y, right.Z, 0.0f,
+                up.X, up.Y, up.Z, 0.0f,
+                -to_camera.X, -to_camera.Y, -to_camera.Z, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f
+            };
+
             HMM_Mat4 translate_mat = HMM_Translate(particle.position);
-            HMM_Mat4 rot_mat = HMM_QToM4(HMM_Quat{0.0f, 0.0f, 0.0f, 1.0f});
             HMM_Mat4 scale_mat = HMM_Scale({particle.size, particle.size, particle.size});
-            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(billboard_mat, scale_mat));
             vs_params.model = model;
             vs_params.size = particle.size;
 
