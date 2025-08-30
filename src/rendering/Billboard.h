@@ -17,7 +17,7 @@ struct BillboardInfo {
     HMM_Vec3 position;
     float size;
     bool y_only_rotation;
-    bool rotate_to_camera;
+    bool rotate_to_camera = false;
 };
 
 vector<BillboardInfo> billboards;
@@ -96,6 +96,10 @@ void _draw_all_billboards(HMM_Vec3 camera_pos) {
         sg_apply_uniforms(UB_billboard_vs_params, SG_RANGE(billboard_vs_params));
 
         sg_draw(0, 6, 1);
+
+        sg_destroy_view(image_view);
+        sg_destroy_sampler(sampler);
+        sg_destroy_image(image);
     }
     billboards.clear();
 }
