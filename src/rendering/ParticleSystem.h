@@ -22,9 +22,9 @@ struct ParticleSystemValues {
     HMM_Vec3 initial_pos{0.0f, 0.0f, 0.0f};
     float position_random_offset_size = 0.0f;
     HMM_Vec3 initial_vel{0.0f, 0.0f, 0.0f};
-    float velocity_random_multiplier_size = 0.0f;
+    float velocity_random_multiplier_size = 0.0f; // TODO
     float size = 1.0f;
-    float size_random_offset_size = 0.0f;
+    float size_random_offset_size = 0.0f; // TODO
     float gravity = 0.0f;
     bool emitter = false;
     float emitter_rate = 1.0f;
@@ -58,6 +58,8 @@ public:
     sg_image image{.id = SG_INVALID_ID};
     sg_sampler sampler{.id = SG_INVALID_ID};
     ParticleSystemValues values;
+
+    float time_since_last_emit = 0.0f;
 
     void initialize(Surface *surface, ParticleSystemValues init_values) {
         values = init_values;
@@ -116,12 +118,21 @@ public:
 
     const void update(float dt) {
         if (values.emitter) {
+            time_since_last_emit += dt;
+            if (time_since_last_emit > values.emitter_rate) { // EMITTING
+                time_since_last_emit = 0.0f;
+                Particle particle;
+                float r1 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+                float r2 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+                float r3 = static_cast <float> (rand()) / (static_cast <float> (RAND_MAX/values.position_random_offset_size));
+                particle.position = {values.initial_pos.X+r1, values.initial_pos.Y+r2, values.initial_pos.Z+r3};
+                particle.velocity = values.initial_vel;
+                particle.size = values.size;
+                particles.push_back(particle);
+            }
         }
 
-        particles.erase(
-            std::remove_if(particles.begin(), particles.end(),
-                [this](const Particle& p) { return p.age > values.max_lifetime; }),
-            particles.end());
+        particles.erase(std::remove_if(particles.begin(), particles.end(), [this](const Particle& p) { return p.age > values.max_lifetime; }), particles.end());
     }
 
     void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view, HMM_Vec3 camera_pos) {

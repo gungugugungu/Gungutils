@@ -32,6 +32,19 @@ void init() {
     print_fmod_error(result);
 
     load_scene("maps/boxes.gmap");
+
+    ParticleSystemValues values;
+    values.particle_amount = 50;
+    values.initial_pos = {-10.0f, 10.0f, -10.0f};
+    values.position_random_offset_size = 20.0f;
+    values.initial_vel = {0.0f, 0.0f, 0.0f};
+    values.gravity = -9.81f;
+    values.max_lifetime = 3.0f;
+    values.size = 0.25f;
+    values.emitter = true;
+    values.emitter_rate = 0.1f;
+
+    state.particle_systems.emplace_back(&jeff_goldblum, values);
 }
 
 void frame() {
@@ -46,37 +59,12 @@ void frame() {
     }
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
-    ParticleSystemValues values;
-    values.particle_amount = 50;
-    values.initial_pos = {-10.0f, 10.0f, -10.0f};
-    values.position_random_offset_size = 20.0f;
-    values.initial_vel = {0.0f, 0.0f, 0.0f};
-    values.gravity = -9.81f;
-    values.max_lifetime = 3.0f;
-    values.size = 0.25f;
-
-    state.particle_systems.emplace_back(&jeff_goldblum, values);
 }
 
 void event(SDL_Event* e) {
     if (e->type == SDL_EVENT_MOUSE_MOTION) {
         mouse_movement_x = e->motion.xrel;
         mouse_movement_y = e->motion.yrel;
-    }
-
-    if (e->type == SDL_EVENT_KEY_DOWN) {
-        if (e->key.key == SDLK_H) {
-            ParticleSystemValues values;
-            values.particle_amount = 50;
-            values.initial_pos = {-10.0f, 10.0f, -10.0f};
-            values.position_random_offset_size = 20.0f;
-            values.initial_vel = {0.0f, 0.0f, 0.0f};
-            values.gravity = -9.81f;
-            values.max_lifetime = 3.0f;
-            values.size = 0.25f;
-
-            state.particle_systems.emplace_back(&jeff_goldblum, values);
-        }
     }
 }
 
