@@ -34,15 +34,16 @@ void init() {
     load_scene("maps/boxes.gmap");
 
     ParticleSystemValues values;
-    values.particle_amount = 50;
+    values.particle_amount = 100;
     values.initial_pos = {-10.0f, 10.0f, -10.0f};
     values.position_random_offset_size = 20.0f;
-    values.initial_vel = {0.0f, 0.0f, 0.0f};
+    values.initial_vel = {0.0f, -9.0f, 0.0f};
     values.gravity = -9.81f;
     values.max_lifetime = 3.0f;
     values.size = 0.25f;
     values.emitter = true;
-    values.emitter_rate = 0.1f;
+    values.emitter_rate = 0.01f;
+    values.only_y_rotation = true;
 
     state.particle_systems.emplace_back(&jeff_goldblum, values);
 }

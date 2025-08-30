@@ -29,6 +29,7 @@ struct ParticleSystemValues {
     bool emitter = false;
     float emitter_rate = 1.0f;
     float max_lifetime = 1.0f;
+    bool only_y_rotation = true;
 };
 
 struct Particle {
@@ -107,7 +108,7 @@ public:
         }
     }
 
-    const void update_one(Particle *particle, float dt) {
+    void update_one(Particle *particle, float dt) {
         particle->velocity.Y += values.gravity * dt;
         particle->position.X += particle->velocity.X * dt;
         particle->position.Y += particle->velocity.Y * dt;
@@ -116,7 +117,7 @@ public:
         particle->age += dt;
     }
 
-    const void update(float dt) {
+    void update(float dt) {
         if (values.emitter) {
             time_since_last_emit += dt;
             if (time_since_last_emit > values.emitter_rate) { // EMITTING
@@ -174,17 +175,32 @@ public:
         for (auto& particle : particles) {
             update_one(&particle, dt);
 
-            HMM_Vec3 to_camera = HMM_NormV3(HMM_SubV3(camera_pos, particle.position));
-            HMM_Vec3 up = {0.0f, 1.0f, 0.0f};
-            HMM_Vec3 right = HMM_NormV3(HMM_Cross(up, to_camera));
-            up = HMM_Cross(to_camera, right);
+            HMM_Mat4 billboard_mat;
 
-            HMM_Mat4 billboard_mat = {
-                right.X, right.Y, right.Z, 0.0f,
-                up.X, up.Y, up.Z, 0.0f,
-                -to_camera.X, -to_camera.Y, -to_camera.Z, 0.0f,
-                0.0f, 0.0f, 0.0f, 1.0f
-            };
+            if (values.only_y_rotation) {
+                HMM_Vec3 to_camera_xz = HMM_NormV3({camera_pos.X - particle.position.X, 0.0f, camera_pos.Z - particle.position.Z});
+                HMM_Vec3 up = {0.0f, 1.0f, 0.0f};
+                HMM_Vec3 right = HMM_NormV3(HMM_Cross(up, to_camera_xz));
+
+                billboard_mat = {
+                    right.X, right.Y, right.Z, 0.0f,
+                    up.X, up.Y, up.Z, 0.0f,
+                    -to_camera_xz.X, -to_camera_xz.Y, -to_camera_xz.Z, 0.0f,
+                    0.0f, 0.0f, 0.0f, 1.0f
+                };
+            } else {
+                HMM_Vec3 to_camera = HMM_NormV3(HMM_SubV3(camera_pos, particle.position));
+                HMM_Vec3 up = {0.0f, 1.0f, 0.0f};
+                HMM_Vec3 right = HMM_NormV3(HMM_Cross(up, to_camera));
+                up = HMM_Cross(to_camera, right);
+
+                billboard_mat = {
+                    right.X, right.Y, right.Z, 0.0f,
+                    up.X, up.Y, up.Z, 0.0f,
+                    -to_camera.X, -to_camera.Y, -to_camera.Z, 0.0f,
+                    0.0f, 0.0f, 0.0f, 1.0f
+                };
+            }
 
             HMM_Mat4 translate_mat = HMM_Translate(particle.position);
             HMM_Mat4 scale_mat = HMM_Scale({particle.size, particle.size, particle.size});
