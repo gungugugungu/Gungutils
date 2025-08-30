@@ -2025,8 +2025,6 @@ void load_scene(const string& path) {
     file >> j;
     file.close();
 
-    clear_scene();
-
     if (j.contains("visgroups")) {
         for (const auto& vg_json : j["visgroups"]) {
             vector<Object> objects;
