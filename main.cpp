@@ -33,7 +33,7 @@ void init() {
 
     load_scene("maps/boxes.gmap");
 
-    ParticleSystemValues values;
+    /*ParticleSystemValues values;
     values.particle_amount = 100;
     values.initial_pos = {-10.0f, 10.0f, -10.0f};
     values.position_random_offset_size = 20.0f;
@@ -45,7 +45,7 @@ void init() {
     values.emitter_rate = 0.01f;
     values.only_y_rotation = true;
 
-    state.particle_systems.emplace_back(&jeff_goldblum, values);
+    state.particle_systems.emplace_back(&jeff_goldblum, values);*/
 }
 
 void frame() {
@@ -60,6 +60,7 @@ void frame() {
     }
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
+    draw_billboard(&jeff_goldblum, {0.0f, 0.0f, 0.0f}, 2.0f);
 }
 
 void event(SDL_Event* e) {

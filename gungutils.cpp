@@ -47,6 +47,7 @@
 #include "shaders/postprocess.glsl.h"
 #include "shaders/surface.glsl.h"
 #include "shaders/particles.glsl.h"
+#include "shaders/billboard.glsl.h"
 // sources
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
@@ -57,6 +58,7 @@
 #include "rendering/Surface.h"
 #include "physics/PhysicsHolder.h"
 #include "rendering/ParticleSystem.h"
+#include "rendering/Billboard.h"
 #include "ui/UIButton.h"
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
@@ -109,6 +111,8 @@ int mesh_index = 0;
 int num_elements = 0;
 bool loaded_is_palette = false;
 sg_pipeline particle_pipeline{.id = SG_INVALID_ID};
+sg_buffer quad_vb{.id = SG_INVALID_ID};
+sg_buffer quad_ib{.id = SG_INVALID_ID};
 
 struct TimeState {
     Uint64 freq = 0;
@@ -772,6 +776,8 @@ void render_first_pass() {
     sg_begin_pass(&pass);
 
     render_meshes();
+
+    _draw_all_billboards(state.camera_pos);
 
     for (auto& psys : state.particle_systems) {
         psys.draw_particles(particle_pipeline, time_state.dt, vs_params.projection, vs_params.view, state.camera_pos);
@@ -3124,6 +3130,45 @@ void _init() {
     particle_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     particle_pipeline_desc.label = "particle-pipeline";
     particle_pipeline = sg_make_pipeline(&particle_pipeline_desc);
+
+    sg_buffer_desc quad_vb_desc = {};
+    quad_vb_desc.usage.vertex_buffer = true;
+    quad_vb_desc.size = sizeof(quad_vertices);
+    quad_vb_desc.data = SG_RANGE(quad_vertices);
+    quad_vb = sg_make_buffer(&quad_vb_desc);
+    billboard_vb = quad_vb;
+
+    sg_buffer_desc quad_ib_desc = {};
+    quad_ib_desc.usage.vertex_buffer = false;
+    quad_ib_desc.usage.index_buffer = true;
+    quad_ib_desc.usage.immutable = true;
+    quad_ib_desc.size = sizeof(quad_indices);
+    quad_ib_desc.data = SG_RANGE(quad_indices);
+    quad_ib = sg_make_buffer(&quad_ib_desc);
+    billboard_ib = quad_ib;
+
+    sg_shader billboard_shader = sg_make_shader(billboard_shader_desc(sg_query_backend()));
+    sg_pipeline_desc billboard_pipeline_desc = {};
+    billboard_pipeline_desc.shader = billboard_shader;
+    billboard_pipeline_desc.layout.attrs[ATTR_billboard_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    billboard_pipeline_desc.layout.attrs[ATTR_billboard_texCoord].format = SG_VERTEXFORMAT_FLOAT2;
+    billboard_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    billboard_pipeline_desc.color_count = 1;
+    billboard_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    billboard_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    billboard_pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS;
+    billboard_pipeline_desc.depth.write_enabled = true;
+    billboard_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    billboard_pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
+    billboard_pipeline_desc.colors->blend.enabled = true;
+    billboard_pipeline_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    billboard_pipeline_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    billboard_pipeline_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    billboard_pipeline_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    billboard_pipeline_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    billboard_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
+    billboard_pipeline_desc.label = "billboard-pipeline";
+    billboard_pipeline = sg_make_pipeline(&billboard_pipeline_desc);
 }
 
 void _frame() {
@@ -3164,6 +3209,8 @@ void _frame() {
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), aspect, 0.1f, 1050.0f);
 
     vs_params = {.view = view, .projection = projection};
+    billboard_vs_params = {.view = view, .projection = projection};
+
     HMM_Vec2 ssao_proj{};
     ssao_proj.Y = tanf(state.fov * 0.5f);
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
