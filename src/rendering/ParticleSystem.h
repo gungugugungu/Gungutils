@@ -136,6 +136,7 @@ public:
     }
 
     void draw_particles(sg_pipeline pipeline, float dt, HMM_Mat4 projection, HMM_Mat4 view, HMM_Vec3 camera_pos) {
+        sg_apply_pipeline(pipeline);
         sg_bindings bind = {};
         bind.vertex_buffers[0] = vertex_buffer;
         bind.index_buffer = index_buffer;
@@ -163,7 +164,6 @@ public:
         }
 
         sg_apply_bindings(bind);
-        sg_apply_pipeline(pipeline);
 
         particle_vs_params_t vs_params = {};
         vs_params.projection = projection;
