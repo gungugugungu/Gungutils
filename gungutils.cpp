@@ -1793,6 +1793,20 @@ public:
     }
 };
 
+bool is_point_within_helpers(Helper* helper1, Helper* helper2, HMM_Vec3 point) {
+    HMM_Vec3 pos1 = helper1->position;
+    HMM_Vec3 pos2 = helper2->position;
+    float min_x = HMM_MIN(pos1.X, pos2.X);
+    float max_x = HMM_MAX(pos1.X, pos2.X);
+    float min_y = HMM_MIN(pos1.Y, pos2.Y);
+    float max_y = HMM_MAX(pos1.Y, pos2.Y);
+    float min_z = HMM_MIN(pos1.Z, pos2.Z);
+    float max_z = HMM_MAX(pos1.Z, pos2.Z);
+    return (point.X >= min_x && point.X <= max_x) &&
+    (point.Y >= min_y && point.Y <= max_y) &&
+    (point.Z >= min_z && point.Z <= max_z);
+}
+
 void make_audiosource_by_index(int index) {
     AudioSource3D* audio_source = new AudioSource3D();
     audio_source->initialize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
