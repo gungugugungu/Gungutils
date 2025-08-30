@@ -3118,7 +3118,7 @@ void _init() {
     particle_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     particle_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     particle_pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS;
-    particle_pipeline_desc.depth.write_enabled = false; // change if it looks weird and not sorted
+    particle_pipeline_desc.depth.write_enabled = true;
     particle_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
     particle_pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
     particle_pipeline_desc.colors->blend.enabled = true;

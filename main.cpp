@@ -61,6 +61,7 @@ void frame() {
     /*yrot += 45.0f*time_state.dt;
     vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
     draw_billboard(&jeff_goldblum, {0.0f, 0.0f, 0.0f}, 2.0f);
+    draw_decal(&jeff_goldblum, {0.0f, 10.0f, 0.0f}, {0.0f, 0.0f, 0.0f, 1.0f}, 2.0f);
 }
 
 void event(SDL_Event* e) {

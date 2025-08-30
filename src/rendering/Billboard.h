@@ -18,12 +18,17 @@ struct BillboardInfo {
     float size;
     bool y_only_rotation;
     bool rotate_to_camera = false;
+    HMM_Quat rotation{0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 vector<BillboardInfo> billboards;
 
 void draw_billboard(Surface* surface, HMM_Vec3 position, float size = 1.0f, bool y_only_rotation = false) {
     billboards.emplace_back(surface, position, size, y_only_rotation, true);
+}
+
+void draw_decal(Surface* surface, HMM_Vec3 position, HMM_Quat rotation, float size = 1.0f) {
+    billboards.emplace_back(surface, position, size, false, false, rotation);
 }
 
 void _draw_all_billboards(HMM_Vec3 camera_pos) {
@@ -85,6 +90,8 @@ void _draw_all_billboards(HMM_Vec3 camera_pos) {
                     0.0f, 0.0f, 0.0f, 1.0f
                 };
             }
+        } else {
+            billboard_mat = HMM_QToM4(billboard.rotation);
         }
 
         HMM_Mat4 translate_mat = HMM_Translate(billboard.position);
