@@ -72,8 +72,6 @@ struct AppState {
     sg_bindings bind{};
     SDL_Window* win;
     sg_pass_action pass_action{};
-    std::array<uint8_t, 512 * 1024> file_buffer{};
-    HMM_Vec3 cube_positions[10];
     HMM_Vec3 camera_pos;
     HMM_Vec3 camera_front;
     HMM_Vec3 camera_up;
@@ -2966,6 +2964,32 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
         ImGui::SliderFloat("FOV", &state.fov, 1.0f, 179.0, "%.0f");
         ImGui::ColorEdit3("AMBIENT COLOR", &state.ambient_light.X);
+
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("PROFILER")) {
+            ImGui::Text("DT: %f", time_state.dt);
+            int vertex_count = 0;
+            int index_count = 0;
+            int light_count = 0;
+            for (auto& vis_group : vis_groups) {
+                for (auto& object : vis_group.objects) {
+                    vertex_count += object.mesh->vertex_count;
+                    index_count += object.mesh->index_count;
+                }
+            }
+            for (auto& light : state.directional_lights) {
+                light_count++;
+            }
+            for (auto& light : state.point_lights) {
+                light_count++;
+            }
+            for (auto& light : state.spot_lights) {
+                light_count++;
+            }
+            ImGui::Text("VERTEX COUNT: %d", vertex_count);
+            ImGui::Text("INDEX COUNT: %d", index_count);
+            ImGui::Text("LIGHT COUNT: %d", light_count);
+        }
 
         ImGui::End();
     } /*else {
