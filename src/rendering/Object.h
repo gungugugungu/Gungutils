@@ -19,6 +19,8 @@ public:
     void select_shape_key(int index) {
         mesh = shape_keys[index];
     }
+
+    int script_id = -1;
 };
 
 #endif //OBJECT_H

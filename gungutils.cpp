@@ -1474,6 +1474,7 @@ class AudioSource3D {
         Object visualizer_object;
         int visualizer_obj_index = -1;
         FMOD_GUID guid;
+        int script_id = -1;
 
         void initialize(FMOD::Studio::EventDescription* desc, HMM_Vec3 pos) {
             FMOD_RESULT result = desc->createInstance(&event_instance);
@@ -1760,6 +1761,8 @@ void save_scene(const string& path) {
                 }
             }
 
+            obj_json["scrid"] = obj.script_id;
+
             vg_json["objects"].push_back(obj_json);
         }
         j["visgroups"].push_back(vg_json);
@@ -1770,7 +1773,8 @@ void save_scene(const string& path) {
         j["audio_src"].push_back({
             {as->position.X, as->position.Y, as->position.Z},
             {as->guid.Data1, as->guid.Data2, as->guid.Data3,
-             std::vector<uint8_t>(as->guid.Data4, as->guid.Data4 + 8)}
+             std::vector<uint8_t>(as->guid.Data4, as->guid.Data4 + 8)},
+            as->script_id
         });
     }
 
@@ -1787,7 +1791,8 @@ void save_scene(const string& path) {
         j["dir_lights"].push_back({
             {light.direction.X, light.direction.Y, light.direction.Z},
             light.intensity,
-            {light.color.X, light.color.Y, light.color.Z}
+            {light.color.X, light.color.Y, light.color.Z},
+            light.script_id
         });
     }
 
@@ -1797,7 +1802,8 @@ void save_scene(const string& path) {
             {light.position.X, light.position.Y, light.position.Z},
             light.intensity,
             {light.color.X, light.color.Y, light.color.Z},
-            light.radius
+            light.radius,
+            light.script_id
         });
     }
 
@@ -1809,7 +1815,8 @@ void save_scene(const string& path) {
             light.intensity,
             {light.color.X, light.color.Y, light.color.Z},
             light.inner_cone_angle,
-            light.outer_cone_angle
+            light.outer_cone_angle,
+            light.script_id
         });
     }
 
@@ -1901,6 +1908,10 @@ void load_scene(const string& path) {
 
                     if (obj_json.contains("opacity")) {
                         obj.opacity = obj_json["opacity"];
+                    }
+
+                    if (obj_json.contains("scrid")) {
+                        obj.script_id = obj_json["scrid"];
                     }
 
                     if (obj_json.contains("mesh")) {
@@ -2001,11 +2012,6 @@ void load_scene(const string& path) {
         }
     }
 
-    for (auto* as : state.audio_sources) {
-        as->remove();
-    }
-    state.audio_sources.clear();
-
     if (j.contains("audio_src")) {
         for (const auto& as_data : j["audio_src"]) {
             AudioSource3D* audio_source = new AudioSource3D();
@@ -2023,6 +2029,9 @@ void load_scene(const string& path) {
                 guid.Data4[i] = data4[i];
             }
             audio_source->guid = guid;
+
+            auto script_id = as_data[2];
+            audio_source->script_id = script_id;
 
             for (auto& ed : state.event_descriptions) {
                 FMOD_GUID current_id;
@@ -2057,6 +2066,8 @@ void load_scene(const string& path) {
             auto color = light_data[2];
             light.color = HMM_V3(color[0], color[1], color[2]);
             state.directional_lights.push_back(light);
+            auto script_id = light_data[3];
+            light.script_id = script_id;
         }
     }
 
@@ -2070,6 +2081,8 @@ void load_scene(const string& path) {
             light.color = HMM_V3(color[0], color[1], color[2]);
             light.radius = light_data[3];
             state.point_lights.push_back(light);
+            auto script_id = light_data[4];
+            light.script_id = script_id;
         }
     }
 
@@ -2086,6 +2099,8 @@ void load_scene(const string& path) {
             light.inner_cone_angle = light_data[4];
             light.outer_cone_angle = light_data[5];
             state.spot_lights.push_back(light);
+            auto script_id = light_data[6];
+            light.script_id = script_id;
         }
     }
 
@@ -2273,6 +2288,8 @@ void render_editor() {
                 ImGui::SliderFloat("OPACITY", &selected_object->opacity, 0.0f, 1.0f);
 
                 ImGui::Checkbox("SHADING", &selected_object->mesh->enable_shading);
+
+                ImGui::InputInt("SCRIPT ID", &selected_object->script_id);
 
                 ImGui::PopItemWidth();
 
@@ -2484,7 +2501,10 @@ void render_editor() {
                     selected_as->unpause();
                 }
 
+                ImGui::InputInt("SCRIPT ID", &selected_as->script_id);
+
                 ImGui::PopItemWidth();
+
                 ImGui::Separator();
                 if (ImGui::Button("DELETE")) {
                     selected_as->remove();
@@ -2609,6 +2629,7 @@ void render_editor() {
                     ImGui::SliderFloat3("DIRECTION", &selected_dir_light.direction.X, -1.0f, 1.0f, "%.1f");
                     ImGui::ColorEdit3("COLOR", &selected_dir_light.color.X);
                     ImGui::DragFloat("INTENSITY", &selected_dir_light.intensity, 0.01f);
+                    ImGui::InputInt("SCRIPT ID", &selected_dir_light.script_id);
                     if (ImGui::Button("DELETE")) {
                         state.directional_lights.erase(state.directional_lights.begin() + selected_dir_light_index);
                     }
@@ -2648,6 +2669,7 @@ void render_editor() {
                     ImGui::ColorEdit3("COLOR", &selected_point_light.color.X);
                     ImGui::DragFloat("RADIUS", &selected_point_light.radius, 0.01f);
                     ImGui::DragFloat("INTENSITY", &selected_point_light.intensity, 0.01f);
+                    ImGui::InputInt("SCRIPT ID", &selected_point_light.script_id);
                     if (ImGui::Button("DELETE")) {
                         state.point_lights.erase(state.point_lights.begin() + selected_point_light_index);
                     }
@@ -2690,6 +2712,7 @@ void render_editor() {
                     ImGui::DragFloat("INNER CONE ANGLE", &selected_spot_light.inner_cone_angle, 0.01f);
                     ImGui::DragFloat("OUTER CONE ANGLE", &selected_spot_light.outer_cone_angle, 0.01f);
                     ImGui::DragFloat("INTENSITY", &selected_spot_light.intensity, 0.01f);
+                    ImGui::InputInt("SCRIPT ID", &selected_spot_light.script_id);
                     if (ImGui::Button("DELETE")) {
                         state.spot_lights.erase(state.spot_lights.begin() + selected_spot_light_index);
                     }
@@ -2758,6 +2781,48 @@ void render_editor() {
     for (auto& view : temp_editor_views) {
         sg_destroy_view(view);
     }
+}
+
+vector<Object*> get_objects_by_script_id(int id) {
+    vector<Object*> objects;
+    for (auto& visgroup : vis_groups) {
+        for (auto& object : visgroup.objects) {
+            if (object.script_id == id) {
+                objects.push_back(&object);
+            }
+        }
+    }
+    return objects;
+}
+
+vector<Light*> get_lights_by_script_id(int id) {
+    vector<Light*> lights;
+    for (auto& light : state.directional_lights) {
+        if (light.script_id == id) {
+            lights.push_back(&light);
+        }
+    }
+    for (auto& light : state.point_lights) {
+        if (light.script_id == id) {
+            lights.push_back(&light);
+        }
+    }
+    for (auto& light : state.spot_lights) {
+        if (light.script_id == id) {
+            lights.push_back(&light);
+        }
+    }
+    return lights;
+}
+
+vector<AudioSource3D*> get_audio_sources_by_script_id(int id) {
+    vector<AudioSource3D*> audio_sources;
+    for (auto& audio_source : state.audio_sources) {
+        if (audio_source->script_id == id) {
+            audio_sources.push_back(audio_source);
+        }
+    }
+    return audio_sources;
 }
 
 void _init() {

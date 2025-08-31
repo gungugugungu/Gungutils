@@ -10,6 +10,7 @@ public:
     float intensity = 1.0f;
     int type; // 0: directional, 1: point, 2: spot
     HMM_Vec3 color{1.0f, 1.0f, 1.0f};
+    int script_id = -1;
 };
 
 class DirectionalLight : public Light {
