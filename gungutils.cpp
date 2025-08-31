@@ -51,11 +51,11 @@
 #include "shaders/particles.glsl.h"
 #include "shaders/billboard.glsl.h"
 // sources
-#include "utils/Animation.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
+#include "utils/Animation.h"
 #include "rendering/Post Processing.h"
 #include "rendering/Light.h"
 #include "rendering/Surface.h"
@@ -361,8 +361,7 @@ void prepare_mesh_buffers(Object& object) {
         meshopt_optimizeOverdraw(tmp_indices_2, tmp_indices_1, index_count, vertices_src, vertex_count, vertex_size, 1.05f);
 
         unsigned int* remap = new unsigned int[vertex_count];
-        size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count,
-                                                              vertices_src, vertex_count, vertex_size);
+        size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count, vertices_src, vertex_count, vertex_size);
 
         float* vertices_remapped = new float[new_vertex_count * 8];
         meshopt_remapVertexBuffer(vertices_remapped, vertices_src, vertex_count, vertex_size, remap);
@@ -1377,6 +1376,7 @@ vector<Object> load_gltf(const std::string& filename) {
 
         obj.select_shape_key(0);
 
+        prepare_mesh_buffers(obj);
         objects.push_back(obj);
     }
     return objects;
@@ -1487,7 +1487,6 @@ class AudioSource3D {
                 visualizer_objects.push_back(loaded[0]);
                 visualizer_obj_index = visualizer_objects.size() - 1;
                 Object vo = visualizer_objects[visualizer_obj_index];
-                prepare_mesh_buffers(vo);
                 visualizer_object = vo;
             }
 
@@ -1574,7 +1573,6 @@ public:
             visualizer_objects.push_back(loaded[0]);
             visualizer_obj_index = visualizer_objects.size() - 1;
             Object vo = visualizer_objects[visualizer_obj_index];
-            prepare_mesh_buffers(vo);
             visualizer_obj = vo;
         }
 
@@ -1634,9 +1632,9 @@ void clear_scene() {
     state.audio_sources.clear();
 
     for (auto& visgroup : vis_groups) {
-        for (auto& obj : visgroup.objects) {
+        /*for (auto& obj : visgroup.objects) {
             obj.shape_keys.clear();
-        }
+        }*/
         visgroup.objects.clear();
     }
     vis_groups.clear();
@@ -1736,28 +1734,6 @@ void save_scene(const string& path) {
                             static_cast<int>(material->specular_sampler_desc.wrap_v)
                         };
                     }
-                }
-            }
-
-            if (!obj.shape_keys.empty()) {
-                obj_json["shape_keys"] = nlohmann::json::array();
-                for (const auto& shape_key_mesh : obj.shape_keys) {
-                    nlohmann::json sk_json;
-                    sk_json["shading"] = shape_key_mesh->enable_shading;
-
-                    if (shape_key_mesh->vertex_count > 0 && shape_key_mesh->vertices) {
-                        sk_json["vert_cnt"] = shape_key_mesh->vertex_count;
-                        std::vector<float> verts(shape_key_mesh->vertices, shape_key_mesh->vertices + shape_key_mesh->vertex_count * 8);
-                        sk_json["verts"] = verts;
-                    }
-
-                    if (shape_key_mesh->index_count > 0 && shape_key_mesh->indices) {
-                        sk_json["idx_cnt"] = shape_key_mesh->index_count;
-                        std::vector<uint32_t> indices(shape_key_mesh->indices, shape_key_mesh->indices + shape_key_mesh->index_count);
-                        sk_json["indices"] = indices;
-                    }
-
-                    obj_json["shape_keys"].push_back(sk_json);
                 }
             }
 
@@ -1999,6 +1975,40 @@ void load_scene(const string& path) {
                                 material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
                                 material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
                                 material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
+                            }
+                        }
+
+                        if (obj_json.contains("shape_keys")) {
+                            for (const auto& sk_json : obj_json["shape_keys"]) {
+                                Mesh* shape_key_mesh = new Mesh();
+
+                                if (sk_json.contains("shading")) {
+                                    shape_key_mesh->enable_shading = sk_json["shading"];
+                                }
+
+                                if (sk_json.contains("vert_cnt") && sk_json.contains("verts")) {
+                                    shape_key_mesh->vertex_count = sk_json["vert_cnt"];
+                                    shape_key_mesh->vertices = new float[shape_key_mesh->vertex_count * 8];
+
+                                    auto verts = sk_json["verts"];
+                                    for (size_t i = 0; i < shape_key_mesh->vertex_count * 8; i++) {
+                                        shape_key_mesh->vertices[i] = verts[i];
+                                    }
+                                }
+
+                                if (sk_json.contains("idx_cnt") && sk_json.contains("indices")) {
+                                    shape_key_mesh->index_count = sk_json["idx_cnt"];
+                                    shape_key_mesh->indices = new uint32_t[shape_key_mesh->index_count];
+
+                                    auto indices = sk_json["indices"];
+                                    for (size_t i = 0; i < shape_key_mesh->index_count; i++) {
+                                        shape_key_mesh->indices[i] = indices[i];
+                                    }
+                                }
+
+                                shape_key_mesh->material = obj.mesh ? obj.mesh->material : nullptr;
+
+                                obj.shape_keys.push_back(shape_key_mesh);
                             }
                         }
 
@@ -2404,7 +2414,6 @@ void render_editor() {
                 if (file_path) {
                     vector<Object> loaded_objects = load_gltf(file_path);
                     for (auto& obj : loaded_objects) {
-                        prepare_mesh_buffers(obj);
                         vis_groups[0].objects.push_back(obj);
                     }
                 }

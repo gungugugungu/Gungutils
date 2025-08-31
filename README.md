@@ -9,9 +9,8 @@
 - UI system and 2D drawing
 - Particle System
 - Cross-platform build system for Windows and Linux
+- Animation system using shape keys
 
 # TODO
-- Animation system and mesh skinning
-- Built-in profiling tools
 - Editor gizmos
-- Dynamic shadowmaps
+- Animation designer

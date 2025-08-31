@@ -11,6 +11,9 @@ Surface jeff_button;
 bool show_jeff = false;
 stbtt_fontinfo font;
 
+AnimationPlayer anim_player;
+Animation animation;
+
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     //SDL_HideCursor();
@@ -31,7 +34,15 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
-    load_scene("maps/default.gmap");
+    load_scene("maps/animation.gmap");
+
+    animation.frames.emplace_back(0, 0.25f);
+    animation.frames.emplace_back(1, 0.25f);
+    animation.frames.emplace_back(2, 0.25f);
+    anim_player.animation = &animation;
+    anim_player.obj = get_objects_by_script_id(1)[0];
+    anim_player.playing = true;
+    anim_player.loop = true;
 
     /*ParticleSystemValues values;
     values.particle_amount = 100;
@@ -58,8 +69,7 @@ void frame() {
         state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
         state.window_surface.draw_text(&font, "Jeff Goldblum", {400.0f, 128.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
     }
-    /*yrot += 45.0f*time_state.dt;
-    vis_groups[0].objects[0].rotation = EulerDegreesToQuat(HMM_Vec3{90.0f, yrot, 0.0f});*/
+    anim_player.update(time_state.dt);
 }
 
 void event(SDL_Event* e) {
