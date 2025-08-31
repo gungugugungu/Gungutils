@@ -2499,8 +2499,7 @@ void render_editor() {
             }
             ImGui::EndChild();
             if (ImGui::Button("ADD VISGROUP")) {
-                VisGroup* new_visgroup = new VisGroup("New VisGroup", {});
-                vis_groups.push_back(*new_visgroup);
+                vis_groups.emplace_back("New VisGroup", vector<Object>());
             }
         }
 
@@ -2609,9 +2608,9 @@ void render_editor() {
                         vis_groups[0].objects.push_back(new_object);
                     }
                 }
+                ImGui::Separator();
                 if (selected_object->shape_keys.size() > 1) {
                     if (ImGui::CollapsingHeader("SHAPE KEYS")) {
-                        ImGui::Separator();
                         for (int i = 0; i < selected_object->shape_keys.size(); i++) {
                             ImGui::PushID(i);
                             if (ImGui::Button(to_string(i).c_str())) {
