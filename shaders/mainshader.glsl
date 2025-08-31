@@ -20,6 +20,9 @@ layout(binding = 0) uniform vs_params {
 };
 
 void main() {
+    /*vec3 pos_v = vec3(view*vec4(((model*vec4(aPos, 1.0)).xyz), 1.0)).xyz;
+    pos_v = round(pos_v*128.0)/128.0;
+    gl_Position = projection * vec4(pos_v, 1.0);*/
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
     v_opacity = opacity;

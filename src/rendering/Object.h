@@ -13,6 +13,12 @@ public:
     float opacity = 1.0f;
 
     Mesh* mesh;
+
+    std::vector<Mesh*> shape_keys;
+
+    void select_shape_key(int index) {
+        mesh = shape_keys[index];
+    }
 };
 
 #endif //OBJECT_H

@@ -308,131 +308,140 @@ sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
     return sg_make_image(&local_desc);
 };
 
-void prepare_mesh_buffers(Mesh& mesh) {
-    if (!mesh.vertices || mesh.vertex_count == 0) {
-        std::cerr << "ERROR: Invalid vertex data!" << std::endl;
-        exit(-1);
-    }
-
-    if (!mesh.indices || mesh.index_count == 0) {
-        std::cerr << "ERROR: Invalid index data!" << std::endl;
-        exit(-1);
-    }
-
-    std::cout << "=== MESH BUFFER DEBUG ===" << std::endl;
-    std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
-    std::cout << "Index count: " << mesh.index_count << std::endl;
-    std::cout << "Buffer size: " << (mesh.vertex_count * 8 * sizeof(float)) << " bytes" << std::endl;
-    std::cout << "Expected layout: 8 floats per vertex (pos=3, norm=3, uv=2)" << std::endl;
-
-    for (size_t i = 0; i < mesh.vertex_count; ++i) {
-        float px = mesh.vertices[i*8 + 0];
-        float py = mesh.vertices[i*8 + 1];
-        float pz = mesh.vertices[i*8 + 2];
-        if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz)) {
-            std::cerr << "ERROR: Invalid vertex position at " << i << std::endl;
+void prepare_mesh_buffers(Object& object) {
+    auto prepare_single_mesh = [](Mesh& mesh) {
+        if (!mesh.vertices || mesh.vertex_count == 0) {
+            std::cerr << "ERROR: Invalid vertex data!" << std::endl;
             exit(-1);
         }
-    }
 
-    for (size_t i = 0; i < mesh.index_count; ++i) {
-        if (mesh.indices[i] >= mesh.vertex_count) {
-            std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
-            break;
+        if (!mesh.indices || mesh.index_count == 0) {
+            std::cerr << "ERROR: Invalid index data!" << std::endl;
+            exit(-1);
         }
-    }
-    std::cout << "=========================" << std::endl;
 
-    const size_t index_count  = mesh.index_count;
-    const size_t vertex_count = mesh.vertex_count;
-    const size_t vertex_size  = 8 * sizeof(float);
-    const float* vertices_src = mesh.vertices;
-    const uint32_t* indices_src = mesh.indices;
+        std::cout << "=== MESH BUFFER DEBUG ===" << std::endl;
+        std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
+        std::cout << "Index count: " << mesh.index_count << std::endl;
+        std::cout << "Buffer size: " << (mesh.vertex_count * 8 * sizeof(float)) << " bytes" << std::endl;
+        std::cout << "Expected layout: 8 floats per vertex (pos=3, norm=3, uv=2)" << std::endl;
 
-    uint32_t* tmp_indices_1 = new uint32_t[index_count];
-    uint32_t* tmp_indices_2 = new uint32_t[index_count];
-
-    meshopt_optimizeVertexCache(tmp_indices_1, indices_src, index_count, vertex_count);
-
-    meshopt_optimizeOverdraw(tmp_indices_2, tmp_indices_1, index_count, vertices_src, vertex_count, vertex_size, 1.05f);
-
-    unsigned int* remap = new unsigned int[vertex_count];
-    size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count,
-                                                          vertices_src, vertex_count, vertex_size);
-
-    float* vertices_remapped = new float[new_vertex_count * 8];
-    meshopt_remapVertexBuffer(vertices_remapped, vertices_src, vertex_count, vertex_size, remap);
-
-    uint32_t* indices_remapped = new uint32_t[index_count];
-    meshopt_remapIndexBuffer(indices_remapped, tmp_indices_2, index_count, remap);
-
-    delete[] tmp_indices_1;
-    delete[] tmp_indices_2;
-    delete[] remap;
-
-    bool can_use_uint16 = true;
-    for (size_t i = 0; i < index_count; ++i) {
-        if (indices_remapped[i] > 0xFFFFu) { can_use_uint16 = false; break; }
-    }
-
-    delete[] mesh.vertices;
-    delete[] mesh.indices;
-    delete[] mesh.indices16;
-    mesh.indices16 = nullptr;
-
-    mesh.vertices = vertices_remapped;
-    mesh.vertex_count = new_vertex_count;
-
-    mesh.index_buffer_desc = {};
-    mesh.index_buffer_desc.usage.immutable = true;
-    mesh.index_buffer_desc.usage.vertex_buffer = false;
-    mesh.index_buffer_desc.usage.index_buffer = true;
-
-    mesh.use_uint16_indices = false;
-    mesh.indices = indices_remapped;
-    mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
-    mesh.index_buffer_desc.data.ptr = mesh.indices;
-    mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
-
-    mesh.vertex_buffer_desc = {};
-    mesh.vertex_buffer_desc.usage.immutable = true;
-    mesh.vertex_buffer_desc.usage.vertex_buffer = true;
-    mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
-    mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
-    mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
-
-    if (!mesh.material->has_diffuse_texture) {
-        mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-        mesh.material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-        mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-        mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-    }
-
-    mesh.vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
-    mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
-
-    // now textures !!! yippie
-    Material* material = mesh.material;
-    if (material->has_diffuse_texture) {
-        material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "diffuse");
-        if (material->diffuse_image.id == SG_INVALID_ID) {
-            cout << "Oh no failed to create diffuse image ohhh noooo" << endl;
-            material->has_diffuse_texture = false;
-        } else {
-            material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
+        for (size_t i = 0; i < mesh.vertex_count; ++i) {
+            float px = mesh.vertices[i*8 + 0];
+            float py = mesh.vertices[i*8 + 1];
+            float pz = mesh.vertices[i*8 + 2];
+            if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz)) {
+                std::cerr << "ERROR: Invalid vertex position at " << i << std::endl;
+                exit(-1);
+            }
         }
-    }
-    if (material->has_specular_texture) {
-        material->specular_image = validate_and_make_image(&material->specular_texture_desc, "specular");
-        if (material->specular_image.id == SG_INVALID_ID) {
-            cout << "Oh no failed to create specualr image ohhh noooo" << endl;
-            material->has_diffuse_texture = false;
-        } else {
-            material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
+
+        for (size_t i = 0; i < mesh.index_count; ++i) {
+            if (mesh.indices[i] >= mesh.vertex_count) {
+                std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
+                break;
+            }
         }
+        std::cout << "=========================" << std::endl;
+
+        const size_t index_count  = mesh.index_count;
+        const size_t vertex_count = mesh.vertex_count;
+        const size_t vertex_size  = 8 * sizeof(float);
+        const float* vertices_src = mesh.vertices;
+        const uint32_t* indices_src = mesh.indices;
+
+        uint32_t* tmp_indices_1 = new uint32_t[index_count];
+        uint32_t* tmp_indices_2 = new uint32_t[index_count];
+
+        meshopt_optimizeVertexCache(tmp_indices_1, indices_src, index_count, vertex_count);
+
+        meshopt_optimizeOverdraw(tmp_indices_2, tmp_indices_1, index_count, vertices_src, vertex_count, vertex_size, 1.05f);
+
+        unsigned int* remap = new unsigned int[vertex_count];
+        size_t new_vertex_count = meshopt_generateVertexRemap(remap, tmp_indices_2, index_count,
+                                                              vertices_src, vertex_count, vertex_size);
+
+        float* vertices_remapped = new float[new_vertex_count * 8];
+        meshopt_remapVertexBuffer(vertices_remapped, vertices_src, vertex_count, vertex_size, remap);
+
+        uint32_t* indices_remapped = new uint32_t[index_count];
+        meshopt_remapIndexBuffer(indices_remapped, tmp_indices_2, index_count, remap);
+
+        delete[] tmp_indices_1;
+        delete[] tmp_indices_2;
+        delete[] remap;
+
+        bool can_use_uint16 = true;
+        for (size_t i = 0; i < index_count; ++i) {
+            if (indices_remapped[i] > 0xFFFFu) { can_use_uint16 = false; break; }
+        }
+
+        delete[] mesh.vertices;
+        delete[] mesh.indices;
+        delete[] mesh.indices16;
+        mesh.indices16 = nullptr;
+
+        mesh.vertices = vertices_remapped;
+        mesh.vertex_count = new_vertex_count;
+
+        mesh.index_buffer_desc = {};
+        mesh.index_buffer_desc.usage.immutable = true;
+        mesh.index_buffer_desc.usage.vertex_buffer = false;
+        mesh.index_buffer_desc.usage.index_buffer = true;
+
+        mesh.use_uint16_indices = false;
+        mesh.indices = indices_remapped;
+        mesh.index_buffer_desc.size = index_count * sizeof(uint32_t);
+        mesh.index_buffer_desc.data.ptr = mesh.indices;
+        mesh.index_buffer_desc.data.size = mesh.index_buffer_desc.size;
+
+        mesh.vertex_buffer_desc = {};
+        mesh.vertex_buffer_desc.usage.immutable = true;
+        mesh.vertex_buffer_desc.usage.vertex_buffer = true;
+        mesh.vertex_buffer_desc.size = mesh.vertex_count * 8 * sizeof(float);
+        mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
+        mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
+
+        if (!mesh.material->has_diffuse_texture) {
+            mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+            mesh.material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+            mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+            mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+        }
+
+        mesh.vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
+        mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
+
+        Material* material = mesh.material;
+        if (material->has_diffuse_texture) {
+            material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "diffuse");
+            if (material->diffuse_image.id == SG_INVALID_ID) {
+                cout << "Oh no failed to create diffuse image ohhh noooo" << endl;
+                material->has_diffuse_texture = false;
+            } else {
+                material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
+            }
+        }
+        if (material->has_specular_texture) {
+            material->specular_image = validate_and_make_image(&material->specular_texture_desc, "specular");
+            if (material->specular_image.id == SG_INVALID_ID) {
+                cout << "Oh no failed to create specualr image ohhh noooo" << endl;
+                material->has_specular_texture = false;
+            } else {
+                material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
+            }
+        }
+
+        std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
+    };
+
+    if (object.mesh) {
+        prepare_single_mesh(*object.mesh);
     }
 
-    std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
+    for (Mesh* shape_key : object.shape_keys) {
+        prepare_single_mesh(*shape_key);
+    }
 }
 
 void render_meshes() {
@@ -1010,34 +1019,19 @@ void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotati
     rotation = HMM_M4ToQ_RH(rot_mat);
 }
 
-vector<Object> load_gltf(const std::string& path) {
+vector<Object> load_gltf(const std::string& filename) {
     tinygltf::TinyGLTF loader;
     tinygltf::Model model;
     std::string err, warn;
-    bool ok = loader.LoadBinaryFromFile(&model, &err, &warn, path);
-    if (!warn.empty()) std::cout << "WARN: " << warn << "\n";
-    if (!ok) {
-        std::cerr << "ERROR: " << err << "\n";
-        return {};
+    bool res = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
+    vector<Object> objects;
+
+    if (!warn.empty()) std::cout << "WARN: " << warn << std::endl;
+    if (!err.empty()) std::cout << "ERR: " << err << std::endl;
+    if (!res) {
+        std::cout << "Failed to load GLTF: " << filename << std::endl;
+        return vector<Object>();
     }
-
-    std::vector<Object> objects;
-
-    auto flip_tex_vertically = [&](unsigned char* data, int width, int height, int channels) -> void {
-        int row_size = width * channels;
-        unsigned char* temp_row = new unsigned char[row_size];
-
-        for (int y = 0; y < height / 2; ++y) {
-            unsigned char* top_row = data + y * row_size;
-            unsigned char* bottom_row = data + (height - 1 - y) * row_size;
-
-            memcpy(temp_row, top_row, row_size);
-            memcpy(top_row, bottom_row, row_size);
-            memcpy(bottom_row, temp_row, row_size);
-        }
-
-        delete[] temp_row;
-    };
 
     auto loadTexture = [&](int textureIndex) -> std::pair<uint8_t*, sg_image_desc> {
         cout << "loading texture" << endl;
@@ -1116,7 +1110,7 @@ vector<Object> load_gltf(const std::string& path) {
                 return {nullptr, {}};
             }
         } else if (!image.uri.empty()) {
-            std::string base_dir = path.substr(0, path.find_last_of("/\\") + 1);
+            std::string base_dir = filename.substr(0, filename.find_last_of("/\\") + 1);
             std::string full_path = base_dir + image.uri;
 
             cout << "loading texture from path" << endl;
@@ -1170,405 +1164,218 @@ vector<Object> load_gltf(const std::string& path) {
         return {texture_data, img_desc};
     };
 
-    std::function<void(int, const HMM_Mat4&)> processNode = [&](int nodeIndex, const HMM_Mat4& parentTransform) {
-        cout << "processing node" << endl;
-        if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) return;
-        const auto& node = model.nodes[nodeIndex];
+    const tinygltf::Scene& scene = model.scenes[model.defaultScene > -1 ? model.defaultScene : 0];
+    for (int node_idx : scene.nodes) {
+        const tinygltf::Node& node = model.nodes[node_idx];
 
-        HMM_Mat4 localTransform = HMM_M4D(1.0f);
+        if (node.mesh < 0) continue;
 
-        if (node.matrix.size() == 16) {
-            for (int i = 0; i < 4; i++) {
-                for (int j = 0; j < 4; j++) {
-                    localTransform.Elements[i][j] = (float)node.matrix[j * 4 + i];
+        const tinygltf::Mesh& gltf_mesh = model.meshes[node.mesh];
+        const tinygltf::Primitive& primitive = gltf_mesh.primitives[0];
+
+        size_t vcount = 0;
+        float* base_vertices = nullptr;
+        uint32_t* base_indices = nullptr;
+        size_t icount = 0;
+
+        auto pos_it = primitive.attributes.find("POSITION");
+        if (pos_it == primitive.attributes.end()) continue;
+        const tinygltf::Accessor& pos_acc = model.accessors[pos_it->second];
+        vcount = pos_acc.count;
+        const tinygltf::BufferView& pos_bv = model.bufferViews[pos_acc.bufferView];
+        const tinygltf::Buffer& pos_buf = model.buffers[pos_bv.buffer];
+        const unsigned char* pos_data = pos_buf.data.data() + pos_acc.byteOffset + pos_bv.byteOffset;
+        size_t pos_stride = pos_bv.byteStride ? pos_bv.byteStride : 12;  // vec3 float
+
+        auto norm_it = primitive.attributes.find("NORMAL");
+        const unsigned char* norm_data = nullptr;
+        size_t norm_stride = 12;
+        if (norm_it != primitive.attributes.end()) {
+            const tinygltf::Accessor& norm_acc = model.accessors[norm_it->second];
+            const tinygltf::BufferView& norm_bv = model.bufferViews[norm_acc.bufferView];
+            const tinygltf::Buffer& norm_buf = model.buffers[norm_bv.buffer];
+            norm_data = norm_buf.data.data() + norm_acc.byteOffset + norm_bv.byteOffset;
+            norm_stride = norm_bv.byteStride ? norm_bv.byteStride : 12;
+        }
+
+        auto tex_it = primitive.attributes.find("TEXCOORD_0");
+        const unsigned char* tex_data = nullptr;
+        size_t tex_stride = 8;
+        if (tex_it != primitive.attributes.end()) {
+            const tinygltf::Accessor& tex_acc = model.accessors[tex_it->second];
+            const tinygltf::BufferView& tex_bv = model.bufferViews[tex_acc.bufferView];
+            const tinygltf::Buffer& tex_buf = model.buffers[tex_bv.buffer];
+            tex_data = tex_buf.data.data() + tex_acc.byteOffset + tex_bv.byteOffset;
+            tex_stride = tex_bv.byteStride ? tex_bv.byteStride : 8;  // vec2 float
+        }
+
+        base_vertices = new float[vcount * 8];
+        for (size_t v = 0; v < vcount; ++v) {
+            const float* pos = reinterpret_cast<const float*>(pos_data + v * pos_stride);
+            base_vertices[v * 8 + 0] = pos[0];
+            base_vertices[v * 8 + 1] = pos[1];
+            base_vertices[v * 8 + 2] = pos[2];
+
+            if (norm_data) {
+                const float* norm = reinterpret_cast<const float*>(norm_data + v * norm_stride);
+                base_vertices[v * 8 + 3] = norm[0];
+                base_vertices[v * 8 + 4] = norm[1];
+                base_vertices[v * 8 + 5] = norm[2];
+            } else {
+                base_vertices[v * 8 + 3] = 0.0f;
+                base_vertices[v * 8 + 4] = 1.0f;
+                base_vertices[v * 8 + 5] = 0.0f;
+            }
+
+            if (tex_data) {
+                const float* tex = reinterpret_cast<const float*>(tex_data + v * tex_stride);
+                base_vertices[v * 8 + 6] = tex[0];
+                base_vertices[v * 8 + 7] = tex[1];
+            } else {
+                base_vertices[v * 8 + 6] = 0.0f;
+                base_vertices[v * 8 + 7] = 0.0f;
+            }
+        }
+
+        if (primitive.indices >= 0) {
+            const tinygltf::Accessor& ind_acc = model.accessors[primitive.indices];
+            icount = ind_acc.count;
+            const tinygltf::BufferView& ind_bv = model.bufferViews[ind_acc.bufferView];
+            const tinygltf::Buffer& ind_buf = model.buffers[ind_bv.buffer];
+            const unsigned char* ind_data = ind_buf.data.data() + ind_acc.byteOffset + ind_bv.byteOffset;
+            size_t ind_stride = ind_bv.byteStride ? ind_bv.byteStride : (ind_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT ? 2 : 4);
+
+            base_indices = new uint32_t[icount];
+            if (ind_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                for (size_t j = 0; j < icount; ++j) {
+                    base_indices[j] = *reinterpret_cast<const uint16_t*>(ind_data + j * ind_stride);
                 }
+            } else if (ind_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                for (size_t j = 0; j < icount; ++j) {
+                    base_indices[j] = *reinterpret_cast<const uint32_t*>(ind_data + j * ind_stride);
+                }
+            } else {
+                delete[] base_vertices;
+                continue;
             }
         } else {
-            HMM_Vec3 translation = {0, 0, 0};
-            HMM_Quat rotation = {0, 0, 0, 1}; // Identity quaternion
-            HMM_Vec3 scale = {1, 1, 1};
-
-            if (node.translation.size() == 3) {
-                translation = {(float)node.translation[0], (float)node.translation[1], (float)node.translation[2]};
-            }
-
-            if (node.rotation.size() == 4) {
-                rotation = {(float)node.rotation[0], (float)node.rotation[1], (float)node.rotation[2], (float)node.rotation[3]};
-            }
-
-            if (node.scale.size() == 3) {
-                scale = {(float)node.scale[0], (float)node.scale[1], (float)node.scale[2]};
-            }
-
-            // transformation matrix: T * R * S
-            HMM_Mat4 T = HMM_Translate(translation);
-            HMM_Mat4 R = HMM_QToM4(rotation);
-            HMM_Mat4 S = HMM_Scale(scale);
-            localTransform = HMM_MulM4(T, HMM_MulM4(R, S));
+            icount = vcount;
+            base_indices = new uint32_t[icount];
+            for (size_t j = 0; j < icount; ++j) base_indices[j] = static_cast<uint32_t>(j);
         }
 
-        HMM_Mat4 worldTransform = HMM_MulM4(parentTransform, localTransform);
+        Mesh* base_mesh = new Mesh();
+        base_mesh->vertices = base_vertices;
+        base_mesh->vertex_count = vcount;
+        base_mesh->indices = base_indices;
+        base_mesh->index_count = icount;
 
-        /*if (node.extensions.count("KHR_lights_punctual") > 0) {
-            const auto& lightExt = node.extensions.at("KHR_lights_punctual");
-            if (lightExt.Has("light")) {
-                int lightIndex = lightExt.Get("light").GetNumberAsInt();
+        Material* mat = new Material();
+        if (primitive.material >= 0 && primitive.material < model.materials.size()) {
+            const auto& material = model.materials[primitive.material];
 
-                if (model.extensions.count("KHR_lights_punctual") > 0) {
-                    const auto& lightsExt = model.extensions.at("KHR_lights_punctual");
-                    if (lightsExt.Has("lights") && lightIndex >= 0) {
-                        const auto& lightsArray = lightsExt.Get("lights");
-                        if (lightIndex < lightsArray.ArrayLen()) {
-                            const auto& light = lightsArray.Get(lightIndex);
-
-                            HMM_Vec3 position, color;
-                            HMM_Quat rotation;
-                            HMM_Vec3 scale;
-                            decompose_matrix(worldTransform, position, rotation, scale);
-
-                            if (light.Has("color")) {
-                                const auto& colorArray = light.Get("color");
-                                if (colorArray.ArrayLen() >= 3) {
-                                    color = {
-                                        (float)colorArray.Get(0).GetNumberAsDouble(),
-                                        (float)colorArray.Get(1).GetNumberAsDouble(),
-                                        (float)colorArray.Get(2).GetNumberAsDouble()
-                                    };
-                                }
-                            } else {
-                                color = {1.0f, 1.0f, 1.0f};
-                            }
-
-                            std::string lightType = light.Get("type").Get<std::string>();
-                            float intensity = light.Has("intensity") ? (float)light.Get("intensity").GetNumberAsDouble() : 1.0f;
-
-                            if (lightType == "point") {
-                                PointLight pointLight;
-                                pointLight.type = 1;
-                                pointLight.position = position;
-                                pointLight.color = color;
-                                pointLight.intensity = intensity;
-                                pointLight.radius = light.Has("range") ? (float)light.Get("range").GetNumberAsDouble() : 10.0f;
-                                state.point_lights.push_back(pointLight);
-                            } else if (lightType == "spot") {
-                                SpotLight spotLight;
-                                spotLight.type = 2;
-                                spotLight.position = position;
-                                spotLight.color = color;
-                                spotLight.intensity = intensity;
-                                HMM_Mat4 rotMat = HMM_QToM4(rotation);
-                                HMM_Vec4 forward = {0.0f, 0.0f, -1.0f, 0.0f};
-                                HMM_Vec4 _direction = HMM_MulM4V4(rotMat, forward);
-                                spotLight.direction = _direction.XYZ;
-
-                                if (light.Has("spot")) {
-                                    const auto& spotData = light.Get("spot");
-                                    spotLight.inner_cone_angle = spotData.Has("innerConeAngle") ? (float)spotData.Get("innerConeAngle").GetNumberAsDouble() : 0.0f;
-                                    spotLight.outer_cone_angle = spotData.Has("outerConeAngle") ? (float)spotData.Get("outerConeAngle").GetNumberAsDouble() : 0.78539816f;
-                                } else {
-                                    spotLight.inner_cone_angle = 0.0f;
-                                    spotLight.outer_cone_angle = 0.78539816f;
-                                }
-                                state.spot_lights.push_back(spotLight);
-                            } else if (lightType == "directional") {
-                                DirectionalLight dirLight;
-                                dirLight.type = 0;
-                                dirLight.color = color;
-                                dirLight.intensity = intensity;
-                                HMM_Mat4 rotMat = HMM_QToM4(rotation);
-                                HMM_Vec4 forward = {0.0f, 0.0f, -1.0f, 0.0f};
-                                HMM_Vec4 _direction = HMM_MulM4V4(rotMat, forward);
-                                dirLight.direction = HMM_NormV3(_direction.XYZ);
-                                state.directional_lights.push_back(dirLight);
-                            }
-                        }
-                    }
-                }
-            }
-        }*/
-
-        if (node.mesh >= 0 && node.mesh < model.meshes.size()) {
-            const auto& meshDef = model.meshes[node.mesh];
-            for (const auto& prim : meshDef.primitives) {
-                if (prim.attributes.find("POSITION") == prim.attributes.end() ||
-                    prim.attributes.find("NORMAL") == prim.attributes.end() ||
-                    prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
-                    std::cout << "Warning: Primitive missing required attributes, skipping..." << std::endl;
-                    continue;
+            if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
+                auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
+                cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
+                uint8_t* specular_texture_data;
+                sg_image_desc specular_img_desc;
+                if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
+                    auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
+                    specular_texture_data = u_specular_texture_data;
+                    specular_img_desc = u_specular_img_desc;
                 }
 
-                const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
-                const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
-                const auto& uvAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
-                size_t vcount = posAcc.count;
+                if (texture_data && img_desc.width > 0) {
+                    mat->diffuse_texture_data = texture_data;
+                    mat->diffuse_texture_desc = img_desc;
+                    mat->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
+                    mat->has_diffuse_texture = true;
 
-                auto* verts = new float[vcount * 8];
-
-                const auto& posView = model.bufferViews[posAcc.bufferView];
-                const auto& normView = model.bufferViews[normAcc.bufferView];
-                const auto& uvView = model.bufferViews[uvAcc.bufferView];
-
-                const auto* posBuf = reinterpret_cast<const float*>(
-                    model.buffers[posView.buffer].data.data() + posView.byteOffset + posAcc.byteOffset);
-                const auto* normBuf = reinterpret_cast<const float*>(
-                    model.buffers[normView.buffer].data.data() + normView.byteOffset + normAcc.byteOffset);
-                const auto* uvBuf = reinterpret_cast<const float*>(
-                    model.buffers[uvView.buffer].data.data() + uvView.byteOffset + uvAcc.byteOffset);
-
-                if (posAcc.count != normAcc.count || posAcc.count != uvAcc.count) {
-                    std::cout << "Warning: Mismatched attribute counts!" << std::endl;
-                    continue;
+                    mat->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    mat->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    mat->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    mat->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
+                if (specular_texture_data && specular_img_desc.width > 0) {
+                    mat->specular_texture_data = specular_texture_data;
+                    mat->specular_texture_desc = specular_img_desc;
+                    mat->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
+                    mat->has_specular_texture = true;
 
-                size_t posStride = posView.byteStride ? posView.byteStride / sizeof(float) : 3;
-                if (posStride < 3) posStride = 3;
-                size_t normStride = normView.byteStride ? normView.byteStride / sizeof(float) : 3;
-                size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
-
-                for (size_t i = 0; i < vcount; i++) {
-                    // position
-                    verts[i*8 + 0] = posBuf[i*posStride + 0];
-                    verts[i*8 + 1] = posBuf[i*posStride + 1];
-                    verts[i*8 + 2] = posBuf[i*posStride + 2];
-                    // normal
-                    verts[i*8 + 3] = normBuf[i*normStride + 0];
-                    verts[i*8 + 4] = normBuf[i*normStride + 1];
-                    verts[i*8 + 5] = normBuf[i*normStride + 2];
-                    // texture coordinates
-                    verts[i*8 + 6] = uvBuf[i*uvStride + 0];
-                    verts[i*8 + 7] = uvBuf[i*uvStride + 1];
+                    mat->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    mat->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    mat->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    mat->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
-
-                const auto& idxAcc = model.accessors[prim.indices];
-                size_t icount = idxAcc.count;
-                auto* idxs = new uint32_t[icount];
-
-                const auto& idxView = model.bufferViews[idxAcc.bufferView];
-                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data() +
-                                      idxView.byteOffset + idxAcc.byteOffset;
-
-                if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                    const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices16[i];
-                    }
-                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                    const uint32_t* indices32 = reinterpret_cast<const uint32_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices32[i];
-                    }
-                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-                    const uint8_t* indices8 = reinterpret_cast<const uint8_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices8[i];
-                    }
-                }
-
-                Object obj;
-                obj.mesh = new Mesh;
-                obj.mesh->material = new Material;
-                obj.mesh->vertices = verts;
-                obj.mesh->vertex_count = vcount;
-                obj.mesh->indices = idxs;
-                obj.mesh->index_count = icount;
-
-                decompose_matrix(worldTransform, obj.position, obj.rotation, obj.scale);
-
-                if (prim.material >= 0 && prim.material < model.materials.size()) {
-                    const auto& material = model.materials[prim.material];
-
-                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-                        auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
-                        cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
-                        uint8_t* specular_texture_data;
-                        sg_image_desc specular_img_desc;
-                        if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-                            cout << "loading specular texture" << endl;
-                            auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
-                            specular_texture_data = u_specular_texture_data;
-                            specular_img_desc = u_specular_img_desc;
-                        }
-
-                        if (texture_data && img_desc.width > 0) {
-                            obj.mesh->material->diffuse_texture_data = texture_data;
-                            obj.mesh->material->diffuse_texture_desc = img_desc;
-                            obj.mesh->material->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
-                            obj.mesh->material->has_diffuse_texture = true;
-
-                            obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                        }
-                        if (specular_texture_data && specular_img_desc.width > 0) {
-                            obj.mesh->material->specular_texture_data = specular_texture_data;
-                            obj.mesh->material->specular_texture_desc = specular_img_desc;
-                            obj.mesh->material->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
-                            obj.mesh->material->has_specular_texture = true;
-
-                            obj.mesh->material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                        }
-                    }
-                }
-
-                objects.push_back(obj);
-                std::cout << "Loading mesh: vertices=" << vcount << ", indices=" << icount << std::endl;
-                std::cout << "Using uint16 indices: " << (obj.mesh->use_uint16_indices ? "yes" : "no") << std::endl;
-                std::cout << "Strides: pos=" << posStride << ", norm=" << normStride << ", uv=" << uvStride << std::endl;
             }
         }
 
-        for (int childIndex : node.children) {
-            processNode(childIndex, worldTransform);
-        }
-    };
+        base_mesh->material = mat;
 
-    std::vector<bool> isChild(model.nodes.size(), false);
-    for (const auto& node : model.nodes) {
-        for (int child : node.children) {
-            if (child >= 0 && child < model.nodes.size()) {
-                isChild[child] = true;
+        Object obj;
+        obj.mesh = nullptr;
+        obj.position = node.translation.size() == 3 ? HMM_V3(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]), static_cast<float>(node.translation[2])) : HMM_V3(0, 0, 0);
+        obj.scale = node.scale.size() == 3 ? HMM_V3(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]), static_cast<float>(node.scale[2])) : HMM_V3(1, 1, 1);
+        obj.rotation = node.rotation.size() == 4 ? HMM_Q(static_cast<float>(node.rotation[0]), static_cast<float>(node.rotation[1]), static_cast<float>(node.rotation[2]), static_cast<float>(node.rotation[3])) : HMM_Q(0, 0, 0, 1);
+
+        obj.shape_keys.push_back(base_mesh);
+
+        for (size_t target_idx = 0; target_idx < primitive.targets.size(); ++target_idx) {
+            const std::map<std::string, int>& target = primitive.targets[target_idx];
+
+            float* morphed_vertices = new float[vcount * 8];
+            memcpy(morphed_vertices, base_vertices, vcount * 8 * sizeof(float));
+
+            auto dpos_it = target.find("POSITION");
+            if (dpos_it != target.end()) {
+                const tinygltf::Accessor& dpos_acc = model.accessors[dpos_it->second];
+                const tinygltf::BufferView& dpos_bv = model.bufferViews[dpos_acc.bufferView];
+                const tinygltf::Buffer& dpos_buf = model.buffers[dpos_bv.buffer];
+                const unsigned char* dpos_data = dpos_buf.data.data() + dpos_acc.byteOffset + dpos_bv.byteOffset;
+                size_t dpos_stride = dpos_bv.byteStride ? dpos_bv.byteStride : 12;
+                for (size_t v = 0; v < vcount; ++v) {
+                    const float* dpos = reinterpret_cast<const float*>(dpos_data + v * dpos_stride);
+                    morphed_vertices[v * 8 + 0] += dpos[0];
+                    morphed_vertices[v * 8 + 1] += dpos[1];
+                    morphed_vertices[v * 8 + 2] += dpos[2];
+                }
             }
+
+            auto dnorm_it = target.find("NORMAL");
+            if (dnorm_it != target.end()) {
+                const tinygltf::Accessor& dnorm_acc = model.accessors[dnorm_it->second];
+                const tinygltf::BufferView& dnorm_bv = model.bufferViews[dnorm_acc.bufferView];
+                const tinygltf::Buffer& dnorm_buf = model.buffers[dnorm_bv.buffer];
+                const unsigned char* dnorm_data = dnorm_buf.data.data() + dnorm_acc.byteOffset + dnorm_bv.byteOffset;
+                size_t dnorm_stride = dnorm_bv.byteStride ? dnorm_bv.byteStride : 12;
+                for (size_t v = 0; v < vcount; ++v) {
+                    const float* dnorm = reinterpret_cast<const float*>(dnorm_data + v * dnorm_stride);
+                    morphed_vertices[v * 8 + 3] += dnorm[0];
+                    morphed_vertices[v * 8 + 4] += dnorm[1];
+                    morphed_vertices[v * 8 + 5] += dnorm[2];
+                    HMM_Vec3 norm = HMM_V3(morphed_vertices[v * 8 + 3], morphed_vertices[v * 8 + 4], morphed_vertices[v * 8 + 5]);
+                    if (HMM_LenV3(norm) > 0.0f) norm = HMM_NormV3(norm);
+                    morphed_vertices[v * 8 + 3] = norm.X;
+                    morphed_vertices[v * 8 + 4] = norm.Y;
+                    morphed_vertices[v * 8 + 5] = norm.Z;
+                }
+            }
+
+            Mesh* morph_mesh = new Mesh();
+            morph_mesh->vertices = morphed_vertices;
+            morph_mesh->vertex_count = vcount;
+            morph_mesh->indices = new uint32_t[icount];
+            memcpy(morph_mesh->indices, base_indices, icount * sizeof(uint32_t));
+            morph_mesh->index_count = icount;
+            morph_mesh->material = mat;
+
+            obj.shape_keys.push_back(morph_mesh);
         }
+
+        obj.select_shape_key(0);
+
+        objects.push_back(obj);
     }
-
-    HMM_Mat4 identity = HMM_M4D(1.0f);
-    for (int i = 0; i < model.nodes.size(); i++) {
-        if (!isChild[i]) {
-            processNode(i, identity);
-        }
-    }
-
-    if (objects.empty()) {
-        for (const auto& meshDef : model.meshes) {
-            for (const auto& prim : meshDef.primitives) {
-                if (prim.attributes.find("POSITION") == prim.attributes.end() ||
-                    prim.attributes.find("NORMAL") == prim.attributes.end() ||
-                    prim.attributes.find("TEXCOORD_0") == prim.attributes.end()) {
-                    continue;
-                }
-
-                const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
-                const auto& normAcc = model.accessors[prim.attributes.at("NORMAL")];
-                const auto& uvAcc = model.accessors[prim.attributes.at("TEXCOORD_0")];
-                size_t vcount = posAcc.count;
-
-                auto* verts = new float[vcount * 8];
-
-                const auto& posView = model.bufferViews[posAcc.bufferView];
-                const auto& normView = model.bufferViews[normAcc.bufferView];
-                const auto& uvView = model.bufferViews[uvAcc.bufferView];
-
-                const auto* posBuf = reinterpret_cast<const float*>(
-                    model.buffers[posView.buffer].data.data() + posView.byteOffset + posAcc.byteOffset);
-                const auto* normBuf = reinterpret_cast<const float*>(
-                    model.buffers[normView.buffer].data.data() + normView.byteOffset + normAcc.byteOffset);
-                const auto* uvBuf = reinterpret_cast<const float*>(
-                    model.buffers[uvView.buffer].data.data() + uvView.byteOffset + uvAcc.byteOffset);
-
-                size_t posStride = posView.byteStride ? posView.byteStride / sizeof(float) : 3;
-                size_t normStride = normView.byteStride ? normView.byteStride / sizeof(float) : 3;
-                size_t uvStride = uvView.byteStride ? uvView.byteStride / sizeof(float) : 2;
-
-                for (size_t i = 0; i < vcount; i++) {
-                    verts[i*8 + 0] = posBuf[i*posStride + 0];
-                    verts[i*8 + 1] = posBuf[i*posStride + 1];
-                    verts[i*8 + 2] = posBuf[i*posStride + 2];
-                    verts[i*8 + 3] = normBuf[i*normStride + 0];
-                    verts[i*8 + 4] = normBuf[i*normStride + 1];
-                    verts[i*8 + 5] = normBuf[i*normStride + 2];
-                    verts[i*8 + 6] = uvBuf[i*uvStride + 0];
-                    verts[i*8 + 7] = uvBuf[i*uvStride + 1];
-                }
-
-                const auto& idxAcc = model.accessors[prim.indices];
-                size_t icount = idxAcc.count;
-                auto* idxs = new uint32_t[icount];
-
-                const auto& idxView = model.bufferViews[idxAcc.bufferView];
-                const uint8_t* idxBuf = model.buffers[idxView.buffer].data.data()+idxView.byteOffset + idxAcc.byteOffset;
-
-                if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                    const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices16[i];
-                    }
-                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                    const uint32_t* indices32 = reinterpret_cast<const uint32_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices32[i];
-                    }
-                } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-                    const uint8_t* indices8 = reinterpret_cast<const uint8_t*>(idxBuf);
-                    for (size_t i = 0; i < icount; i++) {
-                        idxs[i] = indices8[i];
-                    }
-                }
-
-                Object obj;
-                obj.mesh = new Mesh;
-                obj.mesh->material = new Material;
-                obj.mesh->vertices = verts;
-                obj.mesh->vertex_count = vcount;
-                obj.mesh->indices = idxs;
-                obj.mesh->index_count = icount;
-                obj.position = {0, 0, 0};
-                obj.rotation = {0, 0, 0, 1};
-                obj.scale = {1, 1, 1};
-
-                // load texture if material has one
-                if (prim.material >= 0 && prim.material < model.materials.size()) {
-                    const auto& material = model.materials[prim.material];
-
-                    if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
-                        auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
-                        cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
-                        uint8_t* specular_texture_data;
-                        sg_image_desc specular_img_desc;
-                        if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-                            cout << "loading specular texture" << endl;
-                            auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
-                            specular_texture_data = u_specular_texture_data;
-                            specular_img_desc = u_specular_img_desc;
-                        }
-
-                        if (texture_data && img_desc.width > 0) {
-                            obj.mesh->material->diffuse_texture_data = texture_data;
-                            obj.mesh->material->diffuse_texture_desc = img_desc;
-                            obj.mesh->material->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
-                            obj.mesh->material->has_diffuse_texture = true;
-
-                            obj.mesh->material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                        }
-                        if (specular_texture_data && specular_img_desc.width > 0) {
-                            obj.mesh->material->specular_texture_data = specular_texture_data;
-                            obj.mesh->material->specular_texture_desc = specular_img_desc;
-                            obj.mesh->material->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
-                            obj.mesh->material->has_specular_texture = true;
-
-                            obj.mesh->material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                            obj.mesh->material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                            obj.mesh->material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                        }
-                    }
-                }
-
-                objects.push_back(obj);
-                std::cout << "Loading mesh: vertices=" << vcount << ", indices=" << icount << std::endl;
-                std::cout << "Using uint16 indices: " << (obj.mesh->use_uint16_indices ? "yes" : "no") << std::endl;
-                std::cout << "Strides: pos=" << posStride << ", norm=" << normStride << ", uv=" << uvStride << std::endl;
-            }
-        }
-    }
-
-    cout << "Loaded " << objects.size() << " objects from GLTF" << endl;
     return objects;
 }
 
@@ -1676,7 +1483,7 @@ class AudioSource3D {
                 visualizer_objects.push_back(loaded[0]);
                 visualizer_obj_index = visualizer_objects.size() - 1;
                 Object vo = visualizer_objects[visualizer_obj_index];
-                prepare_mesh_buffers(*vo.mesh);
+                prepare_mesh_buffers(vo);
                 visualizer_object = vo;
             }
 
@@ -1763,7 +1570,7 @@ public:
             visualizer_objects.push_back(loaded[0]);
             visualizer_obj_index = visualizer_objects.size() - 1;
             Object vo = visualizer_objects[visualizer_obj_index];
-            prepare_mesh_buffers(*vo.mesh);
+            prepare_mesh_buffers(vo);
             visualizer_obj = vo;
         }
 
@@ -1823,6 +1630,10 @@ void clear_scene() {
     state.audio_sources.clear();
 
     for (auto& visgroup : vis_groups) {
+        for (auto& obj : visgroup.objects) {
+            obj.shape_keys.clear();
+            delete obj.mesh;
+        }
         visgroup.objects.clear();
     }
     vis_groups.clear();
@@ -2200,7 +2011,7 @@ void load_scene(const string& path) {
                             mesh->material = new Material();
                         }
 
-                        prepare_mesh_buffers(*mesh);
+                        prepare_mesh_buffers(obj);
                     }
 
                     new_visgroup.objects.push_back(std::move(obj));
@@ -2580,6 +2391,18 @@ void render_editor() {
                         vis_groups[0].objects.push_back(new_object);
                     }
                 }
+                if (selected_object->shape_keys.size() > 1) {
+                    if (ImGui::CollapsingHeader("SHAPE KEYS")) {
+                        ImGui::Separator();
+                        for (int i = 0; i < selected_object->shape_keys.size(); i++) {
+                            ImGui::PushID(i);
+                            if (ImGui::Button(to_string(i).c_str())) {
+                                selected_object->select_shape_key(i);
+                            }
+                            ImGui::PopID();
+                        }
+                    }
+                }
                 if (ImGui::CollapsingHeader("TEXTURES")) {
                     if (selected_object->mesh->material->has_diffuse_texture) {
                         sg_view_desc editor_view_desc = {};
@@ -2608,7 +2431,7 @@ void render_editor() {
                 }
                 if (ImGui::CollapsingHeader("DANGER ZONE")) {
                     if (ImGui::Button("RE-PREPARE BUFFERS")) {
-                        prepare_mesh_buffers(*selected_object->mesh);
+                        prepare_mesh_buffers(*selected_object);
                     }
                     ImGui::SameLine();
                     ImGui::Text("This wastes memory");
@@ -2637,7 +2460,7 @@ void render_editor() {
                 if (file_path) {
                     vector<Object> loaded_objects = load_gltf(file_path);
                     for (auto& obj : loaded_objects) {
-                        prepare_mesh_buffers(*obj.mesh);
+                        prepare_mesh_buffers(obj);
                         vis_groups[0].objects.push_back(obj);
                     }
                 }
