@@ -1743,6 +1743,81 @@ void save_scene(const string& path) {
                 }
             }
 
+            obj_json["shape_keys"] = nlohmann::json::array();
+            for (const auto& shape_key_mesh : obj.shape_keys) {
+                nlohmann::json sk_json;
+
+                sk_json["enable_shading"] = shape_key_mesh->enable_shading;
+
+                if (shape_key_mesh->vertex_count > 0 && shape_key_mesh->vertices) {
+                    sk_json["vertex_count"] = shape_key_mesh->vertex_count;
+                    sk_json["vertices"] = nlohmann::json::array();
+                    for (size_t v = 0; v < shape_key_mesh->vertex_count * 8; v++) {
+                        sk_json["vertices"].push_back(shape_key_mesh->vertices[v]);
+                    }
+                }
+
+                if (shape_key_mesh->index_count > 0 && shape_key_mesh->indices) {
+                    sk_json["index_count"] = shape_key_mesh->index_count;
+                    sk_json["indices"] = nlohmann::json::array();
+                    for (size_t idx = 0; idx < shape_key_mesh->index_count; idx++) {
+                        sk_json["indices"].push_back(shape_key_mesh->indices[idx]);
+                    }
+                }
+
+                if (shape_key_mesh->material) {
+                    sk_json["material"] = nlohmann::json::object();
+                    auto& sk_material_json = sk_json["material"];
+
+                    Material* material = shape_key_mesh->material;
+
+                    sk_material_json["diffuse"] = material->diffuse;
+                    sk_material_json["specular"] = material->specular;
+
+                    sk_material_json["has_diffuse_texture"] = material->has_diffuse_texture;
+                    if (material->has_diffuse_texture && material->diffuse_texture_data && material->diffuse_texture_data_size > 0) {
+                        sk_material_json["diffuse_texture_width"] = material->diffuse_texture_desc.width;
+                        sk_material_json["diffuse_texture_height"] = material->diffuse_texture_desc.height;
+                        sk_material_json["diffuse_texture_format"] = static_cast<int>(material->diffuse_texture_desc.pixel_format);
+
+                        std::ostringstream hex_stream;
+                        hex_stream << std::hex << std::setfill('0');
+                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
+                            hex_stream << std::setw(2) << static_cast<int>(material->diffuse_texture_data[i]);
+                        }
+                        sk_material_json["diffuse_texture_data"] = hex_stream.str();
+                        sk_material_json["diffuse_texture_data_size"] = material->diffuse_texture_data_size;
+
+                        sk_material_json["diffuse_sampler_min_filter"] = static_cast<int>(material->diffuse_sampler_desc.min_filter);
+                        sk_material_json["diffuse_sampler_mag_filter"] = static_cast<int>(material->diffuse_sampler_desc.mag_filter);
+                        sk_material_json["diffuse_sampler_wrap_u"] = static_cast<int>(material->diffuse_sampler_desc.wrap_u);
+                        sk_material_json["diffuse_sampler_wrap_v"] = static_cast<int>(material->diffuse_sampler_desc.wrap_v);
+                    }
+
+                    sk_material_json["has_specular_texture"] = material->has_specular_texture;
+                    if (material->has_specular_texture && material->specular_texture_data && material->specular_texture_data_size > 0) {
+                        sk_material_json["specular_texture_width"] = material->specular_texture_desc.width;
+                        sk_material_json["specular_texture_height"] = material->specular_texture_desc.height;
+                        sk_material_json["specular_texture_format"] = static_cast<int>(material->specular_texture_desc.pixel_format);
+
+                        std::ostringstream hex_stream;
+                        hex_stream << std::hex << std::setfill('0');
+                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
+                            hex_stream << std::setw(2) << static_cast<int>(material->specular_texture_data[i]);
+                        }
+                        sk_material_json["specular_texture_data"] = hex_stream.str();
+                        sk_material_json["specular_texture_data_size"] = material->specular_texture_data_size;
+
+                        sk_material_json["specular_sampler_min_filter"] = static_cast<int>(material->specular_sampler_desc.min_filter);
+                        sk_material_json["specular_sampler_mag_filter"] = static_cast<int>(material->specular_sampler_desc.mag_filter);
+                        sk_material_json["specular_sampler_wrap_u"] = static_cast<int>(material->specular_sampler_desc.wrap_u);
+                        sk_material_json["specular_sampler_wrap_v"] = static_cast<int>(material->specular_sampler_desc.wrap_v);
+                    }
+                }
+
+                obj_json["shape_keys"].push_back(sk_json);
+            }
+
             vg_json["objects"].push_back(obj_json);
         }
 
@@ -2012,6 +2087,149 @@ void load_scene(const string& path) {
                         }
 
                         prepare_mesh_buffers(obj);
+                    }
+
+                    if (obj_json.contains("shape_keys")) {
+                        for (const auto& sk_json : obj_json["shape_keys"]) {
+                            Mesh* shape_key_mesh = new Mesh();
+
+                            if (sk_json.contains("enable_shading")) {
+                                shape_key_mesh->enable_shading = sk_json["enable_shading"];
+                            }
+
+                            if (sk_json.contains("vertex_count") &&
+                                sk_json.contains("index_count") &&
+                                sk_json.contains("vertices") &&
+                                sk_json.contains("indices")) {
+
+                                shape_key_mesh->vertex_count = sk_json["vertex_count"];
+                                shape_key_mesh->index_count = sk_json["index_count"];
+
+                                shape_key_mesh->vertices = new float[shape_key_mesh->vertex_count * 8];
+                                shape_key_mesh->indices = new uint32_t[shape_key_mesh->index_count];
+
+                                for (size_t i = 0; i < shape_key_mesh->vertex_count * 8; i++) {
+                                    shape_key_mesh->vertices[i] = sk_json["vertices"][i];
+                                }
+
+                                for (size_t i = 0; i < shape_key_mesh->index_count; i++) {
+                                    shape_key_mesh->indices[i] = sk_json["indices"][i];
+                                }
+                            }
+
+                            if (sk_json.contains("material")) {
+                                const auto& sk_material_json = sk_json["material"];
+
+                                Material* material = new Material();
+                                shape_key_mesh->material = material;
+
+                                if (sk_material_json.contains("diffuse")) {
+                                    material->diffuse = sk_material_json["diffuse"];
+                                }
+
+                                if (sk_material_json.contains("specular")) {
+                                    material->specular = sk_material_json["specular"];
+                                }
+
+                                if (sk_material_json.contains("has_diffuse_texture") && sk_material_json["has_diffuse_texture"]) {
+                                    material->has_diffuse_texture = true;
+
+                                    if (sk_material_json.contains("diffuse_texture_width") &&
+                                        sk_material_json.contains("diffuse_texture_height") &&
+                                        sk_material_json.contains("diffuse_texture_data") &&
+                                        sk_material_json.contains("diffuse_texture_data_size")) {
+
+                                        material->diffuse_texture_desc.width = sk_material_json["diffuse_texture_width"];
+                                        material->diffuse_texture_desc.height = sk_material_json["diffuse_texture_height"];
+                                        material->diffuse_texture_desc.pixel_format = static_cast<sg_pixel_format>(sk_material_json["diffuse_texture_format"]);
+                                        material->diffuse_texture_data_size = sk_material_json["diffuse_texture_data_size"];
+
+                                        std::string hex_data = sk_material_json["diffuse_texture_data"];
+                                        material->diffuse_texture_data = new uint8_t[material->diffuse_texture_data_size];
+
+                                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
+                                            std::string byte_string = hex_data.substr(i * 2, 2);
+                                            material->diffuse_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                                        }
+
+                                        material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
+                                        material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
+
+                                        if (sk_material_json.contains("diffuse_sampler_min_filter")) {
+                                            material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(sk_material_json["diffuse_sampler_min_filter"]);
+                                            material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(sk_material_json["diffuse_sampler_mag_filter"]);
+                                            material->diffuse_sampler_desc.wrap_u = static_cast<sg_wrap>(sk_material_json["diffuse_sampler_wrap_u"]);
+                                            material->diffuse_sampler_desc.wrap_v = static_cast<sg_wrap>(sk_material_json["diffuse_sampler_wrap_v"]);
+                                        } else {
+                                            material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                            material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                            material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                            material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                        }
+                                    }
+                                } else {
+                                    material->has_diffuse_texture = false;
+                                }
+
+                                if (sk_material_json.contains("has_specular_texture") && sk_material_json["has_specular_texture"]) {
+                                    material->has_specular_texture = true;
+
+                                    if (sk_material_json.contains("specular_texture_width") &&
+                                        sk_material_json.contains("specular_texture_height") &&
+                                        sk_material_json.contains("specular_texture_data") &&
+                                        sk_material_json.contains("specular_texture_data_size")) {
+
+                                        material->specular_texture_desc.width = sk_material_json["specular_texture_width"];
+                                        material->specular_texture_desc.height = sk_material_json["specular_texture_height"];
+                                        material->specular_texture_desc.pixel_format = static_cast<sg_pixel_format>(sk_material_json["specular_texture_format"]);
+                                        material->specular_texture_data_size = sk_material_json["specular_texture_data_size"];
+
+                                        std::string hex_data = sk_material_json["specular_texture_data"];
+                                        material->specular_texture_data = new uint8_t[material->specular_texture_data_size];
+
+                                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
+                                            std::string byte_string = hex_data.substr(i * 2, 2);
+                                            material->specular_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
+                                        }
+
+                                        material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
+                                        material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
+
+                                        if (sk_material_json.contains("specular_sampler_min_filter")) {
+                                            material->specular_sampler_desc.min_filter = static_cast<sg_filter>(sk_material_json["specular_sampler_min_filter"]);
+                                            material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(sk_material_json["specular_sampler_mag_filter"]);
+                                            material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(sk_material_json["specular_sampler_wrap_u"]);
+                                            material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(sk_material_json["specular_sampler_wrap_v"]);
+                                        } else {
+                                            material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                            material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                            material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                            material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                        }
+                                    }
+                                } else {
+                                    material->has_specular_texture = false;
+                                }
+
+                                if (!material->has_diffuse_texture) {
+                                    material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                    material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                    material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                    material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                }
+
+                                if (!material->has_specular_texture) {
+                                    material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                                    material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                                    material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                                    material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                                }
+                            } else {
+                                shape_key_mesh->material = new Material();
+                            }
+
+                            obj.shape_keys.push_back(shape_key_mesh);
+                        }
                     }
 
                     new_visgroup.objects.push_back(std::move(obj));
