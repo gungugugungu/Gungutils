@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 # OpenGL
 find_package(OpenGL REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # Platform-specific dependencies
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR WIN32)
@@ -79,6 +80,7 @@ target_link_libraries(Gungutils
         reactphysics3d
         meshoptimizer
         ${PLATFORM_LIBS}
+        ZLIB::ZLIB
 )
 
 target_include_directories(Gungutils

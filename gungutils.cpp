@@ -6,6 +6,7 @@
 #include <string>
 #include <cstring>
 #include <iostream>
+#include <zlib.h>
 #include <cstdlib>
 #include <tuple>
 #include <map>
@@ -13,6 +14,7 @@
 #include <charconv>
 #include <memory>
 #include <functional>
+#include <fstream>
 #include "imgui/imgui.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
@@ -1632,7 +1634,6 @@ void clear_scene() {
     for (auto& visgroup : vis_groups) {
         for (auto& obj : visgroup.objects) {
             obj.shape_keys.clear();
-            delete obj.mesh;
         }
         visgroup.objects.clear();
     }
@@ -1664,9 +1665,9 @@ void save_scene(const string& path) {
         for (const auto& obj : visgroup.objects) {
             nlohmann::json obj_json;
 
-            obj_json["position"] = {obj.position.X, obj.position.Y, obj.position.Z};
-            obj_json["rotation"] = {obj.rotation.X, obj.rotation.Y, obj.rotation.Z, obj.rotation.W};
-            obj_json["scale"] = {obj.scale.X, obj.scale.Y, obj.scale.Z};
+            obj_json["pos"] = {obj.position.X, obj.position.Y, obj.position.Z};
+            obj_json["rot"] = {obj.rotation.X, obj.rotation.Y, obj.rotation.Z, obj.rotation.W};
+            obj_json["scl"] = {obj.scale.X, obj.scale.Y, obj.scale.Z};
             obj_json["opacity"] = obj.opacity;
 
             Mesh* mesh = obj.mesh;
@@ -1674,246 +1675,202 @@ void save_scene(const string& path) {
                 obj_json["mesh"] = nlohmann::json::object();
                 auto& mesh_json = obj_json["mesh"];
 
-                mesh_json["enable_shading"] = mesh->enable_shading;
+                mesh_json["shading"] = mesh->enable_shading;
 
                 if (mesh->vertex_count > 0 && mesh->vertices) {
-                    mesh_json["vertex_count"] = mesh->vertex_count;
-                    mesh_json["vertices"] = nlohmann::json::array();
-                    for (size_t v = 0; v < mesh->vertex_count * 8; v++) {
-                        mesh_json["vertices"].push_back(mesh->vertices[v]);
-                    }
+                    mesh_json["vert_cnt"] = mesh->vertex_count;
+                    std::vector<float> verts(mesh->vertices, mesh->vertices + mesh->vertex_count * 8);
+                    mesh_json["verts"] = verts;
                 }
 
                 if (mesh->index_count > 0 && mesh->indices) {
-                    mesh_json["index_count"] = mesh->index_count;
-                    mesh_json["indices"] = nlohmann::json::array();
-                    for (size_t idx = 0; idx < mesh->index_count; idx++) {
-                        mesh_json["indices"].push_back(mesh->indices[idx]);
-                    }
+                    mesh_json["idx_cnt"] = mesh->index_count;
+                    std::vector<uint32_t> indices(mesh->indices, mesh->indices + mesh->index_count);
+                    mesh_json["indices"] = indices;
                 }
 
                 if (mesh->material) {
-                    mesh_json["material"] = nlohmann::json::object();
-                    auto& material_json = mesh_json["material"];
+                    mesh_json["mat"] = nlohmann::json::object();
+                    auto& mat_json = mesh_json["mat"];
 
                     Material* material = mesh->material;
+                    mat_json["diff"] = material->diffuse;
+                    mat_json["spec"] = material->specular;
 
-                    material_json["diffuse"] = material->diffuse;
-                    material_json["specular"] = material->specular;
-
-                    material_json["has_diffuse_texture"] = material->has_diffuse_texture;
                     if (material->has_diffuse_texture && material->diffuse_texture_data && material->diffuse_texture_data_size > 0) {
-                        material_json["diffuse_texture_width"] = material->diffuse_texture_desc.width;
-                        material_json["diffuse_texture_height"] = material->diffuse_texture_desc.height;
-                        material_json["diffuse_texture_format"] = static_cast<int>(material->diffuse_texture_desc.pixel_format);
+                        mat_json["diff_tex"] = nlohmann::json::object();
+                        auto& diff_tex = mat_json["diff_tex"];
+                        diff_tex["w"] = material->diffuse_texture_desc.width;
+                        diff_tex["h"] = material->diffuse_texture_desc.height;
+                        diff_tex["fmt"] = static_cast<int>(material->diffuse_texture_desc.pixel_format);
 
-                        std::ostringstream hex_stream;
-                        hex_stream << std::hex << std::setfill('0');
-                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
-                            hex_stream << std::setw(2) << static_cast<int>(material->diffuse_texture_data[i]);
-                        }
-                        material_json["diffuse_texture_data"] = hex_stream.str();
-                        material_json["diffuse_texture_data_size"] = material->diffuse_texture_data_size;
+                        std::vector<uint8_t> tex_data(material->diffuse_texture_data,
+                                                     material->diffuse_texture_data + material->diffuse_texture_data_size);
+                        diff_tex["data"] = tex_data;
 
-                        material_json["diffuse_sampler_min_filter"] = static_cast<int>(material->diffuse_sampler_desc.min_filter);
-                        material_json["diffuse_sampler_mag_filter"] = static_cast<int>(material->diffuse_sampler_desc.mag_filter);
-                        material_json["diffuse_sampler_wrap_u"] = static_cast<int>(material->diffuse_sampler_desc.wrap_u);
-                        material_json["diffuse_sampler_wrap_v"] = static_cast<int>(material->diffuse_sampler_desc.wrap_v);
+                        diff_tex["samp"] = {
+                            static_cast<int>(material->diffuse_sampler_desc.min_filter),
+                            static_cast<int>(material->diffuse_sampler_desc.mag_filter),
+                            static_cast<int>(material->diffuse_sampler_desc.wrap_u),
+                            static_cast<int>(material->diffuse_sampler_desc.wrap_v)
+                        };
                     }
 
-                    material_json["has_specular_texture"] = material->has_specular_texture;
                     if (material->has_specular_texture && material->specular_texture_data && material->specular_texture_data_size > 0) {
-                        material_json["specular_texture_width"] = material->specular_texture_desc.width;
-                        material_json["specular_texture_height"] = material->specular_texture_desc.height;
-                        material_json["specular_texture_format"] = static_cast<int>(material->specular_texture_desc.pixel_format);
+                        mat_json["spec_tex"] = nlohmann::json::object();
+                        auto& spec_tex = mat_json["spec_tex"];
+                        spec_tex["w"] = material->specular_texture_desc.width;
+                        spec_tex["h"] = material->specular_texture_desc.height;
+                        spec_tex["fmt"] = static_cast<int>(material->specular_texture_desc.pixel_format);
 
-                        std::ostringstream hex_stream;
-                        hex_stream << std::hex << std::setfill('0');
-                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
-                            hex_stream << std::setw(2) << static_cast<int>(material->specular_texture_data[i]);
-                        }
-                        material_json["specular_texture_data"] = hex_stream.str();
-                        material_json["specular_texture_data_size"] = material->specular_texture_data_size;
+                        std::vector<uint8_t> tex_data(material->specular_texture_data,
+                                                     material->specular_texture_data + material->specular_texture_data_size);
+                        spec_tex["data"] = tex_data;
 
-                        material_json["specular_sampler_min_filter"] = static_cast<int>(material->specular_sampler_desc.min_filter);
-                        material_json["specular_sampler_mag_filter"] = static_cast<int>(material->specular_sampler_desc.mag_filter);
-                        material_json["specular_sampler_wrap_u"] = static_cast<int>(material->specular_sampler_desc.wrap_u);
-                        material_json["specular_sampler_wrap_v"] = static_cast<int>(material->specular_sampler_desc.wrap_v);
+                        spec_tex["samp"] = {
+                            static_cast<int>(material->specular_sampler_desc.min_filter),
+                            static_cast<int>(material->specular_sampler_desc.mag_filter),
+                            static_cast<int>(material->specular_sampler_desc.wrap_u),
+                            static_cast<int>(material->specular_sampler_desc.wrap_v)
+                        };
                     }
                 }
             }
 
-            obj_json["shape_keys"] = nlohmann::json::array();
-            for (const auto& shape_key_mesh : obj.shape_keys) {
-                nlohmann::json sk_json;
+            if (!obj.shape_keys.empty()) {
+                obj_json["shape_keys"] = nlohmann::json::array();
+                for (const auto& shape_key_mesh : obj.shape_keys) {
+                    nlohmann::json sk_json;
+                    sk_json["shading"] = shape_key_mesh->enable_shading;
 
-                sk_json["enable_shading"] = shape_key_mesh->enable_shading;
-
-                if (shape_key_mesh->vertex_count > 0 && shape_key_mesh->vertices) {
-                    sk_json["vertex_count"] = shape_key_mesh->vertex_count;
-                    sk_json["vertices"] = nlohmann::json::array();
-                    for (size_t v = 0; v < shape_key_mesh->vertex_count * 8; v++) {
-                        sk_json["vertices"].push_back(shape_key_mesh->vertices[v]);
+                    if (shape_key_mesh->vertex_count > 0 && shape_key_mesh->vertices) {
+                        sk_json["vert_cnt"] = shape_key_mesh->vertex_count;
+                        std::vector<float> verts(shape_key_mesh->vertices, shape_key_mesh->vertices + shape_key_mesh->vertex_count * 8);
+                        sk_json["verts"] = verts;
                     }
+
+                    if (shape_key_mesh->index_count > 0 && shape_key_mesh->indices) {
+                        sk_json["idx_cnt"] = shape_key_mesh->index_count;
+                        std::vector<uint32_t> indices(shape_key_mesh->indices, shape_key_mesh->indices + shape_key_mesh->index_count);
+                        sk_json["indices"] = indices;
+                    }
+
+                    obj_json["shape_keys"].push_back(sk_json);
                 }
-
-                if (shape_key_mesh->index_count > 0 && shape_key_mesh->indices) {
-                    sk_json["index_count"] = shape_key_mesh->index_count;
-                    sk_json["indices"] = nlohmann::json::array();
-                    for (size_t idx = 0; idx < shape_key_mesh->index_count; idx++) {
-                        sk_json["indices"].push_back(shape_key_mesh->indices[idx]);
-                    }
-                }
-
-                if (shape_key_mesh->material) {
-                    sk_json["material"] = nlohmann::json::object();
-                    auto& sk_material_json = sk_json["material"];
-
-                    Material* material = shape_key_mesh->material;
-
-                    sk_material_json["diffuse"] = material->diffuse;
-                    sk_material_json["specular"] = material->specular;
-
-                    sk_material_json["has_diffuse_texture"] = material->has_diffuse_texture;
-                    if (material->has_diffuse_texture && material->diffuse_texture_data && material->diffuse_texture_data_size > 0) {
-                        sk_material_json["diffuse_texture_width"] = material->diffuse_texture_desc.width;
-                        sk_material_json["diffuse_texture_height"] = material->diffuse_texture_desc.height;
-                        sk_material_json["diffuse_texture_format"] = static_cast<int>(material->diffuse_texture_desc.pixel_format);
-
-                        std::ostringstream hex_stream;
-                        hex_stream << std::hex << std::setfill('0');
-                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
-                            hex_stream << std::setw(2) << static_cast<int>(material->diffuse_texture_data[i]);
-                        }
-                        sk_material_json["diffuse_texture_data"] = hex_stream.str();
-                        sk_material_json["diffuse_texture_data_size"] = material->diffuse_texture_data_size;
-
-                        sk_material_json["diffuse_sampler_min_filter"] = static_cast<int>(material->diffuse_sampler_desc.min_filter);
-                        sk_material_json["diffuse_sampler_mag_filter"] = static_cast<int>(material->diffuse_sampler_desc.mag_filter);
-                        sk_material_json["diffuse_sampler_wrap_u"] = static_cast<int>(material->diffuse_sampler_desc.wrap_u);
-                        sk_material_json["diffuse_sampler_wrap_v"] = static_cast<int>(material->diffuse_sampler_desc.wrap_v);
-                    }
-
-                    sk_material_json["has_specular_texture"] = material->has_specular_texture;
-                    if (material->has_specular_texture && material->specular_texture_data && material->specular_texture_data_size > 0) {
-                        sk_material_json["specular_texture_width"] = material->specular_texture_desc.width;
-                        sk_material_json["specular_texture_height"] = material->specular_texture_desc.height;
-                        sk_material_json["specular_texture_format"] = static_cast<int>(material->specular_texture_desc.pixel_format);
-
-                        std::ostringstream hex_stream;
-                        hex_stream << std::hex << std::setfill('0');
-                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
-                            hex_stream << std::setw(2) << static_cast<int>(material->specular_texture_data[i]);
-                        }
-                        sk_material_json["specular_texture_data"] = hex_stream.str();
-                        sk_material_json["specular_texture_data_size"] = material->specular_texture_data_size;
-
-                        sk_material_json["specular_sampler_min_filter"] = static_cast<int>(material->specular_sampler_desc.min_filter);
-                        sk_material_json["specular_sampler_mag_filter"] = static_cast<int>(material->specular_sampler_desc.mag_filter);
-                        sk_material_json["specular_sampler_wrap_u"] = static_cast<int>(material->specular_sampler_desc.wrap_u);
-                        sk_material_json["specular_sampler_wrap_v"] = static_cast<int>(material->specular_sampler_desc.wrap_v);
-                    }
-                }
-
-                obj_json["shape_keys"].push_back(sk_json);
             }
 
             vg_json["objects"].push_back(obj_json);
         }
-
         j["visgroups"].push_back(vg_json);
     }
 
-    j["audio_sources"] = nlohmann::json::array();
-    for (size_t i = 0; i < state.audio_sources.size(); i++) {
-        const auto& as = state.audio_sources[i];
-        nlohmann::json as_json;
-
-        as_json["position"] = {as->position.X, as->position.Y, as->position.Z};
-
-        as_json["guid"] = {
-            as->guid.Data1,
-            as->guid.Data2,
-            as->guid.Data3,
-            nlohmann::json::array()
-        };
-
-        for (int b = 0; b < 8; b++) {
-            as_json["guid"][3].push_back(as->guid.Data4[b]);
-        }
-
-        j["audio_sources"].push_back(as_json);
+    j["audio_src"] = nlohmann::json::array();
+    for (const auto& as : state.audio_sources) {
+        j["audio_src"].push_back({
+            {as->position.X, as->position.Y, as->position.Z},
+            {as->guid.Data1, as->guid.Data2, as->guid.Data3,
+             std::vector<uint8_t>(as->guid.Data4, as->guid.Data4 + 8)}
+        });
     }
 
     j["helpers"] = nlohmann::json::array();
     for (const Helper* hpr : state.helpers) {
-        nlohmann::json helper_json;
-
-        helper_json["position"] = nlohmann::json::array({hpr->position.X, hpr->position.Y, hpr->position.Z});
-        helper_json["name"] = hpr->name;
-
-        j["helpers"].push_back(helper_json);
+        j["helpers"].push_back({
+            {hpr->position.X, hpr->position.Y, hpr->position.Z},
+            hpr->name
+        });
     }
 
-    j["directional_lights"] = nlohmann::json::array();
-    for (DirectionalLight light : state.directional_lights) {
-        nlohmann::json dir_light_json;
-
-        dir_light_json["direction"] = nlohmann::json::array({light.direction.X, light.direction.Y, light.direction.Z});
-        dir_light_json["intensity"] = light.intensity;
-        dir_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
-
-        j["directional_lights"].push_back(dir_light_json);
+    j["dir_lights"] = nlohmann::json::array();
+    for (const DirectionalLight& light : state.directional_lights) {
+        j["dir_lights"].push_back({
+            {light.direction.X, light.direction.Y, light.direction.Z},
+            light.intensity,
+            {light.color.X, light.color.Y, light.color.Z}
+        });
     }
 
-    j["point_lights"] = nlohmann::json::array();
-    for (PointLight light : state.point_lights) {
-        nlohmann::json point_light_json;
-
-        point_light_json["position"] = nlohmann::json::array({light.position.X, light.position.Y, light.position.Z});
-        point_light_json["intensity"] = light.intensity;
-        point_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
-        point_light_json["radius"] = light.radius;
-
-        j["point_lights"].push_back(point_light_json);
+    j["pt_lights"] = nlohmann::json::array();
+    for (const PointLight& light : state.point_lights) {
+        j["pt_lights"].push_back({
+            {light.position.X, light.position.Y, light.position.Z},
+            light.intensity,
+            {light.color.X, light.color.Y, light.color.Z},
+            light.radius
+        });
     }
 
     j["spot_lights"] = nlohmann::json::array();
-    for (SpotLight light : state.spot_lights) {
-        nlohmann::json spot_light_json;
-
-        spot_light_json["position"] = nlohmann::json::array({light.position.X, light.position.Y, light.position.Z});
-        spot_light_json["direction"] = nlohmann::json::array({light.direction.X, light.direction.Y, light.direction.Z});
-        spot_light_json["intensity"] = light.intensity;
-        spot_light_json["color"] = nlohmann::json::array({light.color.X, light.color.Y, light.color.Z});
-        spot_light_json["inner_cone_angle"] = light.inner_cone_angle;
-        spot_light_json["outer_cone_angle"] = light.outer_cone_angle;
-
-        j["spot_lights"].push_back(spot_light_json);
+    for (const SpotLight& light : state.spot_lights) {
+        j["spot_lights"].push_back({
+            {light.position.X, light.position.Y, light.position.Z},
+            {light.direction.X, light.direction.Y, light.direction.Z},
+            light.intensity,
+            {light.color.X, light.color.Y, light.color.Z},
+            light.inner_cone_angle,
+            light.outer_cone_angle
+        });
     }
 
-    j["ambient_light"] = nlohmann::json::array({state.ambient_light.X, state.ambient_light.Y, state.ambient_light.Z});
+    j["ambient"] = {state.ambient_light.X, state.ambient_light.Y, state.ambient_light.Z};
 
-    std::ofstream file(path);
-    if (file.is_open()) {
-        file << j.dump(4);
-        file.close();
-        std::cout << "Scene saved to: " << path << std::endl;
-    } else {
-        std::cerr << "Failed to open file for writing: " << path << std::endl;
+    std::string json_str = j.dump();
+
+    uLongf compressed_size = compressBound(json_str.length());
+    std::vector<Bytef> compressed_data(compressed_size);
+
+    int result = compress(compressed_data.data(), &compressed_size, reinterpret_cast<const Bytef*>(json_str.c_str()), json_str.length());
+
+    if (result == Z_OK) {
+        std::ofstream file(path, std::ios::binary);
+        if (file.is_open()) {
+            file.write(reinterpret_cast<const char*>(compressed_data.data()), compressed_size);
+            file.close();
+            std::cout << "Compressed scene saved to: " << path << std::endl;
+            std::cout << "Original size: " << json_str.length() << " bytes" << std::endl;
+            std::cout << "Compressed size: " << compressed_size << " bytes" << std::endl;
+            std::cout << "Compression ratio: " << (float)compressed_size / json_str.length() * 100 << "%" << std::endl;
+        }
     }
 }
 
 void load_scene(const string& path) {
-    std::ifstream file(path);
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        std::cerr << "Failed to open file for reading: " << path << std::endl;
+        std::cerr << "Failed to open compressed file: " << path << std::endl;
         return;
     }
 
-    nlohmann::json j;
-    file >> j;
+    std::streamsize compressed_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<Bytef> compressed_data(compressed_size);
+    if (!file.read(reinterpret_cast<char*>(compressed_data.data()), compressed_size)) {
+        std::cerr << "Failed to read compressed data" << std::endl;
+        return;
+    }
     file.close();
+
+    uLongf uncompressed_size = compressed_size * 1000;
+    std::vector<Bytef> uncompressed_data(uncompressed_size);
+
+    int result = uncompress(uncompressed_data.data(), &uncompressed_size, compressed_data.data(), compressed_size);
+
+    while (result == Z_BUF_ERROR) {
+        uncompressed_size *= 2;
+        uncompressed_data.resize(uncompressed_size);
+        result = uncompress(uncompressed_data.data(), &uncompressed_size, compressed_data.data(), compressed_size);
+    }
+
+    if (result != Z_OK) {
+        std::cerr << "Decompression failed with error: " << result << std::endl;
+        return;
+    }
+
+    clear_scene();
+
+    std::string json_str(reinterpret_cast<char*>(uncompressed_data.data()), uncompressed_size);
+    nlohmann::json j = nlohmann::json::parse(json_str);
 
     if (j.contains("visgroups")) {
         for (const auto& vg_json : j["visgroups"]) {
@@ -1926,18 +1883,18 @@ void load_scene(const string& path) {
                 for (const auto& obj_json : vg_json["objects"]) {
                     Object obj;
 
-                    if (obj_json.contains("position")) {
-                        auto pos = obj_json["position"];
+                    if (obj_json.contains("pos")) {
+                        auto pos = obj_json["pos"];
                         obj.position = HMM_V3(pos[0], pos[1], pos[2]);
                     }
 
-                    if (obj_json.contains("rotation")) {
-                        auto rot = obj_json["rotation"];
+                    if (obj_json.contains("rot")) {
+                        auto rot = obj_json["rot"];
                         obj.rotation = HMM_Quat{rot[0], rot[1], rot[2], rot[3]};
                     }
 
-                    if (obj_json.contains("scale")) {
-                        auto scale = obj_json["scale"];
+                    if (obj_json.contains("scl")) {
+                        auto scale = obj_json["scl"];
                         obj.scale = HMM_V3(scale[0], scale[1], scale[2]);
                     }
 
@@ -1947,295 +1904,98 @@ void load_scene(const string& path) {
 
                     if (obj_json.contains("mesh")) {
                         const auto& mesh_json = obj_json["mesh"];
-
                         Mesh* mesh = new Mesh();
                         obj.mesh = mesh;
 
-                        if (mesh_json.contains("enable_shading")) {
-                            mesh->enable_shading = mesh_json["enable_shading"];
+                        if (mesh_json.contains("shading")) {
+                            mesh->enable_shading = mesh_json["shading"];
                         }
 
-                        if (mesh_json.contains("vertex_count") &&
-                            mesh_json.contains("index_count") &&
-                            mesh_json.contains("vertices") &&
-                            mesh_json.contains("indices")) {
-
-                            mesh->vertex_count = mesh_json["vertex_count"];
-                            mesh->index_count = mesh_json["index_count"];
-
+                        if (mesh_json.contains("vert_cnt") && mesh_json.contains("verts")) {
+                            mesh->vertex_count = mesh_json["vert_cnt"];
                             mesh->vertices = new float[mesh->vertex_count * 8];
+
+                            auto verts = mesh_json["verts"];
+                            for (size_t i = 0; i < mesh->vertex_count * 8; i++) {
+                                mesh->vertices[i] = verts[i];
+                            }
+                        }
+
+                        if (mesh_json.contains("idx_cnt") && mesh_json.contains("indices")) {
+                            mesh->index_count = mesh_json["idx_cnt"];
                             mesh->indices = new uint32_t[mesh->index_count];
 
-                            for (size_t i = 0; i < mesh->vertex_count * 8; i++) {
-                                mesh->vertices[i] = mesh_json["vertices"][i];
-                            }
-
+                            auto indices = mesh_json["indices"];
                             for (size_t i = 0; i < mesh->index_count; i++) {
-                                mesh->indices[i] = mesh_json["indices"][i];
+                                mesh->indices[i] = indices[i];
                             }
                         }
 
-                        if (mesh_json.contains("material")) {
-                            const auto& material_json = mesh_json["material"];
-
+                        if (mesh_json.contains("mat")) {
+                            const auto& mat_json = mesh_json["mat"];
                             Material* material = new Material();
                             mesh->material = material;
 
-                            if (material_json.contains("diffuse")) {
-                                material->diffuse = material_json["diffuse"];
+                            if (mat_json.contains("diff")) {
+                                material->diffuse = mat_json["diff"];
+                            }
+                            if (mat_json.contains("spec")) {
+                                material->specular = mat_json["spec"];
                             }
 
-                            if (material_json.contains("specular")) {
-                                material->specular = material_json["specular"];
-                            }
-
-                            if (material_json.contains("has_diffuse_texture") && material_json["has_diffuse_texture"]) {
+                            if (mat_json.contains("diff_tex")) {
+                                const auto& diff_tex = mat_json["diff_tex"];
                                 material->has_diffuse_texture = true;
 
-                                if (material_json.contains("diffuse_texture_width") &&
-                                    material_json.contains("diffuse_texture_height") &&
-                                    material_json.contains("diffuse_texture_data") &&
-                                    material_json.contains("diffuse_texture_data_size")) {
+                                material->diffuse_texture_desc.width = diff_tex["w"];
+                                material->diffuse_texture_desc.height = diff_tex["h"];
+                                material->diffuse_texture_desc.pixel_format = static_cast<sg_pixel_format>(diff_tex["fmt"]);
 
-                                    material->diffuse_texture_desc.width = material_json["diffuse_texture_width"];
-                                    material->diffuse_texture_desc.height = material_json["diffuse_texture_height"];
-                                    material->diffuse_texture_desc.pixel_format = static_cast<sg_pixel_format>(material_json["diffuse_texture_format"]);
-                                    material->diffuse_texture_data_size = material_json["diffuse_texture_data_size"];
+                                std::vector<uint8_t> tex_data = diff_tex["data"];
+                                material->diffuse_texture_data_size = tex_data.size();
+                                material->diffuse_texture_data = new uint8_t[material->diffuse_texture_data_size];
+                                std::copy(tex_data.begin(), tex_data.end(), material->diffuse_texture_data);
 
-                                    std::string hex_data = material_json["diffuse_texture_data"];
-                                    material->diffuse_texture_data = new uint8_t[material->diffuse_texture_data_size];
+                                material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
+                                material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
 
-                                    for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
-                                        std::string byte_string = hex_data.substr(i * 2, 2);
-                                        material->diffuse_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
-                                    }
-
-                                    material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
-                                    material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
-
-                                    if (material_json.contains("diffuse_sampler_min_filter")) {
-                                        material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(material_json["diffuse_sampler_min_filter"]);
-                                        material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["diffuse_sampler_mag_filter"]);
-                                        material->diffuse_sampler_desc.wrap_u = static_cast<sg_wrap>(material_json["diffuse_sampler_wrap_u"]);
-                                        material->diffuse_sampler_desc.wrap_v = static_cast<sg_wrap>(material_json["diffuse_sampler_wrap_v"]);
-                                    } else {
-                                        material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                        material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                        material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                        material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                    }
-                                }
-                            } else {
-                                material->has_diffuse_texture = false;
+                                auto samp = diff_tex["samp"];
+                                material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
+                                material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
+                                material->diffuse_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
+                                material->diffuse_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
                             }
 
-                            if (material_json.contains("has_specular_texture") && material_json["has_specular_texture"]) {
+                            if (mat_json.contains("spec_tex")) {
+                                const auto& spec_tex = mat_json["spec_tex"];
                                 material->has_specular_texture = true;
 
-                                if (material_json.contains("specular_texture_width") &&
-                                    material_json.contains("specular_texture_height") &&
-                                    material_json.contains("specular_texture_data") &&
-                                    material_json.contains("specular_texture_data_size")) {
+                                material->specular_texture_desc.width = spec_tex["w"];
+                                material->specular_texture_desc.height = spec_tex["h"];
+                                material->specular_texture_desc.pixel_format = static_cast<sg_pixel_format>(spec_tex["fmt"]);
 
-                                    material->specular_texture_desc.width = material_json["specular_texture_width"];
-                                    material->specular_texture_desc.height = material_json["specular_texture_height"];
-                                    material->specular_texture_desc.pixel_format = static_cast<sg_pixel_format>(material_json["specular_texture_format"]);
-                                    material->specular_texture_data_size = material_json["specular_texture_data_size"];
+                                std::vector<uint8_t> tex_data = spec_tex["data"];
+                                material->specular_texture_data_size = tex_data.size();
+                                material->specular_texture_data = new uint8_t[material->specular_texture_data_size];
+                                std::copy(tex_data.begin(), tex_data.end(), material->specular_texture_data);
 
-                                    std::string hex_data = material_json["specular_texture_data"];
-                                    material->specular_texture_data = new uint8_t[material->specular_texture_data_size];
+                                material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
+                                material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
 
-                                    for (size_t i = 0; i < material->specular_texture_data_size; i++) {
-                                        std::string byte_string = hex_data.substr(i * 2, 2);
-                                        material->specular_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
-                                    }
-
-                                    material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
-                                    material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
-
-                                    if (material_json.contains("specular_sampler_min_filter")) {
-                                        material->specular_sampler_desc.min_filter = static_cast<sg_filter>(material_json["specular_sampler_min_filter"]);
-                                        material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(material_json["specular_sampler_mag_filter"]);
-                                        material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(material_json["specular_sampler_wrap_u"]);
-                                        material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(material_json["specular_sampler_wrap_v"]);
-                                    } else {
-                                        material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                        material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                        material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                        material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                    }
-                                }
-                            } else {
-                                material->has_specular_texture = false;
+                                auto samp = spec_tex["samp"];
+                                material->specular_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
+                                material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
+                                material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
+                                material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
                             }
-
-                            if (!material->has_diffuse_texture) {
-                                material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                            }
-
-                            if (!material->has_specular_texture) {
-                                material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                            }
-                        } else {
-                            mesh->material = new Material();
                         }
 
                         prepare_mesh_buffers(obj);
                     }
 
-                    if (obj_json.contains("shape_keys")) {
-                        for (const auto& sk_json : obj_json["shape_keys"]) {
-                            Mesh* shape_key_mesh = new Mesh();
-
-                            if (sk_json.contains("enable_shading")) {
-                                shape_key_mesh->enable_shading = sk_json["enable_shading"];
-                            }
-
-                            if (sk_json.contains("vertex_count") &&
-                                sk_json.contains("index_count") &&
-                                sk_json.contains("vertices") &&
-                                sk_json.contains("indices")) {
-
-                                shape_key_mesh->vertex_count = sk_json["vertex_count"];
-                                shape_key_mesh->index_count = sk_json["index_count"];
-
-                                shape_key_mesh->vertices = new float[shape_key_mesh->vertex_count * 8];
-                                shape_key_mesh->indices = new uint32_t[shape_key_mesh->index_count];
-
-                                for (size_t i = 0; i < shape_key_mesh->vertex_count * 8; i++) {
-                                    shape_key_mesh->vertices[i] = sk_json["vertices"][i];
-                                }
-
-                                for (size_t i = 0; i < shape_key_mesh->index_count; i++) {
-                                    shape_key_mesh->indices[i] = sk_json["indices"][i];
-                                }
-                            }
-
-                            if (sk_json.contains("material")) {
-                                const auto& sk_material_json = sk_json["material"];
-
-                                Material* material = new Material();
-                                shape_key_mesh->material = material;
-
-                                if (sk_material_json.contains("diffuse")) {
-                                    material->diffuse = sk_material_json["diffuse"];
-                                }
-
-                                if (sk_material_json.contains("specular")) {
-                                    material->specular = sk_material_json["specular"];
-                                }
-
-                                if (sk_material_json.contains("has_diffuse_texture") && sk_material_json["has_diffuse_texture"]) {
-                                    material->has_diffuse_texture = true;
-
-                                    if (sk_material_json.contains("diffuse_texture_width") &&
-                                        sk_material_json.contains("diffuse_texture_height") &&
-                                        sk_material_json.contains("diffuse_texture_data") &&
-                                        sk_material_json.contains("diffuse_texture_data_size")) {
-
-                                        material->diffuse_texture_desc.width = sk_material_json["diffuse_texture_width"];
-                                        material->diffuse_texture_desc.height = sk_material_json["diffuse_texture_height"];
-                                        material->diffuse_texture_desc.pixel_format = static_cast<sg_pixel_format>(sk_material_json["diffuse_texture_format"]);
-                                        material->diffuse_texture_data_size = sk_material_json["diffuse_texture_data_size"];
-
-                                        std::string hex_data = sk_material_json["diffuse_texture_data"];
-                                        material->diffuse_texture_data = new uint8_t[material->diffuse_texture_data_size];
-
-                                        for (size_t i = 0; i < material->diffuse_texture_data_size; i++) {
-                                            std::string byte_string = hex_data.substr(i * 2, 2);
-                                            material->diffuse_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
-                                        }
-
-                                        material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
-                                        material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
-
-                                        if (sk_material_json.contains("diffuse_sampler_min_filter")) {
-                                            material->diffuse_sampler_desc.min_filter = static_cast<sg_filter>(sk_material_json["diffuse_sampler_min_filter"]);
-                                            material->diffuse_sampler_desc.mag_filter = static_cast<sg_filter>(sk_material_json["diffuse_sampler_mag_filter"]);
-                                            material->diffuse_sampler_desc.wrap_u = static_cast<sg_wrap>(sk_material_json["diffuse_sampler_wrap_u"]);
-                                            material->diffuse_sampler_desc.wrap_v = static_cast<sg_wrap>(sk_material_json["diffuse_sampler_wrap_v"]);
-                                        } else {
-                                            material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                            material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                            material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                            material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                        }
-                                    }
-                                } else {
-                                    material->has_diffuse_texture = false;
-                                }
-
-                                if (sk_material_json.contains("has_specular_texture") && sk_material_json["has_specular_texture"]) {
-                                    material->has_specular_texture = true;
-
-                                    if (sk_material_json.contains("specular_texture_width") &&
-                                        sk_material_json.contains("specular_texture_height") &&
-                                        sk_material_json.contains("specular_texture_data") &&
-                                        sk_material_json.contains("specular_texture_data_size")) {
-
-                                        material->specular_texture_desc.width = sk_material_json["specular_texture_width"];
-                                        material->specular_texture_desc.height = sk_material_json["specular_texture_height"];
-                                        material->specular_texture_desc.pixel_format = static_cast<sg_pixel_format>(sk_material_json["specular_texture_format"]);
-                                        material->specular_texture_data_size = sk_material_json["specular_texture_data_size"];
-
-                                        std::string hex_data = sk_material_json["specular_texture_data"];
-                                        material->specular_texture_data = new uint8_t[material->specular_texture_data_size];
-
-                                        for (size_t i = 0; i < material->specular_texture_data_size; i++) {
-                                            std::string byte_string = hex_data.substr(i * 2, 2);
-                                            material->specular_texture_data[i] = static_cast<uint8_t>(std::stoi(byte_string, nullptr, 16));
-                                        }
-
-                                        material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
-                                        material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
-
-                                        if (sk_material_json.contains("specular_sampler_min_filter")) {
-                                            material->specular_sampler_desc.min_filter = static_cast<sg_filter>(sk_material_json["specular_sampler_min_filter"]);
-                                            material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(sk_material_json["specular_sampler_mag_filter"]);
-                                            material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(sk_material_json["specular_sampler_wrap_u"]);
-                                            material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(sk_material_json["specular_sampler_wrap_v"]);
-                                        } else {
-                                            material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                            material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                            material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                            material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                        }
-                                    }
-                                } else {
-                                    material->has_specular_texture = false;
-                                }
-
-                                if (!material->has_diffuse_texture) {
-                                    material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                    material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                    material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                    material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                }
-
-                                if (!material->has_specular_texture) {
-                                    material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                                    material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                                    material->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                                    material->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-                                }
-                            } else {
-                                shape_key_mesh->material = new Material();
-                            }
-
-                            obj.shape_keys.push_back(shape_key_mesh);
-                        }
-                    }
-
                     new_visgroup.objects.push_back(std::move(obj));
                 }
             }
-
             vis_groups.push_back(std::move(new_visgroup));
         }
     }
@@ -2245,26 +2005,23 @@ void load_scene(const string& path) {
     }
     state.audio_sources.clear();
 
-    if (j.contains("audio_sources")) {
-        for (const auto& as_json : j["audio_sources"]) {
+    if (j.contains("audio_src")) {
+        for (const auto& as_data : j["audio_src"]) {
             AudioSource3D* audio_source = new AudioSource3D();
 
-            if (as_json.contains("position")) {
-                auto pos = as_json["position"];
-                audio_source->position = HMM_V3(pos[0], pos[1], pos[2]);
-            }
+            auto pos = as_data[0];
+            audio_source->position = HMM_V3(pos[0], pos[1], pos[2]);
 
-            if (as_json.contains("guid")) {
-                auto guid_json = as_json["guid"];
-                FMOD_GUID guid;
-                guid.Data1 = guid_json[0];
-                guid.Data2 = guid_json[1];
-                guid.Data3 = guid_json[2];
-                for (int i = 0; i < 8; i++) {
-                    guid.Data4[i] = guid_json[3][i];
-                }
-                audio_source->guid = guid;
+            auto guid_data = as_data[1];
+            FMOD_GUID guid;
+            guid.Data1 = guid_data[0];
+            guid.Data2 = guid_data[1];
+            guid.Data3 = guid_data[2];
+            std::vector<uint8_t> data4 = guid_data[3];
+            for (int i = 0; i < 8; i++) {
+                guid.Data4[i] = data4[i];
             }
+            audio_source->guid = guid;
 
             for (auto& ed : state.event_descriptions) {
                 FMOD_GUID current_id;
@@ -2281,110 +2038,62 @@ void load_scene(const string& path) {
     }
 
     if (j.contains("helpers")) {
-        for (const auto& helper_json : j["helpers"]) {
+        for (const auto& helper_data : j["helpers"]) {
             Helper* helper = new Helper();
-            if (helper_json.contains("position")) {
-                auto pos = helper_json["position"];
-                helper->position = HMM_V3(pos[0], pos[1], pos[2]);
-            }
-
-            if (helper_json.contains("name")) {
-                auto name = helper_json["name"];
-                helper->name = static_cast<string>(name);
-            }
+            auto pos = helper_data[0];
+            helper->position = HMM_V3(pos[0], pos[1], pos[2]);
+            helper->name = helper_data[1];
             helper->initialize(helper->name, helper->position);
         }
     }
 
-    if (j.contains("directional_lights")) {
-        for (const auto& light_json : j["directional_lights"]) {
+    if (j.contains("dir_lights")) {
+        for (const auto& light_data : j["dir_lights"]) {
             DirectionalLight light{};
-            if (light_json.contains("direction")) {
-                auto pos = light_json["direction"];
-                light.direction = HMM_V3(pos[0], pos[1], pos[2]);
-            }
-
-            if (light_json.contains("color")) {
-                auto color = light_json["color"];
-                light.color = HMM_V3(color[0], color[1], color[2]);
-            }
-
-            if (light_json.contains("intensity")) {
-                auto intensity = light_json["intensity"];
-                light.intensity = static_cast<float>(intensity);
-            }
+            auto dir = light_data[0];
+            light.direction = HMM_V3(dir[0], dir[1], dir[2]);
+            light.intensity = light_data[1];
+            auto color = light_data[2];
+            light.color = HMM_V3(color[0], color[1], color[2]);
             state.directional_lights.push_back(light);
         }
     }
 
-    if (j.contains("point_lights")) {
-        for (const auto& light_json : j["point_lights"]) {
+    if (j.contains("pt_lights")) {
+        for (const auto& light_data : j["pt_lights"]) {
             PointLight light{};
-            if (light_json.contains("position")) {
-                auto pos = light_json["position"];
-                light.position = HMM_V3(pos[0], pos[1], pos[2]);
-            }
-
-            if (light_json.contains("color")) {
-                auto color = light_json["color"];
-                light.color = HMM_V3(color[0], color[1], color[2]);
-            }
-
-            if (light_json.contains("intensity")) {
-                auto intensity = light_json["intensity"];
-                light.intensity = static_cast<float>(intensity);
-            }
-
-            if (light_json.contains("radius")) {
-                auto radius = light_json["radius"];
-                light.radius = static_cast<float>(radius);
-            }
+            auto pos = light_data[0];
+            light.position = HMM_V3(pos[0], pos[1], pos[2]);
+            light.intensity = light_data[1];
+            auto color = light_data[2];
+            light.color = HMM_V3(color[0], color[1], color[2]);
+            light.radius = light_data[3];
             state.point_lights.push_back(light);
         }
     }
 
     if (j.contains("spot_lights")) {
-        for (const auto& light_json : j["spot_lights"]) {
+        for (const auto& light_data : j["spot_lights"]) {
             SpotLight light{};
-            if (light_json.contains("position")) {
-                auto pos = light_json["position"];
-                light.position = HMM_V3(pos[0], pos[1], pos[2]);
-            }
-
-            if (light_json.contains("direction")) {
-                auto dir = light_json["direction"];
-                light.direction = HMM_V3(dir[0], dir[1], dir[2]);
-            }
-
-            if (light_json.contains("color")) {
-                auto color = light_json["color"];
-                light.color = HMM_V3(color[0], color[1], color[2]);
-            }
-
-            if (light_json.contains("intensity")) {
-                auto intensity = light_json["intensity"];
-                light.intensity = static_cast<float>(intensity);
-            }
-
-            if (light_json.contains("inner_cone_angle")) {
-                auto ica = light_json["inner_cone_angle"];
-                light.inner_cone_angle = static_cast<float>(ica);
-            }
-
-            if (light_json.contains("outer_cone_angle")) {
-                auto oca = light_json["outer_cone_angle"];
-                light.outer_cone_angle = static_cast<float>(oca);
-            }
+            auto pos = light_data[0];
+            light.position = HMM_V3(pos[0], pos[1], pos[2]);
+            auto dir = light_data[1];
+            light.direction = HMM_V3(dir[0], dir[1], dir[2]);
+            light.intensity = light_data[2];
+            auto color = light_data[3];
+            light.color = HMM_V3(color[0], color[1], color[2]);
+            light.inner_cone_angle = light_data[4];
+            light.outer_cone_angle = light_data[5];
             state.spot_lights.push_back(light);
         }
     }
 
-    if (j.contains("ambient_light")) {
-        auto ambient_light = j["ambient_light"];
-        state.ambient_light = HMM_V3(ambient_light[0], ambient_light[1], ambient_light[2]);
+    if (j.contains("ambient")) {
+        auto ambient = j["ambient"];
+        state.ambient_light = HMM_V3(ambient[0], ambient[1], ambient[2]);
     }
 
-    std::cout << "Scene loaded from: " << path << std::endl;
+    std::cout << "Compressed scene loaded from: " << path << std::endl;
 }
 
 Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME NAME
