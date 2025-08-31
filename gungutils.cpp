@@ -51,6 +51,7 @@
 #include "shaders/particles.glsl.h"
 #include "shaders/billboard.glsl.h"
 // sources
+#include "utils/Animation.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
