@@ -70,6 +70,10 @@ class Helper;
 void render_editor();
 
 float fps_over_time[225];
+float vertex_count_over_time[225];
+int all_vertex_count = 0;
+float index_count_over_time[225];
+int all_index_count = 0;
 
 struct AppState {
     sg_pipeline pip{};
@@ -162,6 +166,13 @@ void load_font(stbtt_fontinfo *font_info, const char *filename) {
     stbtt_InitFont(font_info, font_buffer, 0);
     cout << "loaded font " << filename << endl;
 }
+
+struct Plane {
+    HMM_Vec3 normal;
+    float d;
+};
+
+Plane frustum_planes[6];
 
 void init_post_processing() {
     int width, height;
@@ -438,6 +449,9 @@ void prepare_mesh_buffers(Object& object) {
 
     if (object.mesh) {
         prepare_single_mesh(*object.mesh);
+        uint64_t time = stm_now();
+        object.initialize_bounds();
+        cout << "Bounds initialized in " << stm_ms(stm_since(time)) << " ms" << endl;
     }
 
     for (Mesh* shape_key : object.shape_keys) {
@@ -445,7 +459,28 @@ void prepare_mesh_buffers(Object& object) {
     }
 }
 
+bool is_object_in_frustum(const Object& obj) {
+    if (obj.bounding_rect.X == 0.0f && obj.bounding_rect.Y == 0.0f && obj.bounding_rect.Z == 0.0f) return true;
+
+    float eff_dx = obj.bounding_rect.X * fabsf(obj.scale.X);
+    float eff_dy = obj.bounding_rect.Y * fabsf(obj.scale.Y);
+    float eff_dz = obj.bounding_rect.Z * fabsf(obj.scale.Z);
+
+    float radius = 0.5f * sqrtf(eff_dx*eff_dx + eff_dy*eff_dy + eff_dz*eff_dz);
+
+    HMM_Vec3 center = obj.position;
+
+    for (int i = 0; i < 6; i++) {
+        float dist = HMM_DotV3(frustum_planes[i].normal, center) + frustum_planes[i].d;
+        if (dist < -radius) return false;
+    }
+
+    return true;
+}
+
 void render_meshes() {
+    all_vertex_count = 0;
+    all_index_count = 0;
     struct Instance {
         Object obj;
         float group_opacity;
@@ -457,7 +492,7 @@ void render_meshes() {
         float group_opacity = visgroup.opacity;
         for (size_t i = 0; i < visgroup.objects.size(); i++) {
             Object obj = visgroup.objects[i];
-            if (obj.mesh != nullptr) {
+            if (obj.mesh != nullptr && is_object_in_frustum(obj)) {
                 instances.push_back({ obj, group_opacity });
             }
         }
@@ -465,7 +500,7 @@ void render_meshes() {
 
     for (size_t i = 0; i < visualizer_objects.size(); ++i) {
         Object obj = visualizer_objects[i];
-        if (obj.mesh != nullptr) {
+        if (obj.mesh != nullptr && is_object_in_frustum(obj)) {
             instances.push_back({ obj, 1.0f});
         }
     }
@@ -590,7 +625,7 @@ void render_meshes() {
 
         for (const auto& inst : g.items) {
             const Object& obj = inst.obj;
-            // safety feature in case of different textures
+            // in case of different textures this should be in the loop (although that'll basically never happen)
             if (g.diffuse_view.id != SG_INVALID_ID) {
                 state.bind.views[0] = g.diffuse_view;
                 state.bind.samplers[0] = mat->diffuse_sampler;
@@ -642,6 +677,9 @@ void render_meshes() {
             sg_apply_uniforms(3, SG_RANGE(lights));
 
             sg_draw(0, mesh->index_count, 1);
+
+            all_vertex_count += mesh->vertex_count;
+            all_index_count += mesh->index_count;
         }
     }
 
@@ -2778,8 +2816,16 @@ void render_editor() {
             ImGui::Text("VERTEX COUNT: %d", vertex_count);
             ImGui::Text("INDEX COUNT: %d", index_count);
             ImGui::Text("LIGHT COUNT: %d", light_count);
-            if (ImPlot::BeginPlot("FPS Plot")) {
+            if (ImPlot::BeginPlot("PERFORMANCE PLOT")) {
                 ImPlot::PlotLine("FPS", fps_over_time, 225);
+
+                ImPlot::EndPlot();
+            }
+            ImPlot::SetNextAxesToFit();
+            if (ImPlot::BeginPlot("MEMORY PLOT")) {
+                ImPlot::PlotLine("VERTEX COUNT", vertex_count_over_time, 225);
+                ImPlot::PlotLine("INDEX COUNT", index_count_over_time, 225);
+
                 ImPlot::EndPlot();
             }
         }
@@ -2886,6 +2932,12 @@ void _init() {
 
     for (int i = 0; i < 225; i++) {
         fps_over_time[i] = 0.0f;
+    }
+    for (int i = 0; i < 225; i++) {
+        vertex_count_over_time[i] = 0;
+    }
+    for (int i = 0; i < 225; i++) {
+        index_count_over_time[i] = 0;
     }
 
     sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
@@ -3017,6 +3069,20 @@ void _frame() {
     }
     fps_over_time[224] = time_state.fps;
 
+    for (int i = 0; i < 225; i++) {
+        if (i > 0) {
+            vertex_count_over_time[i - 1] = vertex_count_over_time[i];
+        }
+    }
+    vertex_count_over_time[224] = all_vertex_count;
+
+    for (int i = 0; i < 225; i++) {
+        if (i > 0) {
+            index_count_over_time[i - 1] = index_count_over_time[i];
+        }
+    }
+    index_count_over_time[224] = all_index_count;
+
     // FMOD
     FMOD_RESULT result;
     state.fmod_system->update();
@@ -3048,6 +3114,73 @@ void _frame() {
     float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
     HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), aspect, 0.1f, 1050.0f);
+
+    HMM_Mat4 clip = HMM_MulM4(projection, view);
+
+    HMM_Vec4 row0 = HMM_V4(clip.Elements[0][0], clip.Elements[1][0], clip.Elements[2][0], clip.Elements[3][0]);
+    HMM_Vec4 row1 = HMM_V4(clip.Elements[0][1], clip.Elements[1][1], clip.Elements[2][1], clip.Elements[3][1]);
+    HMM_Vec4 row2 = HMM_V4(clip.Elements[0][2], clip.Elements[1][2], clip.Elements[2][2], clip.Elements[3][2]);
+    HMM_Vec4 row3 = HMM_V4(clip.Elements[0][3], clip.Elements[1][3], clip.Elements[2][3], clip.Elements[3][3]);
+
+    // left plane
+    HMM_Vec4 left = HMM_AddV4(row3, row0);
+    float len_left = HMM_LenV3(left.XYZ);
+    if (len_left > 0.0001f) {
+        frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
+        frustum_planes[0].d = left.W / len_left;
+    } else {
+        frustum_planes[0] = {{0,0,0}, 0};
+    }
+
+    // right plane
+    HMM_Vec4 right = HMM_SubV4(row3, row0);
+    float len_right = HMM_LenV3(right.XYZ);
+    if (len_right > 0.0001f) {
+        frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
+        frustum_planes[1].d = right.W / len_right;
+    } else {
+        frustum_planes[1] = {{0,0,0}, 0};
+    }
+
+    // bottom plane
+    HMM_Vec4 bottom = HMM_AddV4(row3, row1);
+    float len_bottom = HMM_LenV3(bottom.XYZ);
+    if (len_bottom > 0.0001f) {
+        frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
+        frustum_planes[2].d = bottom.W / len_bottom;
+    } else {
+        frustum_planes[2] = {{0,0,0}, 0};
+    }
+
+    // top plane
+    HMM_Vec4 top = HMM_SubV4(row3, row1);
+    float len_top = HMM_LenV3(top.XYZ);
+    if (len_top > 0.0001f) {
+        frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
+        frustum_planes[3].d = top.W / len_top;
+    } else {
+        frustum_planes[3] = {{0,0,0}, 0};
+    }
+
+    // near plane
+    HMM_Vec4 near_p = HMM_AddV4(row3, row2);
+    float len_near = HMM_LenV3(near_p.XYZ);
+    if (len_near > 0.0001f) {
+        frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
+        frustum_planes[4].d = near_p.W / len_near;
+    } else {
+        frustum_planes[4] = {{0,0,0}, 0};
+    }
+
+    // far plane
+    HMM_Vec4 far_p = HMM_SubV4(row3, row2);
+    float len_far = HMM_LenV3(far_p.XYZ);
+    if (len_far > 0.0001f) {
+        frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
+        frustum_planes[5].d = far_p.W / len_far;
+    } else {
+        frustum_planes[5] = {{0,0,0}, 0};
+    }
 
     vs_params = {.view = view, .projection = projection};
     billboard_vs_params = {.view = view, .projection = projection};
