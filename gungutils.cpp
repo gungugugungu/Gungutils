@@ -244,7 +244,7 @@ void init_post_processing() {
     ssao_params.ao_bias = 0.02f;
     ssao_params.ao_strength = 1.0f;
     ssao_params.ao_power = 1.75f;
-    ssao_params.ssao_samples = 32;
+    ssao_params.ssao_samples = 64;
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -478,80 +478,6 @@ bool is_object_in_frustum(const Object& obj) {
     return true;
 }
 
-bool is_object_obstructed(const Object& obj, const HMM_Mat4& view_matrix, const HMM_Mat4& proj_matrix) {
-    if (obj.bounding_rect.X == 0.0f && obj.bounding_rect.Y == 0.0f && obj.bounding_rect.Z == 0.0f) return false;
-
-    float eff_dx = obj.bounding_rect.X * fabsf(obj.scale.X);
-    float eff_dy = obj.bounding_rect.Y * fabsf(obj.scale.Y);
-    float eff_dz = obj.bounding_rect.Z * fabsf(obj.scale.Z);
-
-    HMM_Vec3 half_extents = {eff_dx * 0.5f, eff_dy * 0.5f, eff_dz * 0.5f};
-    HMM_Vec3 center = obj.position;
-
-    HMM_Vec3 corners[8] = {
-        HMM_AddV3(center, HMM_V3(-half_extents.X, -half_extents.Y, -half_extents.Z)),
-        HMM_AddV3(center, HMM_V3( half_extents.X, -half_extents.Y, -half_extents.Z)),
-        HMM_AddV3(center, HMM_V3(-half_extents.X,  half_extents.Y, -half_extents.Z)),
-        HMM_AddV3(center, HMM_V3( half_extents.X,  half_extents.Y, -half_extents.Z)),
-        HMM_AddV3(center, HMM_V3(-half_extents.X, -half_extents.Y,  half_extents.Z)),
-        HMM_AddV3(center, HMM_V3( half_extents.X, -half_extents.Y,  half_extents.Z)),
-        HMM_AddV3(center, HMM_V3(-half_extents.X,  half_extents.Y,  half_extents.Z)),
-        HMM_AddV3(center, HMM_V3( half_extents.X,  half_extents.Y,  half_extents.Z))
-    };
-
-    HMM_Mat4 view_proj = HMM_MulM4(proj_matrix, view_matrix);
-
-    float min_screen_x = FLT_MAX, max_screen_x = -FLT_MAX;
-    float min_screen_y = FLT_MAX, max_screen_y = -FLT_MAX;
-    float closest_z = FLT_MAX;
-
-    for (int i = 0; i < 8; i++) {
-        HMM_Vec4 world_pos = HMM_V4V(corners[i], 1.0f);
-        HMM_Vec4 clip_pos = HMM_MulM4V4(view_proj, world_pos);
-
-        if (clip_pos.W <= 0.0f) continue;
-
-        HMM_Vec3 ndc = HMM_V3(clip_pos.X / clip_pos.W, clip_pos.Y / clip_pos.W, clip_pos.Z / clip_pos.W);
-
-        if (ndc.X < -1.0f || ndc.X > 1.0f || ndc.Y < -1.0f || ndc.Y > 1.0f) continue;
-
-        min_screen_x = fminf(min_screen_x, ndc.X);
-        max_screen_x = fmaxf(max_screen_x, ndc.X);
-        min_screen_y = fminf(min_screen_y, ndc.Y);
-        max_screen_y = fmaxf(max_screen_y, ndc.Y);
-        closest_z = fminf(closest_z, ndc.Z);
-    }
-
-    if (min_screen_x == FLT_MAX) return false;
-
-    int width, height;
-    SDL_GetWindowSize(state.win, &width, &height);
-
-    int screen_min_x = (int)((min_screen_x * 0.5f + 0.5f) * width);
-    int screen_max_x = (int)((max_screen_x * 0.5f + 0.5f) * width);
-    int screen_min_y = (int)((min_screen_y * 0.5f + 0.5f) * height);
-    int screen_max_y = (int)((max_screen_y * 0.5f + 0.5f) * height);
-
-    screen_min_x = fmaxf(0, fminf(width - 1, screen_min_x));
-    screen_max_x = fmaxf(0, fminf(width - 1, screen_max_x));
-    screen_min_y = fmaxf(0, fminf(height - 1, screen_min_y));
-    screen_max_y = fmaxf(0, fminf(height - 1, screen_max_y));
-
-    int sample_step = fmaxf(1, (screen_max_x - screen_min_x) / 8);
-
-    for (int y = screen_min_y; y <= screen_max_y; y += sample_step) {
-        for (int x = screen_min_x; x <= screen_max_x; x += sample_step) {
-            float depth_buffer_value = 1.0f;
-
-            if (closest_z < depth_buffer_value - 0.001f) {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
 void render_meshes() {
     all_vertex_count = 0;
     all_index_count = 0;
@@ -567,9 +493,7 @@ void render_meshes() {
         for (size_t i = 0; i < visgroup.objects.size(); i++) {
             Object obj = visgroup.objects[i];
             if (obj.mesh != nullptr && is_object_in_frustum(obj)) {
-                if (!is_object_obstructed(obj, vs_params.view, vs_params.projection)) {
-                    instances.push_back({obj, group_opacity});
-                }
+                instances.push_back({obj, group_opacity});
             }
         }
     }
@@ -577,9 +501,7 @@ void render_meshes() {
     for (size_t i = 0; i < visualizer_objects.size(); ++i) {
         Object obj = visualizer_objects[i];
         if (obj.mesh != nullptr && is_object_in_frustum(obj)) {
-            if (!is_object_obstructed(obj, vs_params.view, vs_params.projection)) {
-                instances.push_back({ obj, 1.0f});
-            }
+            instances.push_back({ obj, 1.0f});
         }
     }
 
