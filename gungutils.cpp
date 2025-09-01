@@ -2816,6 +2816,7 @@ void render_editor() {
             ImGui::Text("VERTEX COUNT: %d", vertex_count);
             ImGui::Text("INDEX COUNT: %d", index_count);
             ImGui::Text("LIGHT COUNT: %d", light_count);
+            ImPlot::SetNextAxesToFit();
             if (ImPlot::BeginPlot("PERFORMANCE PLOT")) {
                 ImPlot::PlotLine("FPS", fps_over_time, 225);
 

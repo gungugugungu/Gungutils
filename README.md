@@ -10,6 +10,8 @@
 - Particle System
 - Cross-platform build system for Windows and Linux
 - Animation system using shape keys
+- Frustum culling
+- A simple profiler in the editor
 
 # TODO
 - Editor gizmos
