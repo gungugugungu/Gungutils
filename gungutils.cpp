@@ -1022,6 +1022,73 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     }
 }
 
+RaycastResult raycast_point_to_point(const HMM_Vec3& start_point, const HMM_Vec3& end_point) {
+    HMM_Vec3 ray_direction = HMM_SubV3(end_point, start_point);
+    float max_distance = HMM_LenV3(ray_direction);
+    ray_direction = HMM_NormV3(ray_direction);
+
+    float closest_distance = FLT_MAX;
+    HMM_Vec3 closest_point = HMM_V3(0, 0, 0);
+    const Object* hit_obj = nullptr;
+    bool hit_found = false;
+
+    for (const auto& visgroup : vis_groups) {
+        if (!visgroup.enabled) continue;
+
+        for (const auto& obj : visgroup.objects) {
+            Mesh* mesh = obj.mesh;
+            if (!mesh->vertices || !mesh->indices || mesh->vertex_count == 0 || mesh->index_count == 0) {
+                continue;
+            }
+
+            for (size_t i = 0; i < mesh->index_count; i += 3) {
+                if (i + 2 >= mesh->index_count) break;
+
+                uint32_t idx0, idx1, idx2;
+                if (mesh->use_uint16_indices && mesh->indices16) {
+                    idx0 = mesh->indices16[i];
+                    idx1 = mesh->indices16[i + 1];
+                    idx2 = mesh->indices16[i + 2];
+                } else {
+                    idx0 = mesh->indices[i];
+                    idx1 = mesh->indices[i + 1];
+                    idx2 = mesh->indices[i + 2];
+                }
+
+                if (idx0 >= mesh->vertex_count || idx1 >= mesh->vertex_count || idx2 >= mesh->vertex_count) {
+                    continue;
+                }
+
+                HMM_Vec3 v0 = HMM_V3(mesh->vertices[idx0 * 8], mesh->vertices[idx0 * 8 + 1], mesh->vertices[idx0 * 8 + 2]);
+                HMM_Vec3 v1 = HMM_V3(mesh->vertices[idx1 * 8], mesh->vertices[idx1 * 8 + 1], mesh->vertices[idx1 * 8 + 2]);
+                HMM_Vec3 v2 = HMM_V3(mesh->vertices[idx2 * 8], mesh->vertices[idx2 * 8 + 1], mesh->vertices[idx2 * 8 + 2]);
+
+                v0 = transform_vertex(v0, obj);
+                v1 = transform_vertex(v1, obj);
+                v2 = transform_vertex(v2, obj);
+
+                float distance;
+                if (ray_triangle_intersect(start_point, ray_direction, v0, v1, v2, distance)) {
+                    if (distance >= 0.0f && distance <= max_distance && distance < closest_distance) {
+                        closest_distance = distance;
+                        closest_point = HMM_AddV3(start_point, HMM_MulV3F(ray_direction, distance));
+                        hit_obj = &obj;
+                        hit_found = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (hit_found) {
+        std::cout << "point-to-point raycast hit at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
+        return {true, closest_point, hit_obj};
+    } else {
+        std::cout << "point-to-point raycast missed" << std::endl;
+        return {false, HMM_V3(0, 0, 0), nullptr};
+    }
+}
+
 // helper function for gltf loading
 void decompose_matrix(const HMM_Mat4& m, HMM_Vec3& translation, HMM_Quat& rotation, HMM_Vec3& scale) {
     translation = { m.Elements[3][0], m.Elements[3][1], m.Elements[3][2] };
