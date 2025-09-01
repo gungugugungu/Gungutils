@@ -24,6 +24,13 @@ file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp)
 add_library(ImGui STATIC ${IMGUI_SOURCES})
 target_include_directories(ImGui PUBLIC ${IMGUI_PATH})
 
+# ImPlot
+set(IMPLOT_PATH "${CMAKE_SOURCE_DIR}/include/implot/")
+file(GLOB IMPLOT_SOURCES ${IMPLOT_PATH}/*.cpp)
+add_library(ImPlot STATIC ${IMPLOT_SOURCES})
+target_include_directories(ImPlot PUBLIC ${IMPLOT_PATH})
+target_link_libraries(ImPlot PUBLIC ImGui)
+
 # TinyFileDialogs
 file(GLOB TINYFD_SOURCES ${CMAKE_SOURCE_DIR}/include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
@@ -33,7 +40,6 @@ add_executable(Gungutils main.cpp)
 
 # subdirectories
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
-#add_subdirectory(${CMAKE_SOURCE_DIR}/include/ozz-animation)
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/meshoptimizer)
 
 if(WIN32)
@@ -71,11 +77,11 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/include/reactphysics3d)
 target_link_libraries(Gungutils
         PRIVATE
         SDL3::SDL3
-        #ozz_animation
         OpenGL::GL
         ${FMOD_STUDIO_LIB}
         ${FMOD_CORE_LIB}
         ImGui
+        ImPlot
         TinyFD
         reactphysics3d
         meshoptimizer
@@ -90,4 +96,5 @@ target_include_directories(Gungutils
         ${FMOD_INCLUDE_DIRS}
         ${PLATFORM_INCLUDE_DIRS}
         ${JOLT_SOURCE_DIR}
+        ${IMGUI_PATH}
 )

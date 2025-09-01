@@ -16,15 +16,12 @@
 #include <functional>
 #include <fstream>
 #include "imgui/imgui.h"
+#include "implot/implot.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
 #define SOKOL_IMGUI_NO_SOKOL_APP
 #include "sokol/util/sokol_imgui.h"
-#ifdef B32
-#pragma message("B32 is defined as: " B32)
-#undef B32
-#endif
 #include "HandmadeMath/HandmadeMath.h"
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -71,6 +68,8 @@ using namespace std;
 class AudioSource3D;
 class Helper;
 void render_editor();
+
+float fps_over_time[225];
 
 struct AppState {
     sg_pipeline pip{};
@@ -467,7 +466,7 @@ void render_meshes() {
     for (size_t i = 0; i < visualizer_objects.size(); ++i) {
         Object obj = visualizer_objects[i];
         if (obj.mesh != nullptr) {
-            instances.push_back({ obj, 1.0f });
+            instances.push_back({ obj, 1.0f});
         }
     }
 
@@ -1487,6 +1486,7 @@ class AudioSource3D {
                 visualizer_objects.push_back(loaded[0]);
                 visualizer_obj_index = visualizer_objects.size() - 1;
                 Object vo = visualizer_objects[visualizer_obj_index];
+                vo.mesh->enable_shading = false;
                 visualizer_object = vo;
             }
 
@@ -1573,6 +1573,7 @@ public:
             visualizer_objects.push_back(loaded[0]);
             visualizer_obj_index = visualizer_objects.size() - 1;
             Object vo = visualizer_objects[visualizer_obj_index];
+            vo.mesh->enable_shading = false;
             visualizer_obj = vo;
         }
 
@@ -2777,6 +2778,10 @@ void render_editor() {
             ImGui::Text("VERTEX COUNT: %d", vertex_count);
             ImGui::Text("INDEX COUNT: %d", index_count);
             ImGui::Text("LIGHT COUNT: %d", light_count);
+            if (ImPlot::BeginPlot("FPS Plot")) {
+                ImPlot::PlotLine("FPS", fps_over_time, 225);
+                ImPlot::EndPlot();
+            }
         }
 
         ImGui::End();
@@ -2847,6 +2852,7 @@ void _init() {
     // ImGui
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
+    ImPlot::CreateContext();
     //ImGuiIO& io = ImGui::GetIO(); (void)io;
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
@@ -2877,6 +2883,10 @@ void _init() {
     fetch_desc.num_channels = 1;
     fetch_desc.num_lanes = 1;
     sfetch_setup(&fetch_desc);
+
+    for (int i = 0; i < 225; i++) {
+        fps_over_time[i] = 0.0f;
+    }
 
     sg_shader shd = sg_make_shader(main_shader_desc(sg_query_backend()));
     sg_pipeline_desc pip_desc = {};
@@ -2999,6 +3009,13 @@ void _frame() {
     Time_BeginFrame(time_state);
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    for (int i = 0; i < 225; i++) {
+        if (i > 0) {
+            fps_over_time[i - 1] = fps_over_time[i];
+        }
+    }
+    fps_over_time[224] = time_state.fps;
 
     // FMOD
     FMOD_RESULT result;
@@ -3306,6 +3323,7 @@ int main(int argc, char* argv[]) {
     }
 
     state.fmod_system->release();
+    ImPlot::DestroyContext();
     simgui_shutdown();
     sfetch_shutdown();
     sg_shutdown();

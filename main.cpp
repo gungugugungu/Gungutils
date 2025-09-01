@@ -34,42 +34,16 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
-    load_scene("maps/animation.gmap");
-
-    animation.frames.emplace_back(0, 0.25f);
-    animation.frames.emplace_back(1, 0.25f);
-    animation.frames.emplace_back(2, 0.25f);
-    anim_player.animation = &animation;
-    anim_player.obj = get_objects_by_script_id(1)[0];
-    anim_player.playing = true;
-    anim_player.loop = true;
-
-    /*ParticleSystemValues values;
-    values.particle_amount = 100;
-    values.initial_pos = {-10.0f, 10.0f, -10.0f};
-    values.position_random_offset_size = 20.0f;
-    values.initial_vel = {0.0f, -9.0f, 0.0f};
-    values.gravity = -9.81f;
-    values.max_lifetime = 3.0f;
-    values.size = 0.25f;
-    values.emitter = true;
-    values.emitter_rate = 0.01f;
-    values.only_y_rotation = true;
-
-    state.particle_systems.emplace_back(&jeff_goldblum, values);*/
+    load_scene("maps/default.gmap");
 }
 
 void frame() {
     // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
-    //SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
+    SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
+
     state.window_surface.clear(w_width, w_height);
-    if (show_jeff) {
-        state.window_surface.draw(jeff_goldblum, {32.0f, 0.0f});
-        state.window_surface.draw_text(&font, "Jeff Goldblum", {400.0f, 128.0f}, 0.25f, {0.0f, 1.0f, 0.0f, 1.0f});
-    }
-    anim_player.update(time_state.dt);
 }
 
 void event(SDL_Event* e) {
