@@ -3219,7 +3219,7 @@ void _init() {
 
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
-    normal_surf.clear(16, 16, {0.0f, 0.0f, 1.0f, 1.0f});
+    normal_surf.clear(16, 16, {0.501960784, 0.501960784, 1.0f, 1.0f});
 }
 
 void _frame() {
