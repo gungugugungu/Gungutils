@@ -77,6 +77,7 @@ int all_index_count = 0;
 
 Surface diffuse_surf;
 Surface specular_surf;
+Surface normal_surf;
 
 struct AppState {
     sg_pipeline pip{};
@@ -467,6 +468,29 @@ void prepare_mesh_buffers(Object& object) {
             material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
             cout << "No specular texture, made the default instead" << endl;
         }
+        if (material->has_normal_texture) {
+            material->normal_image = validate_and_make_image(&material->normal_texture_desc, "normal");
+            if (material->normal_image.id == SG_INVALID_ID) {
+                cerr << "Oh no failed to create normal image ohhh noooo" << endl;
+                material->has_normal_texture = false;
+            } else {
+                material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
+            }
+        } else {
+            material->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+            material->normal_texture_desc.width = normal_surf.pixels[0].size();
+            material->normal_texture_desc.height = normal_surf.pixels.size();
+            material->normal_texture_desc.data = normal_surf.get_sokol_image_data();
+            material->normal_image = sg_make_image(&material->normal_texture_desc);
+            material->has_normal_texture = true;
+
+            material->normal_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+            material->normal_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+            material->normal_sampler_desc.min_filter = SG_FILTER_LINEAR;
+            material->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+            material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
+            cout << "No normal texture, made the default instead" << endl;
+        }
 
         std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
     };
@@ -536,6 +560,7 @@ void render_meshes() {
         std::vector<Instance> items;
         sg_view diffuse_view;
         sg_view specular_view;
+        sg_view normal_view;
         bool views_created = false;
     };
     std::vector<MeshGroup> groups;
@@ -623,6 +648,7 @@ void render_meshes() {
         if (!g.views_created && mat) {
             g.diffuse_view = { .id = SG_INVALID_ID };
             g.specular_view = { .id = SG_INVALID_ID };
+            g.normal_view = { .id = SG_INVALID_ID };
 
             if (mat->has_diffuse_texture && mat->diffuse_image.id != SG_INVALID_ID) {
                 sg_view_desc diffuse_view_desc = {};
@@ -634,6 +660,12 @@ void render_meshes() {
                 sg_view_desc specular_view_desc = {};
                 specular_view_desc.texture.image = mat->specular_image;
                 g.specular_view = sg_make_view(&specular_view_desc);
+            }
+
+            if (mat->has_normal_texture && mat->normal_image.id != SG_INVALID_ID) {
+                sg_view_desc normal_view_desc = {};
+                normal_view_desc.texture.image = mat->normal_image;
+                g.normal_view = sg_make_view(&normal_view_desc);
             }
             g.views_created = true;
         }
@@ -649,13 +681,13 @@ void render_meshes() {
 
         for (const auto& inst : g.items) {
             const Object& obj = inst.obj;
-            // in case of different textures this should be in the loop (although that'll basically never happen)
             if (g.diffuse_view.id != SG_INVALID_ID) {
                 state.bind.views[0] = g.diffuse_view;
                 state.bind.samplers[0] = mat->diffuse_sampler;
             } else {
                 state.bind.views[0] = { .id = SG_INVALID_ID };
                 state.bind.samplers[0] = { .id = SG_INVALID_ID };
+                cerr << "Invalid diffuse texture view while rendering" << endl;
             }
 
             if (g.specular_view.id != SG_INVALID_ID) {
@@ -664,6 +696,16 @@ void render_meshes() {
             } else {
                 state.bind.views[1] = { .id = SG_INVALID_ID };
                 state.bind.samplers[1] = { .id = SG_INVALID_ID };
+                cerr << "Invalid specular texture view while rendering" << endl;
+            }
+
+            if (g.normal_view.id != SG_INVALID_ID) {
+                state.bind.views[2] = g.normal_view;
+                state.bind.samplers[2] = mat->normal_sampler;
+            } else {
+                state.bind.views[2] = { .id = SG_INVALID_ID };
+                state.bind.samplers[2] = { .id = SG_INVALID_ID };
+                cerr << "Invalid normal texture view while rendering" << endl;
             }
             sg_apply_bindings(&state.bind);
 
@@ -708,6 +750,9 @@ void render_meshes() {
             }
             if (g.specular_view.id != SG_INVALID_ID) {
                 sg_destroy_view(g.specular_view);
+            }
+            if (g.normal_view.id != SG_INVALID_ID) {
+                sg_destroy_view(g.normal_view);
             }
         }
     }
@@ -1400,13 +1445,20 @@ vector<Object> load_gltf(const std::string& filename) {
 
             if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
-                cout << material.pbrMetallicRoughness.baseColorTexture.index << endl;
                 uint8_t* specular_texture_data;
                 sg_image_desc specular_img_desc;
                 if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
                     auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
                     specular_texture_data = u_specular_texture_data;
                     specular_img_desc = u_specular_img_desc;
+                }
+
+                uint8_t* normal_texture_data;
+                sg_image_desc normal_img_desc;
+                if (material.normalTexture.index >= 0) {
+                    auto [u_normal_texture_data, u_normal_img_desc] = loadTexture(material.normalTexture.index);
+                    normal_texture_data = u_normal_texture_data;
+                    normal_img_desc = u_normal_img_desc;
                 }
 
                 if (texture_data && img_desc.width > 0) {
@@ -1430,6 +1482,17 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
                     mat->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
                     mat->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                }
+                if (normal_texture_data && normal_img_desc.width > 0) {
+                    mat->normal_texture_data = normal_texture_data;
+                    mat->normal_texture_desc = normal_img_desc;
+                    mat->normal_texture_data_size = normal_img_desc.data.subimage[0][0].size;
+                    mat->has_normal_texture = true;
+
+                    mat->normal_sampler_desc.min_filter = SG_FILTER_LINEAR;
+                    mat->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+                    mat->normal_sampler_desc.wrap_u = SG_WRAP_REPEAT;
+                    mat->normal_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
             }
         }
@@ -1504,7 +1567,7 @@ vector<Object> load_gltf(const std::string& filename) {
     return objects;
 }
 
-bool load_obj(
+/*bool load_obj(
     const std::string& filename,
     float** out_vertices,
     uint32_t* out_vertex_count,
@@ -1579,7 +1642,7 @@ bool load_obj(
     *out_index_count = static_cast<uint32_t>(indices.size());
 
     return true;
-}
+}*/
 
 void print_fmod_error(FMOD_RESULT result) {
     if (result != FMOD_OK)
@@ -2506,6 +2569,18 @@ void render_editor() {
                             temp_editor_views.push_back(editor_specular_display_view);
                         }
                     }
+                    if (selected_object->mesh->material->has_normal_texture) {
+                        sg_view_desc editor_normal_view_desc = {};
+                        editor_normal_view_desc.texture.image = selected_object->mesh->material->normal_image;
+                        sg_view editor_normal_display_view = sg_make_view(&editor_normal_view_desc);
+                        if (editor_normal_display_view.id == SG_INVALID_ID) {
+                            ImGui::Text("Failed to create normal view!");
+                        } else {
+                            ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_normal_display_view, selected_object->mesh->material->normal_sampler);
+                            ImGui::Image(imtex_id, ImVec2(128, 128));
+                            temp_editor_views.push_back(editor_normal_display_view);
+                        }
+                    }
                 }
                 if (ImGui::CollapsingHeader("DANGER ZONE")) {
                     if (ImGui::Button("RE-PREPARE BUFFERS")) {
@@ -3144,6 +3219,7 @@ void _init() {
 
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
+    normal_surf.clear(16, 16, {0.0f, 0.0f, 1.0f, 1.0f});
 }
 
 void _frame() {

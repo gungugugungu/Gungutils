@@ -1,16 +1,16 @@
 @ctype mat4 HMM_Mat4
-
 @vs vs
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoord;
-
+layout(location = 3) in vec3 aTangent;
 layout(location = 0) out vec2 TexCoord;
 layout(location = 1) out float v_opacity;
 layout(location = 2) out vec3 vNormal;
 layout(location = 3) flat out int venable_shading;
 layout(location = 4) out vec3 vWorldPos;
-
+layout(location = 5) out vec3 vTangent;
+layout(location = 6) out vec3 vBitangent;
 layout(binding = 0) uniform vs_params {
     mat4 model;
     mat4 view;
@@ -18,43 +18,39 @@ layout(binding = 0) uniform vs_params {
     float opacity;
     int enable_shading;
 };
-
 void main() {
-    /*vec3 pos_v = vec3(view*vec4(((model*vec4(aPos, 1.0)).xyz), 1.0)).xyz;
-    pos_v = round(pos_v*128.0)/128.0;
-    gl_Position = projection * vec4(pos_v, 1.0);*/
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
     v_opacity = opacity;
-
     mat3 normalMat = mat3(transpose(inverse(model)));
     vNormal = normalize(normalMat * aNormal);
-
+    vec3 tangent = normalize(normalMat * aTangent);
+    vec3 bitangent = cross(vNormal, tangent);
     venable_shading = enable_shading;
-
     vWorldPos = (model * vec4(aPos, 1.0)).xyz;
+    vTangent = tangent;
+    vBitangent = bitangent;
 }
 @end
-
 @fs fs
 out vec4 FragColor;
-
 layout(location = 0) in vec2 TexCoord;
 layout(location = 1) in float v_opacity;
 layout(location = 2) in vec3 vNormal;
 layout(location = 3) flat in int venable_shading;
 layout(location = 4) in vec3 vWorldPos;
-
+layout(location = 5) in vec3 vTangent;
+layout(location = 6) in vec3 vBitangent;
 layout(binding = 0) uniform texture2D _diffuse_tex2D;
 layout(binding = 0) uniform sampler diffuse_tex_smp;
 layout(binding = 1) uniform texture2D _specular_tex2D;
 layout(binding = 1) uniform sampler specular_tex_smp;
-
+layout(binding = 2) uniform texture2D _normal_tex2D;
+layout(binding = 2) uniform sampler normal_tex_smp;
 layout(binding = 2) uniform model_fs_params {
     float shininess;
     vec4 camera_pos;
 };
-
 layout(binding = 3) uniform lighting_params {
     ivec4 light_types_packed[13];
     vec4 light_positions[50];
@@ -67,14 +63,12 @@ layout(binding = 3) uniform lighting_params {
     float padding3;
     vec4 ambient_color;
 };
-
 #define diffuse_texture2D sampler2D(_diffuse_tex2D, diffuse_tex_smp)
 #define specular_texture2D sampler2D(_specular_tex2D, specular_tex_smp)
-
+#define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
 float bayer4x4(vec2 fragXY) {
     ivec2 p = ivec2(floor(fragXY)) & ivec2(3, 3);
     int idx = p.y * 4 + p.x;
-
     int bayerVals[16] = int[16](
     0,  8,  2, 10,
     12,  4, 14,  6,
@@ -83,19 +77,20 @@ float bayer4x4(vec2 fragXY) {
     );
     return (float(bayerVals[idx]) + 0.5) / 16.0;
 }
-
 void main() {
     vec4 base_color = texture(diffuse_texture2D, TexCoord);
     vec4 specular_tex_color = texture(specular_texture2D, TexCoord);
+    vec4 normal_tex_color = texture(normal_texture2D, TexCoord);
     float spec_strength = specular_tex_color.r;
-
+    vec3 tangentNormal = normal_tex_color.xyz * 2.0 - 1.0;
+    mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
+    vec3 N = normalize(TBN * tangentNormal);
     const float AMBIENT_STRENGTH = 0.35;
     const float TOON_BANDS = 4.0;
 
     vec3 ambient_col = ambient_color.xyz;
     vec3 ambientTerm = ambient_col * AMBIENT_STRENGTH * base_color.rgb;
 
-    vec3 N = normalize(vNormal);
     vec3 V = normalize(camera_pos.xyz - vWorldPos);
 
     vec3 diffuseTerm = vec3(0.0);
