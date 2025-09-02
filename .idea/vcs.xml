@@ -5,10 +5,10 @@
     <mapping directory="$PROJECT_DIR$/include/HandmadeMath" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/SDL" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/imgui" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/include/implot" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/json" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/libtinyfiledialogs" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/meshoptimizer" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/include/ozz-animation" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/reactphysics3d" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/sokol" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/stb" vcs="Git" />

@@ -51,9 +51,6 @@ layout(binding = 1) uniform texture2D _specular_tex2D;
 layout(binding = 1) uniform sampler specular_tex_smp;
 
 layout(binding = 2) uniform model_fs_params {
-    int has_diffuse_tex;
-    int has_specular_tex;
-    float specular;
     float shininess;
     vec4 camera_pos;
 };
@@ -88,9 +85,9 @@ float bayer4x4(vec2 fragXY) {
 }
 
 void main() {
-    vec4 base_color = (has_diffuse_tex == 1) ? texture(diffuse_texture2D, TexCoord) : vec4(1.0);
-    vec4 specular_tex_color = (has_specular_tex == 1) ? texture(specular_texture2D, TexCoord) : vec4(0.0);
-    float spec_strength = (has_specular_tex == 1) ? specular_tex_color.r : specular;
+    vec4 base_color = texture(diffuse_texture2D, TexCoord);
+    vec4 specular_tex_color = texture(specular_texture2D, TexCoord);
+    float spec_strength = specular_tex_color.r;
 
     const float AMBIENT_STRENGTH = 0.35;
     const float TOON_BANDS = 4.0;

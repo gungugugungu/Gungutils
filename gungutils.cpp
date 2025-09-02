@@ -75,6 +75,9 @@ int all_vertex_count = 0;
 float index_count_over_time[225];
 int all_index_count = 0;
 
+Surface diffuse_surf;
+Surface specular_surf;
+
 struct AppState {
     sg_pipeline pip{};
     sg_bindings bind{};
@@ -414,13 +417,6 @@ void prepare_mesh_buffers(Object& object) {
         mesh.vertex_buffer_desc.data.ptr = mesh.vertices;
         mesh.vertex_buffer_desc.data.size = mesh.vertex_buffer_desc.size;
 
-        if (!mesh.material->has_diffuse_texture) {
-            mesh.material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-            mesh.material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-            mesh.material->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-            mesh.material->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
-        }
-
         mesh.vertex_buffer = sg_make_buffer(&mesh.vertex_buffer_desc);
         mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
 
@@ -428,20 +424,48 @@ void prepare_mesh_buffers(Object& object) {
         if (material->has_diffuse_texture) {
             material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "diffuse");
             if (material->diffuse_image.id == SG_INVALID_ID) {
-                cout << "Oh no failed to create diffuse image ohhh noooo" << endl;
+                cerr << "Oh no failed to create diffuse image ohhh noooo" << endl;
                 material->has_diffuse_texture = false;
             } else {
                 material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
             }
+        } else {
+            material->diffuse_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+            material->diffuse_texture_desc.width = diffuse_surf.pixels[0].size();
+            material->diffuse_texture_desc.height = diffuse_surf.pixels.size();
+            material->diffuse_texture_desc.data = diffuse_surf.get_sokol_image_data();
+            material->diffuse_image = sg_make_image(&material->diffuse_texture_desc);
+            material->has_diffuse_texture = true;
+
+            material->diffuse_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+            material->diffuse_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+            material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+            material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+            material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
+            cout << "No diffuse texture, made the default instead" << endl;
         }
         if (material->has_specular_texture) {
             material->specular_image = validate_and_make_image(&material->specular_texture_desc, "specular");
             if (material->specular_image.id == SG_INVALID_ID) {
-                cout << "Oh no failed to create specualr image ohhh noooo" << endl;
+                cerr << "Oh no failed to create specualr image ohhh noooo" << endl;
                 material->has_specular_texture = false;
             } else {
                 material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
             }
+        } else {
+            material->specular_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+            material->specular_texture_desc.width = specular_surf.pixels[0].size();
+            material->specular_texture_desc.height = specular_surf.pixels.size();
+            material->specular_texture_desc.data = specular_surf.get_sokol_image_data();
+            material->specular_image = sg_make_image(&material->specular_texture_desc);
+            material->has_specular_texture = true;
+
+            material->specular_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+            material->specular_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+            material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+            material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+            material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
+            cout << "No specular texture, made the default instead" << endl;
         }
 
         std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
@@ -654,9 +678,6 @@ void render_meshes() {
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             struct model_fs_params_t {
-                int has_diffuse_tex;
-                int has_specular_tex;
-                float specular;
                 float shininess;
                 float camera_pos_x;
                 float camera_pos_y;
@@ -664,9 +685,6 @@ void render_meshes() {
                 float camera_pos_w;
             } model_fs_params;
 
-            model_fs_params.has_diffuse_tex = (mat && mat->has_diffuse_texture) ? 1 : 0;
-            model_fs_params.has_specular_tex = (mat && mat->has_specular_texture) ? 1 : 0;
-            model_fs_params.specular = (mat) ? mat->specular : 0.0f;
             model_fs_params.shininess = 32.0f;
             model_fs_params.camera_pos_x = state.camera_pos.X;
             model_fs_params.camera_pos_y = state.camera_pos.Y;
@@ -3123,6 +3141,9 @@ void _init() {
     billboard_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     billboard_pipeline_desc.label = "billboard-pipeline";
     billboard_pipeline = sg_make_pipeline(&billboard_pipeline_desc);
+
+    diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
+    specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
 }
 
 void _frame() {
