@@ -83,6 +83,7 @@ Surface normal_surf;
 
 Surface as_visualizer;
 Surface light_visualizer;
+Surface hpr_visualizer;
 
 struct AppState {
     sg_pipeline pip{};
@@ -1767,11 +1768,7 @@ void render_visualizers() {
         draw_billboard(&light_visualizer, light.position, 0.5f);
     }
     for (auto& helper : state.helpers) {
-        Surface* helper_surf;
-        helper_surf->clear(5120, 5120);
-        helper_surf->draw_text(&font, helper->name, {0.0f, 0.0f}, 0.25);
-        draw_billboard(helper_surf, helper->position, 0.5f);
-        delete helper_surf;
+        draw_billboard(&hpr_visualizer, helper->position, 0.5f);
     }
 }
 
@@ -3185,6 +3182,7 @@ void _init() {
 
     as_visualizer.load_from_file("audiosource.png");
     light_visualizer.load_from_file("lightsource.png");
+    hpr_visualizer.load_from_file("hpr.png");
 }
 
 void _frame() {

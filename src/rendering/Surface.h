@@ -262,4 +262,33 @@ public:
     }
 };
 
+Surface from_text(const stbtt_fontinfo* font, const std::string& text, float scale, HMM_Vec4 text_color = {1.0f, 1.0f, 1.0f, 1.0f}) {
+    Surface surf;
+    if (!font || text.empty()) return surf;
+
+    int ascent, descent, line_gap;
+    stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
+    float scaled_ascent = static_cast<float>(ascent) * scale;
+    float scaled_descent = static_cast<float>(descent) * scale;
+    float line_height = scaled_ascent - scaled_descent;
+    int height = static_cast<int>(std::ceil(line_height));
+
+    float total_width = 0.0f;
+    for (size_t i = 0; i < text.size(); ++i) {
+        int advance, lsb;
+        stbtt_GetCodepointHMetrics(font, text[i], &advance, &lsb);
+        total_width += static_cast<float>(advance) * scale;
+        if (i + 1 < text.size()) {
+            total_width += static_cast<float>(stbtt_GetCodepointKernAdvance(font, text[i], text[i + 1])) * scale;
+        }
+    }
+    int width = static_cast<int>(std::ceil(total_width));
+    if (width < 1) width = 1;
+    if (height < 1) height = 1;
+
+    surf.clear(width, height, {0.0f, 0.0f, 0.0f, 0.0f});
+    surf.draw_text(font, text, {0.0f, 0.0f}, scale, text_color);
+    return surf;
+}
+
 #endif //SURFACE_H
