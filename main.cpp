@@ -9,7 +9,6 @@ float yrot = 0.0f;
 Surface jeff_goldblum;
 Surface jeff_button;
 bool show_jeff = false;
-stbtt_fontinfo font;
 
 AnimationPlayer anim_player;
 Animation animation;
@@ -19,7 +18,6 @@ void init() {
     //SDL_HideCursor();
 
     jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
-    load_font(&font, "font.ttf");
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 

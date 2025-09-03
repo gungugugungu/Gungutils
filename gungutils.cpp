@@ -75,9 +75,14 @@ int all_vertex_count = 0;
 float index_count_over_time[225];
 int all_index_count = 0;
 
+stbtt_fontinfo font;
+
 Surface diffuse_surf;
 Surface specular_surf;
 Surface normal_surf;
+
+Surface as_visualizer;
+Surface light_visualizer;
 
 struct AppState {
     sg_pipeline pip{};
@@ -301,7 +306,6 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 vs_params_t vs_params;
 
 vector<VisGroup> vis_groups;
-vector<Object> visualizer_objects;
 
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
     sg_image invalid_image{};
@@ -546,13 +550,6 @@ void render_meshes() {
         }
     }
 
-    for (size_t i = 0; i < visualizer_objects.size(); ++i) {
-        Object obj = visualizer_objects[i];
-        if (obj.mesh != nullptr && is_object_in_frustum(obj)) {
-            instances.push_back({ obj, 1.0f});
-        }
-    }
-
     if (instances.empty()) return;
 
     struct MeshGroup {
@@ -758,6 +755,8 @@ void render_meshes() {
     }
 }
 
+void render_visualizers();
+
 void render_state_surf() {
     if (state.window_surface.pixels.empty() || state.window_surface.pixels[0].empty()) {
         cout << "the window surface is empty which I don't know how you did like what the fuck man?" << endl;
@@ -888,6 +887,7 @@ void render_first_pass() {
 
     render_meshes();
 
+    render_visualizers();
     _draw_all_billboards(state.camera_pos);
 
     for (auto& psys : state.particle_systems) {
@@ -1656,8 +1656,6 @@ class AudioSource3D {
     public:
         FMOD::Studio::EventInstance* event_instance;
         HMM_Vec3 position;
-        Object visualizer_object;
-        int visualizer_obj_index = -1;
         FMOD_GUID guid;
         int script_id = -1;
 
@@ -1666,15 +1664,6 @@ class AudioSource3D {
             print_fmod_error(result);
             state.audio_sources.push_back(this);
             position = pos;
-
-            auto loaded = load_gltf("speaker.glb");
-            if (!loaded.empty()) {
-                visualizer_objects.push_back(loaded[0]);
-                visualizer_obj_index = visualizer_objects.size() - 1;
-                Object vo = visualizer_objects[visualizer_obj_index];
-                vo.mesh->enable_shading = false;
-                visualizer_object = vo;
-            }
 
             desc->getID(&guid);
         }
@@ -1688,12 +1677,6 @@ class AudioSource3D {
             FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
             print_fmod_error(result);
             event_instance->start();
-        }
-
-        void update_visualizer_position() {
-            if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
-                visualizer_objects[visualizer_obj_index].position = position;
-            }
         }
 
         void stop() {
@@ -1721,22 +1704,10 @@ class AudioSource3D {
             attributes.forward = {0.0f, 0.0f, 1.0f};
             FMOD_RESULT result = event_instance->set3DAttributes(&attributes);
             print_fmod_error(result);
-
-            update_visualizer_position();
         }
 
         void remove() {
             state.audio_sources.erase(std::remove(state.audio_sources.begin(), state.audio_sources.end(), this),state.audio_sources.end());
-
-            if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
-                delete visualizer_objects[visualizer_obj_index].mesh;
-                visualizer_objects.erase(visualizer_objects.begin() + visualizer_obj_index);
-                for (auto* as : state.audio_sources) {
-                    if (as->visualizer_obj_index > visualizer_obj_index) {
-                        as->visualizer_obj_index--;
-                    }
-                }
-            }
 
             event_instance->release();
         }
@@ -1746,50 +1717,21 @@ class Helper {
 public:
     HMM_Vec3 position;
     string name;
-    Object visualizer_obj;
-    int visualizer_obj_index = -1;
     bool operator==(const Helper& other) const { return this == &other; }
 
     void initialize(const string& name, HMM_Vec3 pos) {
         this->name = name;
         position = pos;
 
-        auto loaded = load_gltf("helper.glb");
-        if (!loaded.empty()) {
-            visualizer_objects.push_back(loaded[0]);
-            visualizer_obj_index = visualizer_objects.size() - 1;
-            Object vo = visualizer_objects[visualizer_obj_index];
-            vo.mesh->enable_shading = false;
-            visualizer_obj = vo;
-        }
-
         state.helpers.push_back(this);
-    }
-
-
-    void update_visualizer_position() {
-        if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
-            visualizer_objects[visualizer_obj_index].position = position;
-        }
     }
 
     void set_position(HMM_Vec3 pos) {
         position = pos;
-        update_visualizer_position();
     }
 
     void remove() {
         state.helpers.erase(std::remove(state.helpers.begin(), state.helpers.end(), this),state.helpers.end());
-
-        if (visualizer_obj_index >= 0 && visualizer_obj_index < visualizer_objects.size()) {
-            delete visualizer_objects[visualizer_obj_index].mesh;
-            visualizer_objects.erase(visualizer_objects.begin() + visualizer_obj_index);
-            for (auto* hpr : state.helpers) {
-                if (hpr->visualizer_obj_index > visualizer_obj_index) {
-                    hpr->visualizer_obj_index--;
-                }
-            }
-        }
     }
 };
 
@@ -1810,6 +1752,27 @@ bool is_point_within_helpers(Helper* helper1, Helper* helper2, HMM_Vec3 point) {
 void make_audiosource_by_index(int index) {
     AudioSource3D* audio_source = new AudioSource3D();
     audio_source->initialize(state.event_descriptions[index], {0.0f, 0.0f, 0.0f});
+}
+
+void render_visualizers() {
+    for (auto& as : state.audio_sources) {
+        draw_billboard(&as_visualizer, as->position, 0.5f);
+    }
+    for (auto& light : state.point_lights) {
+        light_visualizer.color.XYZ = light.color;
+        draw_billboard(&light_visualizer, light.position, 0.5f);
+    }
+    for (auto& light : state.spot_lights) {
+        light_visualizer.color.XYZ = light.color;
+        draw_billboard(&light_visualizer, light.position, 0.5f);
+    }
+    for (auto& helper : state.helpers) {
+        Surface* helper_surf;
+        helper_surf->clear(5120, 5120);
+        helper_surf->draw_text(&font, helper->name, {0.0f, 0.0f}, 0.25);
+        draw_billboard(helper_surf, helper->position, 0.5f);
+        delete helper_surf;
+    }
 }
 
 void clear_scene() {
@@ -1834,8 +1797,6 @@ void clear_scene() {
     state.directional_lights.clear();
     state.point_lights.clear();
     state.spot_lights.clear();
-
-    visualizer_objects.clear();
 }
 
 void save_scene(const string& path) {
@@ -3051,6 +3012,7 @@ void _init() {
     vis_groups.push_back(*default_visgroup);
     stbi_set_flip_vertically_on_load(true);
     stbi_set_flip_vertically_on_load_thread(true);
+    load_font(&font, "font.ttf");
 
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
@@ -3220,6 +3182,9 @@ void _init() {
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
     normal_surf.clear(16, 16, {0.501960784, 0.501960784, 1.0f, 1.0f});
+
+    as_visualizer.load_from_file("audiosource.png");
+    light_visualizer.load_from_file("lightsource.png");
 }
 
 void _frame() {
