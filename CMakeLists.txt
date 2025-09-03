@@ -31,6 +31,13 @@ add_library(ImPlot STATIC ${IMPLOT_SOURCES})
 target_include_directories(ImPlot PUBLIC ${IMPLOT_PATH})
 target_link_libraries(ImPlot PUBLIC ImGui)
 
+# ImGuizmo
+set(IMGUIZMO_PATH "${CMAKE_SOURCE_DIR}/include/ImGuizmo/")
+file(GLOB IMGUIZMO_SOURCES ${IMGUIZMO_PATH}/*.cpp)
+add_library(ImGuizmo STATIC ${IMGUIZMO_SOURCES})
+target_include_directories(ImGuizmo PUBLIC ${IMGUIZMO_PATH})
+target_link_libraries(ImGuizmo PUBLIC ImGui)
+
 # TinyFileDialogs
 file(GLOB TINYFD_SOURCES ${CMAKE_SOURCE_DIR}/include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
@@ -82,6 +89,7 @@ target_link_libraries(Gungutils
         ${FMOD_CORE_LIB}
         ImGui
         ImPlot
+        ImGuizmo
         TinyFD
         reactphysics3d
         meshoptimizer

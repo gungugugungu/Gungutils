@@ -17,6 +17,7 @@
 #include <fstream>
 #include "imgui/imgui.h"
 #include "implot/implot.h"
+#include "ImGuizmo/ImGuizmo.h"
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
@@ -2292,6 +2293,7 @@ static int selected_selectable_visgroup_index = -1;
 static int selected_dir_light_index = -1;
 static int selected_point_light_index = -1;
 static int selected_spot_light_index = -1;
+bool grid_visible = true;
 
 sg_image editor_display_image;
 sg_sampler editor_display_sampler;
@@ -2300,7 +2302,19 @@ sg_sampler editor_specular_display_sampler;
 
 void render_editor() {
     std::vector<sg_view> temp_editor_views;
+
     if (state.editor_open) {
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::BeginFrame();
+
+        ImGuiIO& io = ImGui::GetIO();
+        ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+
+        static ImGuizmo::OPERATION current_gizmo_operation = ImGuizmo::TRANSLATE;
+        static ImGuizmo::MODE current_gizmo_mode = ImGuizmo::WORLD;
+
+        if (grid_visible) ImGuizmo::DrawGrid(&vs_params.view.Elements[0][0], &vs_params.projection.Elements[0][0], HMM_M4D(1.0f).Elements[0], 100.f);
+
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::Begin("General settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
         if (ImGui::Button("SAVE SCENE")) {
@@ -2332,6 +2346,21 @@ void render_editor() {
         ImGui::Text("FPS: %.2f", time_state.fps);
 
         ImGui::Separator();
+
+        if (ImGui::RadioButton("TRANSLATE", current_gizmo_operation == ImGuizmo::TRANSLATE)) current_gizmo_operation = ImGuizmo::TRANSLATE;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("ROTATE", current_gizmo_operation == ImGuizmo::ROTATE)) current_gizmo_operation = ImGuizmo::ROTATE;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("SCALE", current_gizmo_operation == ImGuizmo::SCALE)) current_gizmo_operation = ImGuizmo::SCALE;
+
+        if (ImGui::RadioButton("LOCAL", current_gizmo_mode == ImGuizmo::LOCAL)) current_gizmo_mode = ImGuizmo::LOCAL;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("WORLD", current_gizmo_mode == ImGuizmo::WORLD)) current_gizmo_mode = ImGuizmo::WORLD;
+
+        ImGui::Checkbox("SHOW GRID", &grid_visible);
+
+        ImGui::Separator();
+
         if (ImGui::CollapsingHeader("VISGROUPS")) {
             ImGui::BeginChild("VISGROUPS", ImVec2(150, 75), true);
             for (int i = 0; i < vis_groups.size(); i++) {
@@ -2383,7 +2412,6 @@ void render_editor() {
             }
         }
 
-        // Mesh editor
         if (ImGui::CollapsingHeader("OBJECT")) {
             ImGui::BeginChild("OBJECT", ImVec2(256, 300), true);
 
@@ -2575,42 +2603,8 @@ void render_editor() {
                     }
                 }
             }
-            /*ImGui::SameLine();
-            if (ImGui::Button("LOAD OBJ")) {
-                const char* filter_patterns[] = {"*.obj"};
-                const char* file_path = tinyfd_openFileDialog(
-                    "Select OBJ File",
-                    "",
-                    1,
-                    filter_patterns,
-                    "OBJ Files",
-                    0
-                );
-
-                if (file_path) {
-                    float* verts;
-                    uint32_t vertex_count;
-                    unsigned int* indices;
-                    uint32_t index_count;
-
-                    if (load_obj(file_path, &verts, &vertex_count, &indices, &index_count)) {
-                        Object loaded_object{};
-                        loaded_object.mesh = new Mesh();
-                        loaded_object.mesh->vertices = verts;
-                        loaded_object.mesh->vertex_count = vertex_count;
-                        loaded_object.mesh->indices = indices;
-                        loaded_object.mesh->index_count = index_count;
-                        loaded_object.position = HMM_V3(0.0f, 0.0f, 0.0f);
-
-                        prepare_mesh_buffers(*loaded_object.mesh);
-                        vis_groups[0].objects.push_back(loaded_object);
-                        std::cout << "Loaded OBJ" << std::endl;
-                    }
-                }
-            }*/
         }
 
-        // Audio sources
         if (ImGui::CollapsingHeader("AUDIO SOURCES")) {
             static int selected_as_index = -1;
 
@@ -2950,12 +2944,33 @@ void render_editor() {
         }
 
         ImGui::End();
-    } /*else {
-        ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
-        ImGui::Text("Press 0 to open the dev UI");
-        ImGui::Text("ALSO, VERY IMPORTANT!! WHEN YOU CLEAR THE SCENE, ADD CREATE A VISGROUP SO GLBS GETS LOADED");
-        ImGui::End();
-    }*/ // This is just for the DEMO, feel free to remove it later.
+
+        if (selected_object_index != -1 && selected_mesh_visgroup != -1) {
+            Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+
+            HMM_Mat4 translation = HMM_Translate(selected_object->position);
+            HMM_Mat4 rotation_matrix = HMM_QToM4(selected_object->rotation);
+            HMM_Mat4 scale_matrix = HMM_Scale(selected_object->scale);
+            HMM_Mat4 object_matrix = HMM_MulM4(translation, HMM_MulM4(rotation_matrix, scale_matrix));
+
+            HMM_Mat4 delta_matrix = HMM_M4D(1.0f);
+
+            if (ImGuizmo::Manipulate(&vs_params.view.Elements[0][0], &vs_params.projection.Elements[0][0], current_gizmo_operation, current_gizmo_mode, &object_matrix.Elements[0][0], &delta_matrix.Elements[0][0])) {
+
+                HMM_Vec3 translation_vec, scale_vec, rotation_euler;
+
+                ImGuizmo::DecomposeMatrixToComponents(&object_matrix.Elements[0][0], &translation_vec.X, &rotation_euler.X, &scale_vec.X);
+
+                selected_object->position = translation_vec;
+                selected_object->rotation = EulerDegreesToQuat(rotation_euler);
+                selected_object->scale = scale_vec;
+
+                if (selected_object_index < mesh_euler_rotations.size()) {
+                    mesh_euler_rotations[selected_object_index] = rotation_euler;
+                }
+            }
+        }
+    }
     simgui_render();
     for (auto& view : temp_editor_views) {
         sg_destroy_view(view);
@@ -3178,7 +3193,7 @@ void _init() {
 
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
-    normal_surf.clear(16, 16, {0.501960784, 0.501960784, 1.0f, 1.0f});
+    normal_surf.clear(16, 16, {0.5, 0.5, 1.0f, 1.0f});
 
     as_visualizer.load_from_file("audiosource.png");
     light_visualizer.load_from_file("lightsource.png");

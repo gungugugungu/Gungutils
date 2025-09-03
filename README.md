@@ -14,5 +14,5 @@
 - A simple profiler in the editor
 
 # TODO
-- Editor gizmos
-- Animation designer
+- Shadowmaps
+- SSR
