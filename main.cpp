@@ -42,6 +42,7 @@ void frame() {
     SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
 
     state.window_surface.clear(w_width, w_height);
+    state.window_surface.draw_rect(160, 240, {16.0f, 16.0f}, {1.0f, 0.0f, 1.0f, 1.0f});
 }
 
 void event(SDL_Event* e) {

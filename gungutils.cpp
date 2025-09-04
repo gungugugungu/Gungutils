@@ -2293,7 +2293,7 @@ static int selected_selectable_visgroup_index = -1;
 static int selected_dir_light_index = -1;
 static int selected_point_light_index = -1;
 static int selected_spot_light_index = -1;
-bool grid_visible = true;
+bool grid_visible = false;
 
 sg_image editor_display_image;
 sg_sampler editor_display_sampler;

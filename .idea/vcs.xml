@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/HandmadeMath" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/include/ImGuizmo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/SDL" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/imgui" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/include/implot" vcs="Git" />

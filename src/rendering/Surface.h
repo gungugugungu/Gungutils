@@ -208,6 +208,26 @@ public:
         resize(new_width, new_height);
     }
 
+    void draw_rect(int w, int h, HMM_Vec2 pos, HMM_Vec4 color) {
+        if (pixels.empty() || pixels[0].empty()) return;
+
+        int dest_x = static_cast<int>(pos.X);
+        int dest_y = static_cast<int>(pos.Y);
+        int src_width = pixels[0].size();
+        int src_height = pixels.size();
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int target_x = dest_x + x;
+                int target_y = dest_y + y;
+
+                if (target_x >= 0 && target_x < src_width && target_y >= 0 && target_y < src_height) {
+                    pixels[target_y][target_x] = color;
+                }
+            }
+        }
+    }
+
     sg_image_data get_sokol_image_data() const {
         sg_image_data img_data = {};
 

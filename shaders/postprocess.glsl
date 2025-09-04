@@ -186,7 +186,7 @@ void main() {
 
     float max_diff = 0.0;
 
-    /*for (int y=-outline_size; y<=outline_size; y++) {
+    for (int y=-outline_size; y<=outline_size; y++) {
         for (int x=-outline_size; x<=outline_size; x++) {
             vec2 offset = uv + vec2(x, y) * texel;
             float sample_raw = texture(depth2D, offset).r;
@@ -199,7 +199,7 @@ void main() {
 
     if (max_diff > outline_trigger_dist) {
         final_color = vec3(0.0, 0.0, 0.0); // outline
-    }*/ // disabled for now
+    }
 
     frag_color = vec4(final_color, 1.0);
 }
