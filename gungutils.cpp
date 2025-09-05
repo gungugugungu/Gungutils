@@ -199,7 +199,7 @@ Plane light_frustum_planes[6];
 
 void init_shadowmaps() {
     sg_image_desc shadow_img_desc = {};
-    shadow_img_desc.usage.color_attachment = true;
+    shadow_img_desc.usage.depth_stencil_attachment = true;
     shadow_img_desc.width = shadow_map_size;
     shadow_img_desc.height = shadow_map_size;
     shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -228,13 +228,19 @@ void init_shadowmaps() {
     sg_pipeline_desc shadow_pip_desc = {};
     shadow_pip_desc.shader = shadow_shd;
     shadow_pip_desc.layout.attrs[ATTR_shadow_aPos].format = SG_VERTEXFORMAT_FLOAT3;
-    shadow_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
     shadow_pip_desc.color_count = 0;
     shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
     shadow_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
     shadow_pip_desc.depth.write_enabled = true;
     shadow_pip_desc.cull_mode = SG_CULLMODE_FRONT;
+    shadow_pip_desc.colors->blend.enabled = true;
+    shadow_pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+    shadow_pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    shadow_pip_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
+    shadow_pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
+    shadow_pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    shadow_pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     shadow_pip_desc.label = "shadow-pipeline";
     shadow_pip = sg_make_pipeline(&shadow_pip_desc);
 }
@@ -587,28 +593,55 @@ bool is_object_in_frustum(const Object& obj) {
 }
 
 std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() {
-    HMM_Vec3 min_bounds = {FLT_MAX, FLT_MAX, FLT_MAX};
-    HMM_Vec3 max_bounds = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    struct ObjSnapshot {
+        HMM_Vec3 position;
+        HMM_Vec3 bounding_rect;
+        HMM_Vec3 scale;
+    };
+
+    std::vector<ObjSnapshot> snaps;
+
     for (const auto& visgroup : vis_groups) {
         if (!visgroup.enabled) continue;
         for (const auto& obj : visgroup.objects) {
             if (obj.mesh == nullptr) continue;
-            HMM_Vec3 half_ext = HMM_MulV3F(obj.bounding_rect, 0.5f);
-            half_ext.X *= fabsf(obj.scale.X);
-            half_ext.Y *= fabsf(obj.scale.Y);
-            half_ext.Z *= fabsf(obj.scale.Z);
 
-            HMM_Vec3 obj_min = HMM_SubV3(obj.position, half_ext);
-            HMM_Vec3 obj_max = HMM_AddV3(obj.position, half_ext);
+            ObjSnapshot s;
+            s.position = obj.position;
+            s.bounding_rect = obj.bounding_rect;
+            s.scale = obj.scale;
 
-            min_bounds.X = std::min(min_bounds.X, obj_min.X);
-            min_bounds.Y = std::min(min_bounds.Y, obj_min.Y);
-            min_bounds.Z = std::min(min_bounds.Z, obj_min.Z);
-            max_bounds.X = std::max(max_bounds.X, obj_max.X);
-            max_bounds.Y = std::max(max_bounds.Y, obj_max.Y);
-            max_bounds.Z = std::max(max_bounds.Z, obj_max.Z);
+            auto finite_vec = [](const HMM_Vec3 &v) {
+                return std::isfinite(v.X) && std::isfinite(v.Y) && std::isfinite(v.Z);
+            };
+            if (!finite_vec(s.position) || !finite_vec(s.bounding_rect) || !finite_vec(s.scale)) {
+                continue;
+            }
+
+            snaps.push_back(s);
         }
     }
+
+    HMM_Vec3 min_bounds = {FLT_MAX, FLT_MAX, FLT_MAX};
+    HMM_Vec3 max_bounds = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+
+    for (const auto& s : snaps) {
+        HMM_Vec3 half_ext = HMM_MulV3F(s.bounding_rect, 0.5f);
+        half_ext.X *= fabsf(s.scale.X);
+        half_ext.Y *= fabsf(s.scale.Y);
+        half_ext.Z *= fabsf(s.scale.Z);
+
+        HMM_Vec3 obj_min = HMM_SubV3(s.position, half_ext);
+        HMM_Vec3 obj_max = HMM_AddV3(s.position, half_ext);
+
+        min_bounds.X = std::min(min_bounds.X, obj_min.X);
+        min_bounds.Y = std::min(min_bounds.Y, obj_min.Y);
+        min_bounds.Z = std::min(min_bounds.Z, obj_min.Z);
+        max_bounds.X = std::max(max_bounds.X, obj_max.X);
+        max_bounds.Y = std::max(max_bounds.Y, obj_max.Y);
+        max_bounds.Z = std::max(max_bounds.Z, obj_max.Z);
+    }
+
     if (min_bounds.X == FLT_MAX) {
         min_bounds = HMM_V3(-10.0f, -10.0f, -10.0f);
         max_bounds = HMM_V3(10.0f, 10.0f, 10.0f);
@@ -779,6 +812,18 @@ void render_meshes() {
     } lights = {};
 
     int light_idx = 0;
+
+    auto &dl = state.directional_lights;
+    if (dl.empty()) {
+        fprintf(stderr, "skipping shadow setup cause no directional lights\n");
+    } else {
+        DirectionalLight *p = dl.data();
+        uintptr_t up = (uintptr_t)p;
+        if (p == nullptr || up < 0x10000 || up > 0x00007fffffffffffULL) {
+            fprintf(stderr, "suspicious directional_lights.data() pointer %p — skipping shadows\n", (void*)p);
+        }
+    }
+
     for (const auto& dl : state.directional_lights) {
         if (light_idx >= 50) break;
         lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
@@ -1004,6 +1049,78 @@ void render_first_pass() {
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
 
+    // shadowmap pass
+    if (!state.directional_lights.empty()) {
+        auto [min_bounds, max_bounds] = get_scene_bounds();
+        HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
+        DirectionalLight& first_light = state.directional_lights[0];
+        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
+        HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
+        HMM_Mat4 light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
+        HMM_Mat4 light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
+
+        HMM_Mat4 light_clip = HMM_MulM4(light_proj, light_view);
+        HMM_Vec4 lrow0 = {light_clip.Elements[0][0], light_clip.Elements[1][0], light_clip.Elements[2][0], light_clip.Elements[3][0]};
+        HMM_Vec4 lrow1 = {light_clip.Elements[0][1], light_clip.Elements[1][1], light_clip.Elements[2][1], light_clip.Elements[3][1]};
+        HMM_Vec4 lrow2 = {light_clip.Elements[0][2], light_clip.Elements[1][2], light_clip.Elements[2][2], light_clip.Elements[3][2]};
+        HMM_Vec4 lrow3 = {light_clip.Elements[0][3], light_clip.Elements[1][3], light_clip.Elements[2][3], light_clip.Elements[3][3]};
+
+        HMM_Vec4 left = HMM_AddV4(lrow3, lrow0);
+        float len_left = HMM_LenV3(left.XYZ);
+        if (len_left > 0.0001f) {
+            light_frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
+            light_frustum_planes[0].d = left.W / len_left;
+        }
+
+        HMM_Vec4 right = HMM_SubV4(lrow3, lrow0);
+        float len_right = HMM_LenV3(right.XYZ);
+        if (len_right > 0.0001f) {
+            light_frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
+            light_frustum_planes[1].d = right.W / len_right;
+        }
+
+        HMM_Vec4 bottom = HMM_AddV4(lrow3, lrow1);
+        float len_bottom = HMM_LenV3(bottom.XYZ);
+        if (len_bottom > 0.0001f) {
+            light_frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
+            light_frustum_planes[2].d = bottom.W / len_bottom;
+        }
+
+        HMM_Vec4 top = HMM_SubV4(lrow3, lrow1);
+        float len_top = HMM_LenV3(top.XYZ);
+        if (len_top > 0.0001f) {
+            light_frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
+            light_frustum_planes[3].d = top.W / len_top;
+        }
+
+        HMM_Vec4 near_p = HMM_AddV4(lrow3, lrow2);
+        float len_near = HMM_LenV3(near_p.XYZ);
+        if (len_near > 0.0001f) {
+            light_frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
+            light_frustum_planes[4].d = near_p.W / len_near;
+        }
+
+        HMM_Vec4 far_p = HMM_SubV4(lrow3, lrow2);
+        float len_far = HMM_LenV3(far_p.XYZ);
+        if (len_far > 0.0001f) {
+            light_frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
+            light_frustum_planes[5].d = far_p.W / len_far;
+        }
+
+        sg_pass_action shadow_action = {};
+        shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
+        shadow_action.depth.clear_value = 1.0f;
+        sg_pass shadow_pass = {};
+        shadow_pass.action = shadow_action;
+        shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
+        shadow_pass.label = "shadow-pass";
+        sg_begin_pass(&shadow_pass);
+
+        render_shadow_meshes(light_view, light_proj);
+
+        sg_end_pass();
+    }
+
     if (post_state.color_img.width != w_width || post_state.color_img.height != w_height) {
         if (post_state.rendered_color_img.id != SG_INVALID_ID) {
             sg_destroy_view(post_state.rendered_color_att_view);
@@ -1082,78 +1199,8 @@ void render_first_pass() {
     pass.attachments.colors[0] = post_state.rendered_color_att_view;
     pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
+
     sg_begin_pass(&pass);
-
-    if (!state.directional_lights.empty()) {
-        auto [min_bounds, max_bounds] = get_scene_bounds();
-        HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
-        DirectionalLight& first_light = state.directional_lights[0];
-        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
-        HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
-        HMM_Mat4 light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
-        HMM_Mat4 light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
-
-        HMM_Mat4 light_clip = HMM_MulM4(light_proj, light_view);
-        HMM_Vec4 lrow0 = {light_clip.Elements[0][0], light_clip.Elements[1][0], light_clip.Elements[2][0], light_clip.Elements[3][0]};
-        HMM_Vec4 lrow1 = {light_clip.Elements[0][1], light_clip.Elements[1][1], light_clip.Elements[2][1], light_clip.Elements[3][1]};
-        HMM_Vec4 lrow2 = {light_clip.Elements[0][2], light_clip.Elements[1][2], light_clip.Elements[2][2], light_clip.Elements[3][2]};
-        HMM_Vec4 lrow3 = {light_clip.Elements[0][3], light_clip.Elements[1][3], light_clip.Elements[2][3], light_clip.Elements[3][3]};
-
-        HMM_Vec4 left = HMM_AddV4(lrow3, lrow0);
-        float len_left = HMM_LenV3(left.XYZ);
-        if (len_left > 0.0001f) {
-            light_frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
-            light_frustum_planes[0].d = left.W / len_left;
-        }
-
-        HMM_Vec4 right = HMM_SubV4(lrow3, lrow0);
-        float len_right = HMM_LenV3(right.XYZ);
-        if (len_right > 0.0001f) {
-            light_frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
-            light_frustum_planes[1].d = right.W / len_right;
-        }
-
-        HMM_Vec4 bottom = HMM_AddV4(lrow3, lrow1);
-        float len_bottom = HMM_LenV3(bottom.XYZ);
-        if (len_bottom > 0.0001f) {
-            light_frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
-            light_frustum_planes[2].d = bottom.W / len_bottom;
-        }
-
-        HMM_Vec4 top = HMM_SubV4(lrow3, lrow1);
-        float len_top = HMM_LenV3(top.XYZ);
-        if (len_top > 0.0001f) {
-            light_frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
-            light_frustum_planes[3].d = top.W / len_top;
-        }
-
-        HMM_Vec4 near_p = HMM_AddV4(lrow3, lrow2);
-        float len_near = HMM_LenV3(near_p.XYZ);
-        if (len_near > 0.0001f) {
-            light_frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
-            light_frustum_planes[4].d = near_p.W / len_near;
-        }
-
-        HMM_Vec4 far_p = HMM_SubV4(lrow3, lrow2);
-        float len_far = HMM_LenV3(far_p.XYZ);
-        if (len_far > 0.0001f) {
-            light_frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
-            light_frustum_planes[5].d = far_p.W / len_far;
-        }
-
-        sg_pass_action shadow_action = {};
-        shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
-        shadow_action.depth.clear_value = 1.0f;
-        sg_pass shadow_pass = {};
-        shadow_pass.action = shadow_action;
-        shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
-        shadow_pass.label = "shadow-pass";
-        sg_begin_pass(&shadow_pass);
-
-        render_shadow_meshes(light_view, light_proj);
-
-        sg_end_pass();
-    }
 
     render_meshes();
 
@@ -3208,6 +3255,18 @@ void render_editor() {
                 ImPlot::PlotLine("INDEX COUNT", index_count_over_time, 225);
 
                 ImPlot::EndPlot();
+            }
+            ImGui::Separator();
+            ImGui::Text("Shadow map texture:");
+            sg_view_desc shadowmap_view_desc = {};
+            shadowmap_view_desc.texture.image = shadow_depth_img;
+            sg_view editor_display_view = sg_make_view(&shadowmap_view_desc);
+            if (editor_display_view.id == SG_INVALID_ID) {
+                ImGui::Text("No shadowmap?");
+            } else {
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, shadow_sampler);
+                ImGui::Image(imtex_id, ImVec2(256, 256));
+                temp_editor_views.push_back(editor_display_view);
             }
         }
 

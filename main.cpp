@@ -32,7 +32,7 @@ void init() {
     result = state.bank->getEventList(state.event_descriptions.data(), event_count, &event_count);
     print_fmod_error(result);
 
-    load_scene("maps/default.gmap");
+    load_scene("maps/occlusiontest.gmap");
 }
 
 void frame() {
