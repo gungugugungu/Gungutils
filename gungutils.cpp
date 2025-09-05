@@ -87,7 +87,7 @@ sg_pipeline shadow_pip = {SG_INVALID_ID};
 int shadow_map_size = 2048;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
-float shadow_far = 1050.0f;
+float shadow_far = 100.0f;
 
 Surface diffuse_surf;
 Surface specular_surf;
@@ -228,6 +228,8 @@ void init_shadowmaps() {
     sg_pipeline_desc shadow_pip_desc = {};
     shadow_pip_desc.shader = shadow_shd;
     shadow_pip_desc.layout.attrs[ATTR_shadow_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    shadow_pip_desc.layout.attrs[ATTR_shadow_aNormal].format = SG_VERTEXFORMAT_FLOAT3; // hey dumbass, remember how dumb you were back here?
+    shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2; // real dumb, right?
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
     shadow_pip_desc.color_count = 0;
     shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -3280,7 +3282,7 @@ void render_editor() {
             HMM_Mat4 scale_matrix = HMM_Scale(selected_object->scale);
             HMM_Mat4 object_matrix = HMM_MulM4(translation, HMM_MulM4(rotation_matrix, scale_matrix));
 
-            HMM_Mat4 delta_matrix = HMM_M4D(1.0f);
+            HMM_Mat4 delta_matrix = HMM_M4D(1.0f); // omg is that a metal gear solid 3: snake eater remastered aka metal gear solid DELTA: snake eater reference?
 
             if (ImGuizmo::Manipulate(&vs_params.view.Elements[0][0], &vs_params.projection.Elements[0][0], current_gizmo_operation, current_gizmo_mode, &object_matrix.Elements[0][0], &delta_matrix.Elements[0][0])) {
 
