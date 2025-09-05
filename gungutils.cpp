@@ -48,6 +48,7 @@
 #include "shaders/surface.glsl.h"
 #include "shaders/particles.glsl.h"
 #include "shaders/billboard.glsl.h"
+#include "shaders/shadow.glsl.h"
 // sources
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
@@ -77,6 +78,16 @@ float index_count_over_time[225];
 int all_index_count = 0;
 
 stbtt_fontinfo font;
+
+sg_image shadow_depth_img = {SG_INVALID_ID};
+sg_view shadow_depth_att_view = {SG_INVALID_ID};
+sg_view shadow_depth_tex_view = {SG_INVALID_ID};
+sg_sampler shadow_sampler = {SG_INVALID_ID};
+sg_pipeline shadow_pip = {SG_INVALID_ID};
+int shadow_map_size = 2048;
+float shadow_ortho_size = 50.0f;
+float shadow_near = 0.1f;
+float shadow_far = 1050.0f;
 
 Surface diffuse_surf;
 Surface specular_surf;
@@ -184,6 +195,49 @@ struct Plane {
 };
 
 Plane frustum_planes[6];
+Plane light_frustum_planes[6];
+
+void init_shadowmaps() {
+    sg_image_desc shadow_img_desc = {};
+    shadow_img_desc.usage.color_attachment = true;
+    shadow_img_desc.width = shadow_map_size;
+    shadow_img_desc.height = shadow_map_size;
+    shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+    shadow_img_desc.sample_count = 1;
+    shadow_img_desc.label = "shadow-depth-target";
+    shadow_depth_img = sg_make_image(&shadow_img_desc);
+
+    sg_view_desc shadow_att_desc = {};
+    shadow_att_desc.depth_stencil_attachment.image = shadow_depth_img;
+    shadow_depth_att_view = sg_make_view(&shadow_att_desc);
+
+    sg_view_desc shadow_tex_desc = {};
+    shadow_tex_desc.texture.image = shadow_depth_img;
+    shadow_depth_tex_view = sg_make_view(&shadow_tex_desc);
+
+    sg_sampler_desc shadow_smp_desc = {};
+    shadow_smp_desc.min_filter = SG_FILTER_LINEAR;
+    shadow_smp_desc.mag_filter = SG_FILTER_LINEAR;
+    shadow_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_BORDER;
+    shadow_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_BORDER;
+    shadow_smp_desc.border_color = SG_BORDERCOLOR_OPAQUE_WHITE;
+    shadow_smp_desc.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    shadow_sampler = sg_make_sampler(&shadow_smp_desc);
+
+    sg_shader shadow_shd = sg_make_shader(shadow_shader_desc(sg_query_backend()));
+    sg_pipeline_desc shadow_pip_desc = {};
+    shadow_pip_desc.shader = shadow_shd;
+    shadow_pip_desc.layout.attrs[ATTR_shadow_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    shadow_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
+    shadow_pip_desc.color_count = 0;
+    shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+    shadow_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    shadow_pip_desc.depth.write_enabled = true;
+    shadow_pip_desc.cull_mode = SG_CULLMODE_FRONT;
+    shadow_pip_desc.label = "shadow-pipeline";
+    shadow_pip = sg_make_pipeline(&shadow_pip_desc);
+}
 
 void init_post_processing() {
     int width, height;
@@ -532,6 +586,128 @@ bool is_object_in_frustum(const Object& obj) {
     return true;
 }
 
+std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() {
+    HMM_Vec3 min_bounds = {FLT_MAX, FLT_MAX, FLT_MAX};
+    HMM_Vec3 max_bounds = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (const auto& visgroup : vis_groups) {
+        if (!visgroup.enabled) continue;
+        for (const auto& obj : visgroup.objects) {
+            if (obj.mesh == nullptr) continue;
+            HMM_Vec3 half_ext = HMM_MulV3F(obj.bounding_rect, 0.5f);
+            half_ext.X *= fabsf(obj.scale.X);
+            half_ext.Y *= fabsf(obj.scale.Y);
+            half_ext.Z *= fabsf(obj.scale.Z);
+
+            HMM_Vec3 obj_min = HMM_SubV3(obj.position, half_ext);
+            HMM_Vec3 obj_max = HMM_AddV3(obj.position, half_ext);
+
+            min_bounds.X = std::min(min_bounds.X, obj_min.X);
+            min_bounds.Y = std::min(min_bounds.Y, obj_min.Y);
+            min_bounds.Z = std::min(min_bounds.Z, obj_min.Z);
+            max_bounds.X = std::max(max_bounds.X, obj_max.X);
+            max_bounds.Y = std::max(max_bounds.Y, obj_max.Y);
+            max_bounds.Z = std::max(max_bounds.Z, obj_max.Z);
+        }
+    }
+    if (min_bounds.X == FLT_MAX) {
+        min_bounds = HMM_V3(-10.0f, -10.0f, -10.0f);
+        max_bounds = HMM_V3(10.0f, 10.0f, 10.0f);
+    }
+    return {min_bounds, max_bounds};
+}
+
+bool is_object_in_light_frustum(const Object& obj) {
+    if (obj.bounding_rect.X == 0.0f && obj.bounding_rect.Y == 0.0f && obj.bounding_rect.Z == 0.0f) return true;
+    float eff_dx = obj.bounding_rect.X * fabsf(obj.scale.X);
+    float eff_dy = obj.bounding_rect.Y * fabsf(obj.scale.Y);
+    float eff_dz = obj.bounding_rect.Z * fabsf(obj.scale.Z);
+    float radius = 0.5f * sqrtf(eff_dx*eff_dx + eff_dy*eff_dy + eff_dz*eff_dz);
+    HMM_Vec3 center = obj.position;
+    for (int i = 0; i < 6; i++) {
+        float dist = HMM_DotV3(light_frustum_planes[i].normal, center) + light_frustum_planes[i].d;
+        if (dist < -radius) return false;
+    }
+    return true;
+}
+
+void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj) {
+    struct Instance {
+        Object obj;
+    };
+    std::vector<Instance> instances;
+    for (auto& visgroup : vis_groups) {
+        if (!visgroup.enabled) continue;
+        for (size_t i = 0; i < visgroup.objects.size(); i++) {
+            Object obj = visgroup.objects[i];
+            if (obj.mesh != nullptr && is_object_in_light_frustum(obj)) {
+                instances.push_back({obj});
+            }
+        }
+    }
+    if (instances.empty()) return;
+
+    struct MeshGroup {
+        Mesh* mesh;
+        std::vector<Instance> items;
+    };
+    std::vector<MeshGroup> groups;
+    for (auto &inst : instances) {
+        Mesh* mesh = inst.obj.mesh;
+        if (!mesh || !mesh->vertices) continue;
+        bool placed = false;
+        for (auto &g : groups) {
+            if (g.mesh->vertex_count == mesh->vertex_count) {
+                size_t bytes = (size_t)mesh->vertex_count * 8 * sizeof(float);
+                if (bytes > 0 && g.mesh->vertices && mesh->vertices) {
+                    if (memcmp(g.mesh->vertices, mesh->vertices, bytes) == 0) {
+                        g.items.push_back(inst);
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!placed) {
+            MeshGroup mg;
+            mg.mesh = mesh;
+            mg.items.push_back(inst);
+            groups.push_back(std::move(mg));
+        }
+    }
+
+    sg_apply_pipeline(shadow_pip);
+    state.bind.views[0] = {SG_INVALID_ID};
+    state.bind.samplers[0] = {SG_INVALID_ID};
+
+    for (auto &g : groups) {
+        Mesh* mesh = g.mesh;
+        if (!mesh || g.items.empty()) continue;
+        sg_buffer vb = mesh->vertex_buffer;
+        sg_buffer ib = mesh->index_buffer;
+        if (vb.id == SG_INVALID_ID || ib.id == SG_INVALID_ID) continue;
+
+        state.bind.vertex_buffers[0] = vb;
+        state.bind.index_buffer = ib;
+        sg_apply_bindings(&state.bind);
+
+        for (const auto& inst : g.items) {
+            const Object& obj = inst.obj;
+            HMM_Mat4 translate_mat = HMM_Translate(obj.position);
+            HMM_Mat4 rot_mat = HMM_QToM4(obj.rotation);
+            HMM_Mat4 scale_mat = HMM_Scale(obj.scale);
+            HMM_Mat4 model = HMM_MulM4(translate_mat, HMM_MulM4(rot_mat, scale_mat));
+
+            vs_params_t shadow_params = {};
+            shadow_params.model = model;
+            shadow_params.view = light_view;
+            shadow_params.projection = light_proj;
+            sg_apply_uniforms(0, SG_RANGE(shadow_params));
+
+            sg_draw(0, mesh->index_count, 1);
+        }
+    }
+}
+
 void render_meshes() {
     all_vertex_count = 0;
     all_index_count = 0;
@@ -599,6 +775,7 @@ void render_meshes() {
         int light_amount;
         float padding[3];
         HMM_Vec4 ambient_color;
+        HMM_Mat4 light_space;
     } lights = {};
 
     int light_idx = 0;
@@ -630,6 +807,21 @@ void render_meshes() {
         lights.light_colors[light_idx] = { sl.color.X, sl.color.Y, sl.color.Z, sl.intensity };
         lights.light_att_params[light_idx] = { 0.0f, sl.inner_cone_angle, sl.outer_cone_angle, 0.0f };
         light_idx++;
+    }
+
+    if (light_idx > 0) {
+        HMM_Mat4 light_view;
+        HMM_Mat4 light_proj;
+        auto [min_bounds, max_bounds] = get_scene_bounds();
+        HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
+        DirectionalLight& first_light = state.directional_lights[0];
+        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
+        HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
+        light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));  // Assume up is Y
+        light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
+        lights.light_space = HMM_MulM4(light_proj, light_view);
+    } else {
+        lights.light_space = HMM_M4D(1.0f);
     }
 
     lights.light_amount = light_idx;
@@ -706,6 +898,10 @@ void render_meshes() {
                 state.bind.samplers[2] = { .id = SG_INVALID_ID };
                 cerr << "Invalid normal texture view while rendering" << endl;
             }
+
+            state.bind.views[3] = shadow_depth_tex_view;
+            state.bind.samplers[3] = shadow_sampler;
+
             sg_apply_bindings(&state.bind);
 
             HMM_Mat4 translate_mat = HMM_Translate(obj.position);
@@ -716,6 +912,7 @@ void render_meshes() {
             vs_params.model = model;
             vs_params.opacity = obj.opacity * inst.group_opacity;
             vs_params.enable_shading = mesh->enable_shading ? 1 : 0;
+            vs_params.light_space = lights.light_space;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
             struct model_fs_params_t {
@@ -886,6 +1083,77 @@ void render_first_pass() {
     pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
     sg_begin_pass(&pass);
+
+    if (!state.directional_lights.empty()) {
+        auto [min_bounds, max_bounds] = get_scene_bounds();
+        HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
+        DirectionalLight& first_light = state.directional_lights[0];
+        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
+        HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
+        HMM_Mat4 light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
+        HMM_Mat4 light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
+
+        HMM_Mat4 light_clip = HMM_MulM4(light_proj, light_view);
+        HMM_Vec4 lrow0 = {light_clip.Elements[0][0], light_clip.Elements[1][0], light_clip.Elements[2][0], light_clip.Elements[3][0]};
+        HMM_Vec4 lrow1 = {light_clip.Elements[0][1], light_clip.Elements[1][1], light_clip.Elements[2][1], light_clip.Elements[3][1]};
+        HMM_Vec4 lrow2 = {light_clip.Elements[0][2], light_clip.Elements[1][2], light_clip.Elements[2][2], light_clip.Elements[3][2]};
+        HMM_Vec4 lrow3 = {light_clip.Elements[0][3], light_clip.Elements[1][3], light_clip.Elements[2][3], light_clip.Elements[3][3]};
+
+        HMM_Vec4 left = HMM_AddV4(lrow3, lrow0);
+        float len_left = HMM_LenV3(left.XYZ);
+        if (len_left > 0.0001f) {
+            light_frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
+            light_frustum_planes[0].d = left.W / len_left;
+        }
+
+        HMM_Vec4 right = HMM_SubV4(lrow3, lrow0);
+        float len_right = HMM_LenV3(right.XYZ);
+        if (len_right > 0.0001f) {
+            light_frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
+            light_frustum_planes[1].d = right.W / len_right;
+        }
+
+        HMM_Vec4 bottom = HMM_AddV4(lrow3, lrow1);
+        float len_bottom = HMM_LenV3(bottom.XYZ);
+        if (len_bottom > 0.0001f) {
+            light_frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
+            light_frustum_planes[2].d = bottom.W / len_bottom;
+        }
+
+        HMM_Vec4 top = HMM_SubV4(lrow3, lrow1);
+        float len_top = HMM_LenV3(top.XYZ);
+        if (len_top > 0.0001f) {
+            light_frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
+            light_frustum_planes[3].d = top.W / len_top;
+        }
+
+        HMM_Vec4 near_p = HMM_AddV4(lrow3, lrow2);
+        float len_near = HMM_LenV3(near_p.XYZ);
+        if (len_near > 0.0001f) {
+            light_frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
+            light_frustum_planes[4].d = near_p.W / len_near;
+        }
+
+        HMM_Vec4 far_p = HMM_SubV4(lrow3, lrow2);
+        float len_far = HMM_LenV3(far_p.XYZ);
+        if (len_far > 0.0001f) {
+            light_frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
+            light_frustum_planes[5].d = far_p.W / len_far;
+        }
+
+        sg_pass_action shadow_action = {};
+        shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
+        shadow_action.depth.clear_value = 1.0f;
+        sg_pass shadow_pass = {};
+        shadow_pass.action = shadow_action;
+        shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
+        shadow_pass.label = "shadow-pass";
+        sg_begin_pass(&shadow_pass);
+
+        render_shadow_meshes(light_view, light_proj);
+
+        sg_end_pass();
+    }
 
     render_meshes();
 
@@ -3103,6 +3371,7 @@ void _init() {
     state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     state.pass_action.depth.clear_value = 1.0f;
 
+    init_shadowmaps();
     init_post_processing();
 
     // 2d rendering pipeline
@@ -3598,6 +3867,11 @@ int main(int argc, char* argv[]) {
         SDL_GL_SwapWindow(state.win);
     }
 
+    if (shadow_pip.id != SG_INVALID_ID) sg_destroy_pipeline(shadow_pip);
+    if (shadow_sampler.id != SG_INVALID_ID) sg_destroy_sampler(shadow_sampler);
+    if (shadow_depth_tex_view.id != SG_INVALID_ID) sg_destroy_view(shadow_depth_tex_view);
+    if (shadow_depth_att_view.id != SG_INVALID_ID) sg_destroy_view(shadow_depth_att_view);
+    if (shadow_depth_img.id != SG_INVALID_ID) sg_destroy_image(shadow_depth_img);
     state.fmod_system->release();
     ImPlot::DestroyContext();
     simgui_shutdown();
