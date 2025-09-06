@@ -84,10 +84,10 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 2048;
+int shadow_map_size = 4096;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
-float shadow_far = 100.0f; // TODO: don't you dare forget
+float shadow_far = 100.0f;
 
 Surface diffuse_surf;
 Surface specular_surf;
