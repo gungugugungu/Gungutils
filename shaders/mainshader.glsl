@@ -77,11 +77,10 @@ layout(binding = 3) uniform lighting_params {
     vec4 ambient_color;
     mat4 light_space;
 };
-
 #define diffuse_texture2D sampler2D(_diffuse_tex2D, diffuse_tex_smp)
 #define specular_texture2D sampler2D(_specular_tex2D, specular_tex_smp)
 #define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
-#define shadow_texture2D sampler2D(_shadow_tex2D, shadow_tex_smp)
+#define shadow_texture2D sampler2DShadow(_shadow_tex2D, shadow_tex_smp)
 
 float bayer4x4(vec2 fragXY) {
     ivec2 p = ivec2(floor(fragXY)) & ivec2(3, 3);
@@ -99,15 +98,15 @@ float calculateShadow(vec4 shadowCoord) {
     vec3 projCoords = shadowCoord.xyz / shadowCoord.w;
     projCoords = projCoords * 0.5 + 0.5;
     if (projCoords.z > 1.0) return 0.0;
-    float closestDepth = texture(shadow_texture2D, projCoords.xy).r;
+
     float currentDepth = projCoords.z;
-    float bias = max(0.05 * (1.0 - dot(vNormal, light_directions[0].xyz)), 0.005);
+    float bias = max(0.05 * (1.0 - dot(vNormal, -light_directions[0].xyz)), 0.005);
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadow_texture2D, 0);
     for(int x = -1; x <= 1; ++x) {
         for(int y = -1; y <= 1; ++y) {
-            float pcfDepth = texture(shadow_texture2D, projCoords.xy + vec2(x, y) * texelSize).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+            float lit = texture(shadow_texture2D, vec3(projCoords.xy + vec2(x, y) * texelSize, currentDepth - bias));
+            shadow += 1.0 - lit;
         }
     }
     shadow /= 9.0;

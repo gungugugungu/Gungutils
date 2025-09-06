@@ -87,7 +87,7 @@ sg_pipeline shadow_pip = {SG_INVALID_ID};
 int shadow_map_size = 2048;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
-float shadow_far = 100.0f;
+float shadow_far = 100.0f; // TODO: don't you dare forget
 
 Surface diffuse_surf;
 Surface specular_surf;
@@ -121,7 +121,7 @@ struct AppState {
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
     std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
-    vector<DirectionalLight> directional_lights;
+    DirectionalLight directional_light;
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
     HMM_Vec3 ambient_light = {0.5f, 0.5f, 0.5f};
@@ -814,27 +814,12 @@ void render_meshes() {
     } lights = {};
 
     int light_idx = 0;
-
-    auto &dl = state.directional_lights;
-    if (dl.empty()) {
-        fprintf(stderr, "skipping shadow setup cause no directional lights\n");
-    } else {
-        DirectionalLight *p = dl.data();
-        uintptr_t up = (uintptr_t)p;
-        if (p == nullptr || up < 0x10000 || up > 0x00007fffffffffffULL) {
-            fprintf(stderr, "suspicious directional_lights.data() pointer %p — skipping shadows\n", (void*)p);
-        }
-    }
-
-    for (const auto& dl : state.directional_lights) {
-        if (light_idx >= 50) break;
-        lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
-        lights.light_positions[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        lights.light_directions[light_idx] = { dl.direction.X, dl.direction.Y, dl.direction.Z, 0.0f };
-        lights.light_colors[light_idx] = { dl.color.X, dl.color.Y, dl.color.Z, dl.intensity };
-        lights.light_att_params[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        light_idx++;
-    }
+    lights.light_types_packed[light_idx / 4][light_idx % 4] = 0;
+    lights.light_positions[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    lights.light_directions[light_idx] = { state.directional_light.direction.X, state.directional_light.direction.Y, state.directional_light.direction.Z, 0.0f };
+    lights.light_colors[light_idx] = { state.directional_light.color.X, state.directional_light.color.Y, state.directional_light.color.Z, state.directional_light.intensity };
+    lights.light_att_params[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    light_idx++;
 
     for (const auto& pl : state.point_lights) {
         if (light_idx >= 50) break;
@@ -861,10 +846,9 @@ void render_meshes() {
         HMM_Mat4 light_proj;
         auto [min_bounds, max_bounds] = get_scene_bounds();
         HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
-        DirectionalLight& first_light = state.directional_lights[0];
-        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
+        HMM_Vec3 light_dir = HMM_NormV3(state.directional_light.direction);
         HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
-        light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));  // Assume up is Y
+        light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
         light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
         lights.light_space = HMM_MulM4(light_proj, light_view);
     } else {
@@ -1052,76 +1036,104 @@ void render_first_pass() {
     SDL_GetWindowSize(state.win, &w_width, &w_height);
 
     // shadowmap pass
-    if (!state.directional_lights.empty()) {
-        auto [min_bounds, max_bounds] = get_scene_bounds();
-        HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
-        DirectionalLight& first_light = state.directional_lights[0];
-        HMM_Vec3 light_dir = HMM_NormV3(first_light.direction);
-        HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
-        HMM_Mat4 light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
-        HMM_Mat4 light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
+    if (shadow_depth_img.id == SG_INVALID_ID) {
+        sg_image_desc shadow_img_desc = {};
+        shadow_img_desc.usage.depth_stencil_attachment = true;
+        shadow_img_desc.width = shadow_map_size;
+        shadow_img_desc.height = shadow_map_size;
+        shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+        shadow_img_desc.sample_count = 1;
+        shadow_img_desc.label = "shadow-depth-target";
+        shadow_depth_img = sg_make_image(&shadow_img_desc);
 
-        HMM_Mat4 light_clip = HMM_MulM4(light_proj, light_view);
-        HMM_Vec4 lrow0 = {light_clip.Elements[0][0], light_clip.Elements[1][0], light_clip.Elements[2][0], light_clip.Elements[3][0]};
-        HMM_Vec4 lrow1 = {light_clip.Elements[0][1], light_clip.Elements[1][1], light_clip.Elements[2][1], light_clip.Elements[3][1]};
-        HMM_Vec4 lrow2 = {light_clip.Elements[0][2], light_clip.Elements[1][2], light_clip.Elements[2][2], light_clip.Elements[3][2]};
-        HMM_Vec4 lrow3 = {light_clip.Elements[0][3], light_clip.Elements[1][3], light_clip.Elements[2][3], light_clip.Elements[3][3]};
+        sg_view_desc depth_att_view_desc2 = {};
+        depth_att_view_desc2.depth_stencil_attachment.image = shadow_depth_img;
+        shadow_depth_att_view = sg_make_view(&depth_att_view_desc2);
 
-        HMM_Vec4 left = HMM_AddV4(lrow3, lrow0);
-        float len_left = HMM_LenV3(left.XYZ);
-        if (len_left > 0.0001f) {
-            light_frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
-            light_frustum_planes[0].d = left.W / len_left;
-        }
-
-        HMM_Vec4 right = HMM_SubV4(lrow3, lrow0);
-        float len_right = HMM_LenV3(right.XYZ);
-        if (len_right > 0.0001f) {
-            light_frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
-            light_frustum_planes[1].d = right.W / len_right;
-        }
-
-        HMM_Vec4 bottom = HMM_AddV4(lrow3, lrow1);
-        float len_bottom = HMM_LenV3(bottom.XYZ);
-        if (len_bottom > 0.0001f) {
-            light_frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
-            light_frustum_planes[2].d = bottom.W / len_bottom;
-        }
-
-        HMM_Vec4 top = HMM_SubV4(lrow3, lrow1);
-        float len_top = HMM_LenV3(top.XYZ);
-        if (len_top > 0.0001f) {
-            light_frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
-            light_frustum_planes[3].d = top.W / len_top;
-        }
-
-        HMM_Vec4 near_p = HMM_AddV4(lrow3, lrow2);
-        float len_near = HMM_LenV3(near_p.XYZ);
-        if (len_near > 0.0001f) {
-            light_frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
-            light_frustum_planes[4].d = near_p.W / len_near;
-        }
-
-        HMM_Vec4 far_p = HMM_SubV4(lrow3, lrow2);
-        float len_far = HMM_LenV3(far_p.XYZ);
-        if (len_far > 0.0001f) {
-            light_frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
-            light_frustum_planes[5].d = far_p.W / len_far;
-        }
-
-        sg_pass_action shadow_action = {};
-        shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
-        shadow_action.depth.clear_value = 1.0f;
-        sg_pass shadow_pass = {};
-        shadow_pass.action = shadow_action;
-        shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
-        shadow_pass.label = "shadow-pass";
-        sg_begin_pass(&shadow_pass);
-
-        render_shadow_meshes(light_view, light_proj);
-
-        sg_end_pass();
+        sg_view_desc depth_tex_view_desc2 = {};
+        depth_tex_view_desc2.texture.image = shadow_depth_img;
+        shadow_depth_tex_view = sg_make_view(&depth_tex_view_desc2);
+        cout << "shadowmap created" << endl;
     }
+
+    if (shadow_depth_img.id == SG_INVALID_ID) {
+        cerr << "Could create shadow depth image" << endl;
+        return;
+    }
+
+    auto [min_bounds, max_bounds] = get_scene_bounds();
+
+    HMM_Vec3 extent = HMM_SubV3(max_bounds, min_bounds);
+    float max_lateral = std::max(extent.X, extent.Y) * 0.5f;
+    shadow_ortho_size = std::max(50.0f, max_lateral * 1.1f);
+    shadow_far = std::max(100.0f, extent.Z * 1.1f + 50.0f);
+
+    HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
+    HMM_Vec3 light_dir = HMM_NormV3(state.directional_light.direction);
+    HMM_Vec3 light_pos = HMM_SubV3(center, HMM_MulV3F(light_dir, shadow_far * 0.5f));
+    HMM_Mat4 light_view = HMM_LookAt_RH(light_pos, center, HMM_V3(0.0f, 1.0f, 0.0f));
+    HMM_Mat4 light_proj = HMM_Orthographic_RH_NO(-shadow_ortho_size, shadow_ortho_size, -shadow_ortho_size, shadow_ortho_size, shadow_near, shadow_far);
+
+    HMM_Mat4 light_clip = HMM_MulM4(light_proj, light_view);
+    HMM_Vec4 lrow0 = {light_clip.Elements[0][0], light_clip.Elements[1][0], light_clip.Elements[2][0], light_clip.Elements[3][0]};
+    HMM_Vec4 lrow1 = {light_clip.Elements[0][1], light_clip.Elements[1][1], light_clip.Elements[2][1], light_clip.Elements[3][1]};
+    HMM_Vec4 lrow2 = {light_clip.Elements[0][2], light_clip.Elements[1][2], light_clip.Elements[2][2], light_clip.Elements[3][2]};
+    HMM_Vec4 lrow3 = {light_clip.Elements[0][3], light_clip.Elements[1][3], light_clip.Elements[2][3], light_clip.Elements[3][3]};
+
+    HMM_Vec4 left = HMM_AddV4(lrow3, lrow0);
+    float len_left = HMM_LenV3(left.XYZ);
+    if (len_left > 0.0001f) {
+        light_frustum_planes[0].normal = HMM_DivV3F(left.XYZ, len_left);
+        light_frustum_planes[0].d = left.W / len_left;
+    }
+
+    HMM_Vec4 right = HMM_SubV4(lrow3, lrow0);
+    float len_right = HMM_LenV3(right.XYZ);
+    if (len_right > 0.0001f) {
+        light_frustum_planes[1].normal = HMM_DivV3F(right.XYZ, len_right);
+        light_frustum_planes[1].d = right.W / len_right;
+    }
+
+    HMM_Vec4 bottom = HMM_AddV4(lrow3, lrow1);
+    float len_bottom = HMM_LenV3(bottom.XYZ);
+    if (len_bottom > 0.0001f) {
+        light_frustum_planes[2].normal = HMM_DivV3F(bottom.XYZ, len_bottom);
+        light_frustum_planes[2].d = bottom.W / len_bottom;
+    }
+
+    HMM_Vec4 top = HMM_SubV4(lrow3, lrow1);
+    float len_top = HMM_LenV3(top.XYZ);
+    if (len_top > 0.0001f) {
+        light_frustum_planes[3].normal = HMM_DivV3F(top.XYZ, len_top);
+        light_frustum_planes[3].d = top.W / len_top;
+    }
+
+    HMM_Vec4 near_p = HMM_AddV4(lrow3, lrow2);
+    float len_near = HMM_LenV3(near_p.XYZ);
+    if (len_near > 0.0001f) {
+        light_frustum_planes[4].normal = HMM_DivV3F(near_p.XYZ, len_near);
+        light_frustum_planes[4].d = near_p.W / len_near;
+    }
+
+    HMM_Vec4 far_p = HMM_SubV4(lrow3, lrow2);
+    float len_far = HMM_LenV3(far_p.XYZ);
+    if (len_far > 0.0001f) {
+        light_frustum_planes[5].normal = HMM_DivV3F(far_p.XYZ, len_far);
+        light_frustum_planes[5].d = far_p.W / len_far;
+    }
+
+    sg_pass_action shadow_action = {};
+    shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
+    shadow_action.depth.clear_value = 1.0f;
+    sg_pass shadow_pass = {};
+    shadow_pass.action = shadow_action;
+    shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
+    shadow_pass.label = "shadow-pass";
+    sg_begin_pass(&shadow_pass);
+
+    render_shadow_meshes(light_view, light_proj);
+
+    sg_end_pass();
 
     if (post_state.color_img.width != w_width || post_state.color_img.height != w_height) {
         if (post_state.rendered_color_img.id != SG_INVALID_ID) {
@@ -1186,7 +1198,7 @@ void render_first_pass() {
     }
 
     if (post_state.rendered_color_img.id == SG_INVALID_ID || post_state.rendered_depth_img.id == SG_INVALID_ID) {
-        cout << "Could create offscreen image, sorry" << endl;
+        cerr << "Could create offscreen image, sorry" << endl;
         return;
     }
 
@@ -2109,7 +2121,6 @@ void clear_scene() {
     }
     state.helpers.clear();
 
-    state.directional_lights.clear();
     state.point_lights.clear();
     state.spot_lights.clear();
 }
@@ -2225,15 +2236,12 @@ void save_scene(const string& path) {
         });
     }
 
-    j["dir_lights"] = nlohmann::json::array();
-    for (const DirectionalLight& light : state.directional_lights) {
-        j["dir_lights"].push_back({
-            {light.direction.X, light.direction.Y, light.direction.Z},
-            light.intensity,
-            {light.color.X, light.color.Y, light.color.Z},
-            light.script_id
-        });
-    }
+    j["dir_light"] = nlohmann::json::array();
+    j["dir_light"].push_back({
+        {state.directional_light.direction.X, state.directional_light.direction.Y, state.directional_light.direction.Z},
+        state.directional_light.intensity,
+        {state.directional_light.color.X, state.directional_light.color.Y, state.directional_light.color.Z},
+    });
 
     j["pt_lights"] = nlohmann::json::array();
     for (const PointLight& light : state.point_lights) {
@@ -2530,17 +2538,13 @@ void load_scene(const string& path) {
         }
     }
 
-    if (j.contains("dir_lights")) {
-        for (const auto& light_data : j["dir_lights"]) {
-            DirectionalLight light{};
+    if (j.contains("dir_light")) {
+        for (const auto& light_data : j["dir_light"]) {
             auto dir = light_data[0];
-            light.direction = HMM_V3(dir[0], dir[1], dir[2]);
-            light.intensity = light_data[1];
+            state.directional_light.direction = HMM_V3(dir[0], dir[1], dir[2]);
+            state.directional_light.intensity = light_data[1];
             auto color = light_data[2];
-            light.color = HMM_V3(color[0], color[1], color[2]);
-            state.directional_lights.push_back(light);
-            auto script_id = light_data[3];
-            light.script_id = script_id;
+            state.directional_light.color = HMM_V3(color[0], color[1], color[2]);
         }
     }
 
@@ -3083,41 +3087,13 @@ void render_editor() {
             ImGui::BeginTabBar("LIGHT TYPES", ImGuiTabBarFlags_None);
 
             if (ImGui::BeginTabItem("DIRECTIONAL")) {
-                ImGui::BeginChild("DIRECTIONAL LIGHT SELECTION", ImVec2(300, 150), true);
-                for (int i = 0; i < state.directional_lights.size(); i++) {
-                    string label = "DIRECTIONAL LIGHT " + to_string(i);
-
-                    bool is_selected = (selected_dir_light_index == i);
-                    if (ImGui::Selectable(label.c_str(), is_selected)) {
-                        selected_dir_light_index = i;
-                    }
-
-                    if (is_selected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
+                ImGui::BeginChild("DIRECTIONAL LIGHT SETTINGS", ImVec2(300, 300), true);
+                ImGui::PushItemWidth(200);
+                ImGui::SliderFloat3("DIRECTION", &state.directional_light.direction.X, -1.0f, 1.0f, "%.1f");
+                ImGui::ColorEdit3("COLOR", &state.directional_light.color.X);
+                ImGui::DragFloat("INTENSITY", &state.directional_light.intensity, 0.01f);
+                ImGui::PopItemWidth();
                 ImGui::EndChild();
-
-                ImGui::SameLine();
-                ImGui::BeginChild("DIRECTIONAL LIGHT SETTINGS", ImVec2(300, 150), true);
-                if (selected_dir_light_index >= 0 && selected_dir_light_index < state.directional_lights.size()) {
-                    auto& selected_dir_light = state.directional_lights[selected_dir_light_index];
-                    ImGui::PushItemWidth(200);
-                    ImGui::SliderFloat3("DIRECTION", &selected_dir_light.direction.X, -1.0f, 1.0f, "%.1f");
-                    ImGui::ColorEdit3("COLOR", &selected_dir_light.color.X);
-                    ImGui::DragFloat("INTENSITY", &selected_dir_light.intensity, 0.01f);
-                    ImGui::InputInt("SCRIPT ID", &selected_dir_light.script_id);
-                    if (ImGui::Button("DELETE")) {
-                        state.directional_lights.erase(state.directional_lights.begin() + selected_dir_light_index);
-                    }
-                    ImGui::PopItemWidth();
-                }
-                ImGui::EndChild();
-                if (ImGui::Button("ADD")) {
-                    DirectionalLight* new_light = new DirectionalLight();
-                    state.directional_lights.push_back(*new_light);
-                }
-
                 ImGui::EndTabItem();
             }
 
@@ -3233,9 +3209,7 @@ void render_editor() {
                     index_count += object.mesh->index_count;
                 }
             }
-            for (auto& light : state.directional_lights) {
-                light_count++;
-            }
+            light_count++; // directional
             for (auto& light : state.point_lights) {
                 light_count++;
             }
@@ -3259,12 +3233,12 @@ void render_editor() {
                 ImPlot::EndPlot();
             }
             ImGui::Separator();
-            ImGui::Text("Shadow map texture:");
+            ImGui::Text("SHADOW MAP TEXTURE:");
             sg_view_desc shadowmap_view_desc = {};
             shadowmap_view_desc.texture.image = shadow_depth_img;
             sg_view editor_display_view = sg_make_view(&shadowmap_view_desc);
             if (editor_display_view.id == SG_INVALID_ID) {
-                ImGui::Text("No shadowmap?");
+                ImGui::Text("I don't know how you did this but there's no shadowmap");
             } else {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, shadow_sampler);
                 ImGui::Image(imtex_id, ImVec2(256, 256));
@@ -3320,11 +3294,6 @@ vector<Object*> get_objects_by_script_id(int id) {
 
 vector<Light*> get_lights_by_script_id(int id) {
     vector<Light*> lights;
-    for (auto& light : state.directional_lights) {
-        if (light.script_id == id) {
-            lights.push_back(&light);
-        }
-    }
     for (auto& light : state.point_lights) {
         if (light.script_id == id) {
             lights.push_back(&light);
@@ -3354,6 +3323,8 @@ void _init() {
     stbi_set_flip_vertically_on_load(true);
     stbi_set_flip_vertically_on_load_thread(true);
     load_font(&font, "font.ttf");
+
+    state.directional_light.direction = HMM_V3(1.0f, -1.0f, -0.8f);
 
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
@@ -3582,7 +3553,8 @@ void _frame() {
     }
 
     sfetch_dowork();
-    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f };
+
+    state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f};
 
     float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
@@ -3890,7 +3862,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", display_bounds.x, display_bounds.y, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.x, display_bounds.y, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};

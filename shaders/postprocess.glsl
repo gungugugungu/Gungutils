@@ -184,7 +184,7 @@ void main() {
     float center_raw = texture(depth2D, uv).r;
     float center_depth = linearize_reversed_depth(center_raw, u_near, u_far);
 
-    float max_diff = 0.0;
+    /*float max_diff = 0.0;
 
     for (int y=-outline_size; y<=outline_size; y++) {
         for (int x=-outline_size; x<=outline_size; x++) {
@@ -199,7 +199,7 @@ void main() {
 
     if (max_diff > outline_trigger_dist) {
         final_color = vec3(0.0, 0.0, 0.0); // outline
-    }
+    }*/ // removed for now
 
     frag_color = vec4(final_color, 1.0);
 }
