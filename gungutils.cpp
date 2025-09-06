@@ -1117,10 +1117,10 @@ void render_first_pass() {
     shadow_pass.action = shadow_action;
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
     shadow_pass.label = "shadow-pass";
-    sg_begin_pass(&shadow_pass);
 
     sg_apply_viewport(0.0f, 0.0f, static_cast<float>(shadow_map_size), static_cast<float>(shadow_map_size), true);
-    sg_apply_scissor_rect(0, 0, shadow_map_size, shadow_map_size, true);
+
+    sg_begin_pass(&shadow_pass);
 
     render_shadow_meshes(light_view, light_proj);
 
@@ -1205,6 +1205,8 @@ void render_first_pass() {
     pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
 
+    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(w_width), static_cast<float>(w_height), true);
+
     sg_begin_pass(&pass);
 
     render_meshes();
@@ -1244,6 +1246,9 @@ void render_second_pass() {
     pass.action = swapchain_pass_action;
     pass.swapchain = swapchain;
     pass.label = "swapchain-pass";
+
+    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(w_width), static_cast<float>(w_height), true);
+
     sg_begin_pass(&pass);
 
     sg_apply_pipeline(post_state.post_pipeline);
@@ -3084,7 +3089,22 @@ void render_editor() {
                 ImGui::ColorEdit3("COLOR", &state.directional_light.color.X);
                 ImGui::DragFloat("INTENSITY", &state.directional_light.intensity, 0.01f);
                 ImGui::PopItemWidth();
+
+                ImGui::Separator();
+                ImGui::Text("SHADOW MAP TEXTURE:");
+                sg_view_desc shadowmap_view_desc = {};
+                shadowmap_view_desc.texture.image = shadow_depth_img;
+                sg_view editor_display_view = sg_make_view(&shadowmap_view_desc);
+                if (editor_display_view.id == SG_INVALID_ID) {
+                    ImGui::Text("I don't know how you did this but there's no shadowmap");
+                } else {
+                    ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, shadow_sampler);
+                    ImGui::Image(imtex_id, ImVec2(256, 256));
+                    temp_editor_views.push_back(editor_display_view);
+                }
+
                 ImGui::EndChild();
+
                 ImGui::EndTabItem();
             }
 
@@ -3222,18 +3242,6 @@ void render_editor() {
                 ImPlot::PlotLine("INDEX COUNT", index_count_over_time, 225);
 
                 ImPlot::EndPlot();
-            }
-            ImGui::Separator();
-            ImGui::Text("SHADOW MAP TEXTURE:");
-            sg_view_desc shadowmap_view_desc = {};
-            shadowmap_view_desc.texture.image = shadow_depth_img;
-            sg_view editor_display_view = sg_make_view(&shadowmap_view_desc);
-            if (editor_display_view.id == SG_INVALID_ID) {
-                ImGui::Text("I don't know how you did this but there's no shadowmap");
-            } else {
-                ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_display_view, shadow_sampler);
-                ImGui::Image(imtex_id, ImVec2(256, 256));
-                temp_editor_views.push_back(editor_display_view);
             }
         }
 
