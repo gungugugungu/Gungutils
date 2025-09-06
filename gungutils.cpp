@@ -202,7 +202,7 @@ void init_shadowmaps() {
     shadow_img_desc.usage.depth_stencil_attachment = true;
     shadow_img_desc.width = shadow_map_size;
     shadow_img_desc.height = shadow_map_size;
-    shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+    shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     shadow_img_desc.sample_count = 1;
     shadow_img_desc.label = "shadow-depth-target";
     shadow_depth_img = sg_make_image(&shadow_img_desc);
@@ -232,17 +232,10 @@ void init_shadowmaps() {
     shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2; // real dumb, right?
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
     shadow_pip_desc.color_count = 0;
-    shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+    shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     shadow_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
     shadow_pip_desc.depth.write_enabled = true;
     shadow_pip_desc.cull_mode = SG_CULLMODE_FRONT;
-    shadow_pip_desc.colors->blend.enabled = true;
-    shadow_pip_desc.colors->blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-    shadow_pip_desc.colors->blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    shadow_pip_desc.colors->blend.op_rgb = SG_BLENDOP_ADD;
-    shadow_pip_desc.colors->blend.src_factor_alpha = SG_BLENDFACTOR_SRC_ALPHA;
-    shadow_pip_desc.colors->blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    shadow_pip_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     shadow_pip_desc.label = "shadow-pipeline";
     shadow_pip = sg_make_pipeline(&shadow_pip_desc);
 }
@@ -1041,7 +1034,7 @@ void render_first_pass() {
         shadow_img_desc.usage.depth_stencil_attachment = true;
         shadow_img_desc.width = shadow_map_size;
         shadow_img_desc.height = shadow_map_size;
-        shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+        shadow_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         shadow_img_desc.sample_count = 1;
         shadow_img_desc.label = "shadow-depth-target";
         shadow_depth_img = sg_make_image(&shadow_img_desc);
@@ -1125,6 +1118,7 @@ void render_first_pass() {
     sg_pass_action shadow_action = {};
     shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
     shadow_action.depth.clear_value = 1.0f;
+    shadow_action.depth.store_action = SG_STOREACTION_STORE;
     sg_pass shadow_pass = {};
     shadow_pass.action = shadow_action;
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
