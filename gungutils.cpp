@@ -939,19 +939,13 @@ void render_meshes() {
             vs_params.light_space = lights.light_space;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
-            struct model_fs_params_t {
-                float shininess;
-                float camera_pos_x;
-                float camera_pos_y;
-                float camera_pos_z;
-                float camera_pos_w;
-            } model_fs_params;
+            model_fs_params_t model_fs_params;
 
-            model_fs_params.shininess = 32.0f;
-            model_fs_params.camera_pos_x = state.camera_pos.X;
-            model_fs_params.camera_pos_y = state.camera_pos.Y;
-            model_fs_params.camera_pos_z = state.camera_pos.Z;
-            model_fs_params.camera_pos_w = 0.0f;
+            model_fs_params.shininess = 128.0f;
+            model_fs_params.camera_pos[0] = state.camera_pos.X;
+            model_fs_params.camera_pos[1] = state.camera_pos.Y;
+            model_fs_params.camera_pos[2] = state.camera_pos.Z;
+            model_fs_params.camera_pos[3] = 1.0f;
             sg_apply_uniforms(2, SG_RANGE(model_fs_params));
 
             sg_apply_uniforms(3, SG_RANGE(lights));
@@ -1124,6 +1118,9 @@ void render_first_pass() {
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
     shadow_pass.label = "shadow-pass";
     sg_begin_pass(&shadow_pass);
+
+    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(shadow_map_size), static_cast<float>(shadow_map_size), true);
+    sg_apply_scissor_rect(0, 0, shadow_map_size, shadow_map_size, true);
 
     render_shadow_meshes(light_view, light_proj);
 
