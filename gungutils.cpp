@@ -92,6 +92,8 @@ float shadow_far = 100.0f;
 float camera_near = 0.1f;
 float camera_far = 1050.0f;
 
+const int max_light_amount = 150.0f;
+
 Surface diffuse_surf;
 Surface specular_surf;
 Surface normal_surf;
@@ -799,10 +801,10 @@ void render_meshes() {
 
     struct lighting_params {
         int light_types_packed[13][4];
-        HMM_Vec4 light_positions[50];
-        HMM_Vec4 light_directions[50];
-        HMM_Vec4 light_colors[50];
-        HMM_Vec4 light_att_params[50];
+        HMM_Vec4 light_positions[max_light_amount];
+        HMM_Vec4 light_directions[max_light_amount];
+        HMM_Vec4 light_colors[max_light_amount];
+        HMM_Vec4 light_att_params[max_light_amount];
         int light_amount;
         float padding[3];
         HMM_Vec4 ambient_color;
@@ -818,7 +820,7 @@ void render_meshes() {
     light_idx++;
 
     for (const auto& pl : state.point_lights) {
-        if (light_idx >= 50) break;
+        if (light_idx >= max_light_amount) break;
         lights.light_types_packed[light_idx / 4][light_idx % 4] = 1;
         lights.light_positions[light_idx] = { pl.position.X, pl.position.Y, pl.position.Z, 0.0f };
         lights.light_directions[light_idx] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -828,7 +830,7 @@ void render_meshes() {
     }
 
     for (const auto& sl : state.spot_lights) {
-        if (light_idx >= 50) break;
+        if (light_idx >= max_light_amount) break;
         lights.light_types_packed[light_idx / 4][light_idx % 4] = 2;
         lights.light_positions[light_idx] = { sl.position.X, sl.position.Y, sl.position.Z, 0.0f };
         lights.light_directions[light_idx] = { sl.direction.X, sl.direction.Y, sl.direction.Z, 0.0f };
@@ -3388,11 +3390,12 @@ void _init() {
     pip_desc.layout.attrs[ATTR_main_aPos].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_main_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     pip_desc.layout.attrs[ATTR_main_aTexCoord].format = SG_VERTEXFORMAT_FLOAT2;
+    pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     pip_desc.depth.compare = SG_COMPAREFUNC_LESS;
     pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     pip_desc.index_type = SG_INDEXTYPE_UINT32;
     pip_desc.depth.write_enabled = true;
-    pip_desc.cull_mode = SG_CULLMODE_FRONT; // really fucky
+    pip_desc.cull_mode = SG_CULLMODE_FRONT;
     pip_desc.label = "main-pipeline";
     state.pip = sg_make_pipeline(&pip_desc);
 

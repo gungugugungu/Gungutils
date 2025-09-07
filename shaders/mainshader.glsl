@@ -66,10 +66,10 @@ layout(binding = 2) uniform model_fs_params {
 
 layout(binding = 3) uniform lighting_params {
     ivec4 light_types_packed[13];
-    vec4 light_positions[50];
-    vec4 light_directions[50];
-    vec4 light_colors[50];
-    vec4 light_att_params[50];
+    vec4 light_positions[150];
+    vec4 light_directions[150];
+    vec4 light_colors[150];
+    vec4 light_att_params[150];
     int light_amount;
     float padding1;
     float padding2;
@@ -82,7 +82,7 @@ layout(binding = 3) uniform lighting_params {
 #define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
 #define shadow_texture2D sampler2DShadow(_shadow_tex2D, shadow_tex_smp)
 
-float bayer4x4(vec2 fragXY) {
+float bayer4x4(vec2 fragXY) { // TODO: "dancing dither" https://youtu.be/KyhrqbfEgfA?t=535
     ivec2 p = ivec2(floor(fragXY)) & ivec2(3, 3);
     int idx = p.y * 4 + p.x;
     int bayerVals[16] = int[16](
