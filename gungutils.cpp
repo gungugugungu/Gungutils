@@ -89,6 +89,9 @@ float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
 
+float camera_near = 0.1f;
+float camera_far = 1050.0f;
+
 Surface diffuse_surf;
 Surface specular_surf;
 Surface normal_surf;
@@ -935,7 +938,7 @@ void render_meshes() {
 
             vs_params.model = model;
             vs_params.opacity = obj.opacity * inst.group_opacity;
-            vs_params.enable_shading = mesh->enable_shading ? 1 : 0;
+            vs_params.enable_shading = obj.enable_shading ? 1 : 0;
             vs_params.light_space = lights.light_space;
             sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
 
@@ -2145,7 +2148,7 @@ void save_scene(const string& path) {
                 obj_json["mesh"] = nlohmann::json::object();
                 auto& mesh_json = obj_json["mesh"];
 
-                mesh_json["shading"] = mesh->enable_shading;
+                mesh_json["shading"] = obj.enable_shading;
 
                 if (mesh->vertex_count > 0 && mesh->vertices) {
                     mesh_json["vert_cnt"] = mesh->vertex_count;
@@ -2363,7 +2366,7 @@ void load_scene(const string& path) {
                         obj.mesh = mesh;
 
                         if (mesh_json.contains("shading")) {
-                            mesh->enable_shading = mesh_json["shading"];
+                            obj.enable_shading = mesh_json["shading"];
                         }
 
                         if (mesh_json.contains("vert_cnt") && mesh_json.contains("verts")) {
@@ -2448,10 +2451,6 @@ void load_scene(const string& path) {
                         if (obj_json.contains("shape_keys")) {
                             for (const auto& sk_json : obj_json["shape_keys"]) {
                                 Mesh* shape_key_mesh = new Mesh();
-
-                                if (sk_json.contains("shading")) {
-                                    shape_key_mesh->enable_shading = sk_json["shading"];
-                                }
 
                                 if (sk_json.contains("vert_cnt") && sk_json.contains("verts")) {
                                     shape_key_mesh->vertex_count = sk_json["vert_cnt"];
@@ -2787,7 +2786,7 @@ void render_editor() {
 
                 ImGui::SliderFloat("OPACITY", &selected_object->opacity, 0.0f, 1.0f);
 
-                ImGui::Checkbox("SHADING", &selected_object->mesh->enable_shading);
+                ImGui::Checkbox("SHADING", &selected_object->enable_shading);
 
                 ImGui::InputInt("SCRIPT ID", &selected_object->script_id);
 
@@ -3557,7 +3556,7 @@ void _frame() {
 
     float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), aspect, 0.1f, 1050.0f);
+    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), aspect, camera_near, camera_far);
 
     HMM_Mat4 clip = HMM_MulM4(projection, view);
 
@@ -3634,8 +3633,8 @@ void _frame() {
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
     ssao_params.proj = ssao_proj;
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
-    ssao_params.u_near = 0.1f;
-    ssao_params.u_far = 1050.0f;
+    ssao_params.u_near = camera_near;
+    ssao_params.u_far = camera_far;
 
     render_first_pass();
     render_second_pass();

@@ -18,6 +18,8 @@ public:
 
     HMM_Vec3 bounding_rect{0.0f ,0.0f, 0.0f};
 
+    bool enable_shading = true;
+
     int script_id = -1;
 
     void select_shape_key(int index) {

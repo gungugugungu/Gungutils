@@ -12,7 +12,9 @@
 - Animation system using shape keys
 - Frustum culling
 - A simple profiler in the editor
+- Shadow map for directional lights
 
 # TODO
-- Shadowmaps
 - SSR
+- Point light shadows
+- Spot light shadows

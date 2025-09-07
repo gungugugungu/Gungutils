@@ -18,8 +18,6 @@ public:
     uint16_t* indices16 = nullptr;
     bool use_uint16_indices = true;
 
-    bool enable_shading = true;
-
     Material* material;
 
     sg_buffer vertex_buffer = { .id = SG_INVALID_ID };
