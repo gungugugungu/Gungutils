@@ -84,7 +84,7 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 4096;
+int shadow_map_size = 1024;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
@@ -228,8 +228,8 @@ void init_shadowmaps() {
     sg_pipeline_desc shadow_pip_desc = {};
     shadow_pip_desc.shader = shadow_shd;
     shadow_pip_desc.layout.attrs[ATTR_shadow_aPos].format = SG_VERTEXFORMAT_FLOAT3;
-    shadow_pip_desc.layout.attrs[ATTR_shadow_aNormal].format = SG_VERTEXFORMAT_FLOAT3; // hey dumbass, remember how dumb you were back here?
-    shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2; // real dumb, right?
+    shadow_pip_desc.layout.attrs[ATTR_shadow_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
+    shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2;
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
     shadow_pip_desc.color_count = 0;
     shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
@@ -1118,9 +1118,9 @@ void render_first_pass() {
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
     shadow_pass.label = "shadow-pass";
 
-    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(shadow_map_size), static_cast<float>(shadow_map_size), true);
-
     sg_begin_pass(&shadow_pass);
+
+    sg_apply_viewport(0, 0, shadow_map_size, shadow_map_size, true);
 
     render_shadow_meshes(light_view, light_proj);
 
@@ -1205,9 +1205,9 @@ void render_first_pass() {
     pass.attachments.depth_stencil = post_state.rendered_depth_att_view;
     pass.label = "offscreen-pass";
 
-    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(w_width), static_cast<float>(w_height), true);
-
     sg_begin_pass(&pass);
+
+    sg_apply_viewport(0, 0, w_width, w_height, true);
 
     render_meshes();
 
@@ -1247,9 +1247,9 @@ void render_second_pass() {
     pass.swapchain = swapchain;
     pass.label = "swapchain-pass";
 
-    sg_apply_viewport(0.0f, 0.0f, static_cast<float>(w_width), static_cast<float>(w_height), true);
-
     sg_begin_pass(&pass);
+
+    sg_apply_viewport(0, 0, w_width, w_height, true);
 
     sg_apply_pipeline(post_state.post_pipeline);
 
