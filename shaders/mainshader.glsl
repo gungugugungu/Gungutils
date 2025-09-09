@@ -37,7 +37,6 @@ void main() {
     vBitangent = bitangent;
     vShadowCoord = light_space * vec4(vWorldPos, 1.0);
 }
-
 @end
 
 @fs fs
@@ -50,10 +49,10 @@ layout(location = 4) in vec3 vWorldPos;
 layout(location = 5) in vec3 vTangent;
 layout(location = 6) in vec3 vBitangent;
 layout(location = 7) in vec4 vShadowCoord;
-layout(binding = 0) uniform texture2D _diffuse_tex2D;
-layout(binding = 0) uniform sampler diffuse_tex_smp;
-layout(binding = 1) uniform texture2D _specular_tex2D;
-layout(binding = 1) uniform sampler specular_tex_smp;
+layout(binding = 0) uniform texture2D _base_color_tex2D;
+layout(binding = 0) uniform sampler base_color_tex_smp;
+layout(binding = 1) uniform texture2D _metallic_roughness_tex2D;
+layout(binding = 1) uniform sampler metallic_roughness_tex_smp;
 layout(binding = 2) uniform texture2D _normal_tex2D;
 layout(binding = 2) uniform sampler normal_tex_smp;
 layout(binding = 3) uniform texture2D _shadow_tex2D;
@@ -77,21 +76,39 @@ layout(binding = 3) uniform lighting_params {
     vec4 ambient_color;
     mat4 light_space;
 };
-#define diffuse_texture2D sampler2D(_diffuse_tex2D, diffuse_tex_smp)
-#define specular_texture2D sampler2D(_specular_tex2D, specular_tex_smp)
+#define base_color_texture2D sampler2D(_base_color_tex2D, base_color_tex_smp)
+#define metallic_roughness_texture2D sampler2D(_metallic_roughness_tex2D, metallic_roughness_tex_smp)
 #define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
 #define shadow_texture2D sampler2DShadow(_shadow_tex2D, shadow_tex_smp)
 
-float bayer4x4(vec2 fragXY) { // TODO: "dancing dither" https://youtu.be/KyhrqbfEgfA?t=535
-    ivec2 p = ivec2(floor(fragXY)) & ivec2(3, 3);
-    int idx = p.y * 4 + p.x;
-    int bayerVals[16] = int[16](
-    0,  8,  2, 10,
-    12,  4, 14,  6,
-    3, 11,  1,  9,
-    15,  7, 13,  5
-    );
-    return (float(bayerVals[idx]) + 0.5) / 16.0;
+const float PI = 3.14159265359;
+
+float DistributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+    float num = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+    return num / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+    float num = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+    return num / denom;
+}
+
+float GeometrySmith(float NdotV, float NdotL, float roughness) {
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+    return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 float calculateShadow(vec4 shadowCoord) {
@@ -114,27 +131,27 @@ float calculateShadow(vec4 shadowCoord) {
 }
 
 void main() {
-    vec4 base_color = texture(diffuse_texture2D, TexCoord);
-    vec4 specular_tex_color = texture(specular_texture2D, TexCoord);
-    vec4 normal_tex_color = texture(normal_texture2D, TexCoord);
-    float spec_strength = specular_tex_color.r;
-    vec3 tangentNormal = normal_tex_color.xyz * 2.0 - 1.0;
+    vec4 base_color = texture(base_color_texture2D, TexCoord);
+    vec3 albedo = base_color.rgb;
+    float alpha = base_color.a;
+    vec3 mr = texture(metallic_roughness_texture2D, TexCoord).rgb;
+    float ao = mr.r;
+    float roughness = mr.g;
+    float metallic = mr.b;
+    vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz;
+    vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
     vec3 N = normalize(TBN * tangentNormal);
-    const float AMBIENT_STRENGTH = 0.35;
-    const float TOON_BANDS = 4.0;
 
+    const float AMBIENT_STRENGTH = 0.35;
     vec3 ambient_col = ambient_color.xyz;
-    vec3 ambientTerm = ambient_col * AMBIENT_STRENGTH * base_color.rgb;
+    vec3 ambientTerm = ambient_col * AMBIENT_STRENGTH * albedo * ao;
 
     vec3 V = normalize(camera_pos.xyz - vWorldPos);
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    vec3 diffuseTerm = vec3(0.0);
-    vec3 specularTerm = vec3(0.0);
+    vec3 Lo = vec3(0.0);
 
-    float bands = max(TOON_BANDS - 1.0, 1.0);
-    float bandStep = 1.0 / bands;
-    float dither = (bayer4x4(gl_FragCoord.xy) - 0.5) * bandStep;
     float shadow = 0.0;
     if (light_amount > 0 && light_types_packed[0][0] == 0) {
         shadow = calculateShadow(vShadowCoord);
@@ -167,6 +184,7 @@ void main() {
                 if (dist > radius) continue;
                 float d = dist / radius;
                 atten_dist = (1.0 - d * d) * (1.0 - d * d);
+                atten = atten_dist;
             } else if (type == 2) {
                 vec3 lightDir = light_directions[i].xyz;
                 vec3 spotDir = normalize(lightDir);
@@ -186,28 +204,38 @@ void main() {
             }
         }
 
-        float ndl = max(dot(N, L), 0.0);
-        float diffuse_factor = ndl * atten;
+        vec3 H = normalize(V + L);
+        float NdotL = max(dot(N, L), 0.0);
 
-        float ndlDithered = clamp(diffuse_factor + dither, 0.0, 1.0);
-        float q = round(ndlDithered * bands) / bands;
         float thisShadow = (i == 0 && type == 0) ? (1.0 - shadow) : 1.0;
-        diffuseTerm += lightColor * q * base_color.rgb * thisShadow;
-        float spec = 0.0;
-        if (ndl > 0.0 && spec_strength > 0.0) {
-            vec3 H = normalize(L + V);
-            spec = pow(max(dot(N, H), 0.0), shininess) * spec_strength;
-            spec = bayer4x4(gl_FragCoord.xy) * spec;
+
+        if (NdotL > 0.0) {
+            float NdotV = max(dot(N, V), 0.000001);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
+
+            float D = DistributionGGX(NdotH, roughness);
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            vec3 F = fresnelSchlick(HdotV, F0);
+
+            vec3 specular = D * G * F / (4.0 * NdotL * NdotV + 0.0001);
+
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - metallic;
+
+            vec3 diffuse = (kD * albedo / PI);
+
+            Lo += (diffuse + specular) * lightColor * NdotL * atten * thisShadow;
         }
-        specularTerm += lightColor * spec * atten * thisShadow;
     }
 
-    vec3 finalRgb = base_color.rgb;
+    vec3 finalRgb = albedo;
     if (venable_shading == 1) {
-        finalRgb = ambientTerm + diffuseTerm + specularTerm;
+        finalRgb = ambientTerm + Lo;
     }
 
-    FragColor = vec4(clamp(finalRgb, 0.0, 1.0), base_color.a * v_opacity);
+    FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity);
 }
 @end
 

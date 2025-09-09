@@ -11,30 +11,31 @@ public:
     bool has_specular_texture = false;
     bool has_normal_texture = false;
 
-    sg_image_desc diffuse_texture_desc = {};
-    sg_sampler_desc diffuse_sampler_desc = {};
-    uint8_t* diffuse_texture_data = nullptr;
-    size_t diffuse_texture_data_size = 0;
+    sg_image_desc base_color_image_desc = {};
+    sg_sampler_desc base_color_sampler_desc = {};
+    uint8_t* base_color_image_data = nullptr;
+    size_t base_color_image_data_size = 0;
 
-    sg_image_desc specular_texture_desc = {};
-    sg_sampler_desc specular_sampler_desc = {};
-    uint8_t* specular_texture_data = nullptr;
-    size_t specular_texture_data_size = 0;
+    // blue channel is metallic, green is roughness
+    sg_image_desc metallic_roughness_image_desc = {};
+    sg_sampler_desc metallic_roughness_sampler_desc = {};
+    uint8_t* metallic_roughness_image_data = nullptr;
+    size_t metallic_roughness_image_data_size = 0; // holy long variable name
 
     sg_image_desc normal_texture_desc = {};
     sg_sampler_desc normal_sampler_desc = {};
     uint8_t* normal_texture_data = nullptr;
     size_t normal_texture_data_size = 0;
 
-    sg_image diffuse_image = { .id = SG_INVALID_ID };
-    sg_sampler diffuse_sampler = { .id = SG_INVALID_ID };
-    sg_image specular_image = { .id = SG_INVALID_ID };
-    sg_sampler specular_sampler = { .id = SG_INVALID_ID };
+    sg_image base_color_image = { .id = SG_INVALID_ID };
+    sg_sampler base_color_sampler = { .id = SG_INVALID_ID };
+    sg_image metallic_roughness_image = { .id = SG_INVALID_ID };
+    sg_sampler metallic_roughness_sampler = { .id = SG_INVALID_ID };
     sg_image normal_image = { .id = SG_INVALID_ID };
     sg_sampler normal_sampler = { .id = SG_INVALID_ID };
 
-    float diffuse = 0.5f;
-    float specular = 0.5f;
+    float roughness = 0.5f;
+    float metallic = 0.5f;
 
     bool has_custom_shader = false;
     sg_shader custom_shader = { .id = SG_INVALID_ID };
@@ -69,13 +70,13 @@ public:
     }
 
     ~Material() {
-        if (diffuse_image.id != SG_INVALID_ID) sg_destroy_image(diffuse_image);
-        if (diffuse_sampler.id != SG_INVALID_ID) sg_destroy_sampler(diffuse_sampler);
-        if (specular_image.id != SG_INVALID_ID) sg_destroy_image(specular_image);
-        if (specular_sampler.id != SG_INVALID_ID) sg_destroy_sampler(specular_sampler);
+        if (base_color_image.id != SG_INVALID_ID) sg_destroy_image(base_color_image);
+        if (base_color_sampler.id != SG_INVALID_ID) sg_destroy_sampler(base_color_sampler);
+        if (metallic_roughness_image.id != SG_INVALID_ID) sg_destroy_image(metallic_roughness_image);
+        if (metallic_roughness_sampler.id != SG_INVALID_ID) sg_destroy_sampler(metallic_roughness_sampler);
         if (has_custom_shader == true) {sg_destroy_shader(custom_shader); sg_destroy_pipeline(custom_pipeline);}
-        delete[] diffuse_texture_data;
-        delete[] specular_texture_data;
+        delete[] base_color_image_data;
+        delete[] metallic_roughness_image_data;
     }
 };
 
