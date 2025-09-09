@@ -2210,6 +2210,25 @@ void save_scene(const string& path) {
                             static_cast<int>(material->specular_sampler_desc.wrap_v)
                         };
                     }
+
+                    if (material->has_normal_texture && material->normal_texture_data && material->normal_texture_data_size > 0) {
+                        mat_json["norm_tex"] = nlohmann::json::object();
+                        auto& norm_tex = mat_json["norm_tex"];
+                        norm_tex["w"] = material->normal_texture_desc.width;
+                        norm_tex["h"] = material->normal_texture_desc.height;
+                        norm_tex["fmt"] = static_cast<int>(material->normal_texture_desc.pixel_format);
+
+                        std::vector<uint8_t> tex_data(material->normal_texture_data,
+                                                     material->normal_texture_data + material->normal_texture_data_size);
+                        norm_tex["data"] = tex_data;
+
+                        norm_tex["samp"] = {
+                            static_cast<int>(material->normal_sampler_desc.min_filter),
+                            static_cast<int>(material->normal_sampler_desc.mag_filter),
+                            static_cast<int>(material->normal_sampler_desc.wrap_u),
+                            static_cast<int>(material->normal_sampler_desc.wrap_v)
+                        };
+                    }
                 }
             }
 
@@ -2448,6 +2467,29 @@ void load_scene(const string& path) {
                                 material->specular_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
                                 material->specular_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
                                 material->specular_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
+                            }
+
+                            if (mat_json.contains("norm_tex")) {
+                                const auto& norm_tex = mat_json["norm_tex"];
+                                material->has_normal_texture = true;
+
+                                material->normal_texture_desc.width = norm_tex["w"];
+                                material->normal_texture_desc.height = norm_tex["h"];
+                                material->normal_texture_desc.pixel_format = static_cast<sg_pixel_format>(norm_tex["fmt"]);
+
+                                vector<uint8_t> tex_data = norm_tex["data"];
+                                material->normal_texture_data_size = tex_data.size();
+                                material->normal_texture_data = new uint8_t[material->normal_texture_data_size];
+                                std::copy(tex_data.begin(), tex_data.end(), material->normal_texture_data);
+
+                                material->normal_texture_desc.data.subimage[0][0].ptr = material->normal_texture_data;
+                                material->normal_texture_desc.data.subimage[0][0].size = material->normal_texture_data_size;
+
+                                auto samp = norm_tex["samp"];
+                                material->normal_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
+                                material->normal_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
+                                material->normal_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
+                                material->normal_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
                             }
                         }
 
