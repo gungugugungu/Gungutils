@@ -138,7 +138,7 @@ void main() {
     float ao = mr.r;
     float roughness = mr.g;
     float metallic = mr.b;
-    vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz;
+    vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz; // TODO: hey while you're here you might as well fix normal maps
     vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
     vec3 N = normalize(TBN * tangentNormal);

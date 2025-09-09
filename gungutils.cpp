@@ -1792,6 +1792,10 @@ vector<Object> load_gltf(const std::string& filename) {
         if (primitive.material >= 0 && primitive.material < model.materials.size()) {
             const auto& material = model.materials[primitive.material];
 
+            // TODO: load material alpha
+            // TODO: values into default images based on material data (not pre-coded)
+            // TODO: ooh and while you're here can you load the emissive texture as well?
+
             if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
 
@@ -1800,7 +1804,6 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->base_color_image_desc = img_desc;
                     mat->base_color_image_data_size = img_desc.data.subimage[0][0].size;
                     mat->has_diffuse_texture = true;
-                    // TODO: load material alpha
                 }
             }
 
