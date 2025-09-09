@@ -65,7 +65,7 @@ layout(binding = 2) uniform model_fs_params {
 };
 
 layout(binding = 3) uniform lighting_params {
-    ivec4 light_types_packed[13];
+    ivec4 light_types_packed[38];
     vec4 light_positions[150];
     vec4 light_directions[150];
     vec4 light_colors[150];

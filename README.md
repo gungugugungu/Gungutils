@@ -15,6 +15,9 @@
 - Shadow map for directional lights
 
 # TODO
-- SSR
+- Multiple materials per mesh
+- Emissive materials
+- Godrays
+- Bloom
 - Point light shadows
 - Spot light shadows

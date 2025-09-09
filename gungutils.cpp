@@ -97,6 +97,9 @@ const int max_light_amount = 150.0f;
 Surface diffuse_surf;
 Surface specular_surf;
 Surface normal_surf;
+sg_image diffuse_img = {SG_INVALID_ID};
+sg_image specular_img = {SG_INVALID_ID};
+sg_image normal_img = {SG_INVALID_ID};
 
 Surface as_visualizer;
 Surface light_visualizer;
@@ -488,74 +491,89 @@ void prepare_mesh_buffers(Object& object) {
         mesh.index_buffer = sg_make_buffer(&mesh.index_buffer_desc);
 
         Material* material = mesh.material;
+
+        // TODO: custom sampler
+
+        material->diffuse_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        material->diffuse_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
+        material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
+
+        material->specular_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        material->specular_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
+        material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
+
+        material->normal_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        material->normal_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        material->normal_sampler_desc.min_filter = SG_FILTER_LINEAR;
+        material->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
+
         if (material->has_diffuse_texture) {
             material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "diffuse");
             if (material->diffuse_image.id == SG_INVALID_ID) {
                 cerr << "Oh no failed to create diffuse image ohhh noooo" << endl;
                 material->has_diffuse_texture = false;
-            } else {
-                material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
             }
         } else {
+            diffuse_surf.clear(1, 1, {1.0f, 1.0f, 1.0f, 1.0f});
+            diffuse_surf.get_sokol_image_data_unflipped();
+            material->diffuse_texture_data = new uint8_t[diffuse_surf.sokol_data_u8.size()];
+            memcpy(material->diffuse_texture_data, diffuse_surf.sokol_data_u8.data(), diffuse_surf.sokol_data_u8.size());
+            material->diffuse_texture_data_size = diffuse_surf.sokol_data_u8.size();
+            material->diffuse_texture_desc.width = 1;
+            material->diffuse_texture_desc.height = 1;
             material->diffuse_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->diffuse_texture_desc.width = diffuse_surf.pixels[0].size();
-            material->diffuse_texture_desc.height = diffuse_surf.pixels.size();
-            material->diffuse_texture_desc.data = diffuse_surf.get_sokol_image_data();
-            material->diffuse_image = sg_make_image(&material->diffuse_texture_desc);
+            material->diffuse_texture_desc.data.subimage[0][0].ptr = material->diffuse_texture_data;
+            material->diffuse_texture_desc.data.subimage[0][0].size = material->diffuse_texture_data_size;
+            material->diffuse_image = validate_and_make_image(&material->diffuse_texture_desc, "default_diffuse");
             material->has_diffuse_texture = true;
-
-            material->diffuse_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-            material->diffuse_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-            material->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-            material->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-            material->diffuse_sampler = sg_make_sampler(&material->diffuse_sampler_desc);
-            cout << "No diffuse texture, made the default instead" << endl;
+            cout << "No diffuse image, setting default" << endl;
         }
         if (material->has_specular_texture) {
             material->specular_image = validate_and_make_image(&material->specular_texture_desc, "specular");
             if (material->specular_image.id == SG_INVALID_ID) {
                 cerr << "Oh no failed to create specualr image ohhh noooo" << endl;
                 material->has_specular_texture = false;
-            } else {
-                material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
             }
         } else {
+            specular_surf.clear(1, 1, {0.0f, 0.0f, 0.0f, 1.0f});
+            specular_surf.get_sokol_image_data_unflipped();
+            material->specular_texture_data = new uint8_t[specular_surf.sokol_data_u8.size()];
+            memcpy(material->specular_texture_data, specular_surf.sokol_data_u8.data(), specular_surf.sokol_data_u8.size());
+            material->specular_texture_data_size = specular_surf.sokol_data_u8.size();
+            material->specular_texture_desc.width = 1;
+            material->specular_texture_desc.height = 1;
             material->specular_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->specular_texture_desc.width = specular_surf.pixels[0].size();
-            material->specular_texture_desc.height = specular_surf.pixels.size();
-            material->specular_texture_desc.data = specular_surf.get_sokol_image_data();
-            material->specular_image = sg_make_image(&material->specular_texture_desc);
+            material->specular_texture_desc.data.subimage[0][0].ptr = material->specular_texture_data;
+            material->specular_texture_desc.data.subimage[0][0].size = material->specular_texture_data_size;
+            material->specular_image = validate_and_make_image(&material->specular_texture_desc, "default_specular");
             material->has_specular_texture = true;
-
-            material->specular_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-            material->specular_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-            material->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-            material->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-            material->specular_sampler = sg_make_sampler(&material->specular_sampler_desc);
-            cout << "No specular texture, made the default instead" << endl;
+            cout << "No specular image, setting default" << endl;
         }
         if (material->has_normal_texture) {
             material->normal_image = validate_and_make_image(&material->normal_texture_desc, "normal");
             if (material->normal_image.id == SG_INVALID_ID) {
                 cerr << "Oh no failed to create normal image ohhh noooo" << endl;
                 material->has_normal_texture = false;
-            } else {
-                material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
             }
         } else {
+            normal_surf.clear(1, 1, {0.5f, 0.5f, 1.0f, 1.0f});
+            normal_surf.get_sokol_image_data_unflipped();
+            material->normal_texture_data = new uint8_t[normal_surf.sokol_data_u8.size()];
+            memcpy(material->normal_texture_data, normal_surf.sokol_data_u8.data(), normal_surf.sokol_data_u8.size());
+            material->normal_texture_data_size = normal_surf.sokol_data_u8.size();
+            material->normal_texture_desc.width = 1;
+            material->normal_texture_desc.height = 1;
             material->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->normal_texture_desc.width = normal_surf.pixels[0].size();
-            material->normal_texture_desc.height = normal_surf.pixels.size();
-            material->normal_texture_desc.data = normal_surf.get_sokol_image_data();
-            material->normal_image = sg_make_image(&material->normal_texture_desc);
+            material->normal_texture_desc.data.subimage[0][0].ptr = material->normal_texture_data;
+            material->normal_texture_desc.data.subimage[0][0].size = material->normal_texture_data_size;
+            material->normal_image = validate_and_make_image(&material->normal_texture_desc, "default_normal");
             material->has_normal_texture = true;
-
-            material->normal_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-            material->normal_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-            material->normal_sampler_desc.min_filter = SG_FILTER_LINEAR;
-            material->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-            material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
-            cout << "No normal texture, made the default instead" << endl;
+            cout << "No normal image, setting default" << endl;
         }
 
         std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
@@ -800,7 +818,7 @@ void render_meshes() {
     }
 
     struct lighting_params {
-        int light_types_packed[13][4];
+        int light_types_packed[38][4];
         HMM_Vec4 light_positions[max_light_amount];
         HMM_Vec4 light_directions[max_light_amount];
         HMM_Vec4 light_colors[max_light_amount];
@@ -1411,10 +1429,9 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     if (hit_found) {
         std::cout << "raycast at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
         return {true, closest_point, hit_obj};
-    } else {
-        std::cout << "raycast missed" << std::endl;
-        return {false, HMM_V3(0, 0, 0), nullptr};
     }
+    std::cout << "raycast missed" << std::endl;
+    return {false, HMM_V3(0, 0, 0), nullptr};
 }
 
 RaycastResult raycast_point_to_point(const HMM_Vec3& start_point, const HMM_Vec3& end_point) {
@@ -1777,54 +1794,38 @@ vector<Object> load_gltf(const std::string& filename) {
 
             if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
-                uint8_t* specular_texture_data;
-                sg_image_desc specular_img_desc;
-                if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-                    auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
-                    specular_texture_data = u_specular_texture_data;
-                    specular_img_desc = u_specular_img_desc;
-                }
 
-                uint8_t* normal_texture_data;
-                sg_image_desc normal_img_desc;
-                if (material.normalTexture.index >= 0) {
-                    auto [u_normal_texture_data, u_normal_img_desc] = loadTexture(material.normalTexture.index);
-                    normal_texture_data = u_normal_texture_data;
-                    normal_img_desc = u_normal_img_desc;
-                }
-
+                mat->has_diffuse_texture = false; // TODO: remove this because it's useless I'm just lost
                 if (texture_data && img_desc.width > 0) {
                     mat->diffuse_texture_data = texture_data;
                     mat->diffuse_texture_desc = img_desc;
                     mat->diffuse_texture_data_size = img_desc.data.subimage[0][0].size;
                     mat->has_diffuse_texture = true;
-
-                    mat->diffuse_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    mat->diffuse_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    mat->diffuse_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    mat->diffuse_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+                    // TODO: load material alpha
                 }
-                if (specular_texture_data && specular_img_desc.width > 0) {
-                    mat->specular_texture_data = specular_texture_data;
-                    mat->specular_texture_desc = specular_img_desc;
-                    mat->specular_texture_data_size = specular_img_desc.data.subimage[0][0].size;
+            }
+
+            if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
+                auto [u_specular_texture_data, u_specular_img_desc] = loadTexture(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
+
+                mat->has_specular_texture = false;
+                if (u_specular_texture_data && u_specular_img_desc.width > 0) {
+                    mat->specular_texture_data = u_specular_texture_data;
+                    mat->specular_texture_desc = u_specular_img_desc;
+                    mat->specular_texture_data_size = u_specular_img_desc.data.subimage[0][0].size;
                     mat->has_specular_texture = true;
-
-                    mat->specular_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    mat->specular_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    mat->specular_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    mat->specular_sampler_desc.wrap_v = SG_WRAP_REPEAT;
                 }
-                if (normal_texture_data && normal_img_desc.width > 0) {
-                    mat->normal_texture_data = normal_texture_data;
-                    mat->normal_texture_desc = normal_img_desc;
-                    mat->normal_texture_data_size = normal_img_desc.data.subimage[0][0].size;
-                    mat->has_normal_texture = true;
+            }
 
-                    mat->normal_sampler_desc.min_filter = SG_FILTER_LINEAR;
-                    mat->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
-                    mat->normal_sampler_desc.wrap_u = SG_WRAP_REPEAT;
-                    mat->normal_sampler_desc.wrap_v = SG_WRAP_REPEAT;
+            if (material.normalTexture.index >= 0) {
+                auto [u_normal_texture_data, u_normal_img_desc] = loadTexture(material.normalTexture.index);
+
+                mat->has_normal_texture = false;
+                if (u_normal_texture_data && u_normal_img_desc.width > 0) {
+                    mat->normal_texture_data = u_normal_texture_data;
+                    mat->normal_texture_desc = u_normal_img_desc;
+                    mat->normal_texture_data_size = u_normal_img_desc.data.subimage[0][0].size;
+                    mat->has_normal_texture = true;
                 }
             }
         }
@@ -3496,6 +3497,27 @@ void _init() {
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
     normal_surf.clear(16, 16, {0.5, 0.5, 1.0f, 1.0f});
+
+    sg_image_desc diffuse_img_desc = {};
+    diffuse_img_desc.width = diffuse_surf.pixels[0].size();
+    diffuse_img_desc.height = diffuse_surf.pixels.size();
+    diffuse_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    diffuse_img_desc.data = diffuse_surf.get_sokol_image_data();
+    diffuse_img = sg_make_image(&diffuse_img_desc);
+
+    sg_image_desc specular_img_desc = {};
+    specular_img_desc.width = specular_surf.pixels[0].size();
+    specular_img_desc.height = specular_surf.pixels.size();
+    specular_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    specular_img_desc.data = specular_surf.get_sokol_image_data();
+    specular_img = sg_make_image(&specular_img_desc);
+
+    sg_image_desc normal_img_desc = {};
+    normal_img_desc.width = normal_surf.pixels[0].size();
+    normal_img_desc.height = normal_surf.pixels.size();
+    normal_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    normal_img_desc.data = normal_surf.get_sokol_image_data();
+    normal_img = sg_make_image(&normal_img_desc);
 
     as_visualizer.load_from_file("audiosource.png");
     light_visualizer.load_from_file("lightsource.png");
