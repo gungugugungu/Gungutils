@@ -2268,6 +2268,25 @@ void save_scene(const string& path) {
                             static_cast<int>(material->normal_sampler_desc.wrap_v)
                         };
                     }
+
+                    if (material->has_emissive_texture && material->emissive_image_data && material->emissive_image_data_size > 0) {
+                        mat_json["emis_tex"] = nlohmann::json::object();
+                        auto& emis_tex = mat_json["emis_tex"];
+                        emis_tex["w"] = material->emissive_image_desc.width;
+                        emis_tex["h"] = material->emissive_image_desc.height;
+                        emis_tex["fmt"] = static_cast<int>(material->emissive_image_desc.pixel_format);
+
+                        std::vector<uint8_t> tex_data(material->emissive_image_data,
+                                                     material->emissive_image_data + material->emissive_image_data_size);
+                        emis_tex["data"] = tex_data;
+
+                        emis_tex["samp"] = {
+                            static_cast<int>(material->emissive_sampler_desc.min_filter),
+                            static_cast<int>(material->emissive_sampler_desc.mag_filter),
+                            static_cast<int>(material->emissive_sampler_desc.wrap_u),
+                            static_cast<int>(material->emissive_sampler_desc.wrap_v)
+                        };
+                    }
                 }
             }
 
@@ -2529,6 +2548,29 @@ void load_scene(const string& path) {
                                 material->normal_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
                                 material->normal_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
                                 material->normal_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
+                            }
+
+                            if (mat_json.contains("emis_tex")) {
+                                const auto& emis_tex = mat_json["emis_tex"];
+                                material->has_emissive_texture = true;
+
+                                material->emissive_image_desc.width = emis_tex["w"];
+                                material->emissive_image_desc.height = emis_tex["h"];
+                                material->emissive_image_desc.pixel_format = static_cast<sg_pixel_format>(emis_tex["fmt"]);
+
+                                vector<uint8_t> tex_data = emis_tex["data"];
+                                material->emissive_image_data_size = tex_data.size();
+                                material->emissive_image_data = new uint8_t[material->emissive_image_data_size];
+                                std::copy(tex_data.begin(), tex_data.end(), material->emissive_image_data);
+
+                                material->emissive_image_desc.data.subimage[0][0].ptr = material->emissive_image_data;
+                                material->emissive_image_desc.data.subimage[0][0].size = material->emissive_image_data_size;
+
+                                auto samp = emis_tex["samp"];
+                                material->emissive_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
+                                material->emissive_sampler_desc.mag_filter = static_cast<sg_filter>(samp[1]);
+                                material->emissive_sampler_desc.wrap_u = static_cast<sg_wrap>(samp[2]);
+                                material->emissive_sampler_desc.wrap_v = static_cast<sg_wrap>(samp[3]);
                             }
                         }
 
