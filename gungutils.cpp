@@ -650,21 +650,23 @@ std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() {
     for (const auto& visgroup : vis_groups) {
         if (!visgroup.enabled) continue;
         for (const auto& obj : visgroup.objects) {
-            if (obj.mesh == nullptr) continue;
+            if (obj.enable_shading) {
+                if (obj.mesh == nullptr) continue;
 
-            ObjSnapshot s;
-            s.position = obj.position;
-            s.bounding_rect = obj.bounding_rect;
-            s.scale = obj.scale;
+                ObjSnapshot s;
+                s.position = obj.position;
+                s.bounding_rect = obj.bounding_rect;
+                s.scale = obj.scale;
 
-            auto finite_vec = [](const HMM_Vec3 &v) {
-                return std::isfinite(v.X) && std::isfinite(v.Y) && std::isfinite(v.Z);
-            };
-            if (!finite_vec(s.position) || !finite_vec(s.bounding_rect) || !finite_vec(s.scale)) {
-                continue;
+                auto finite_vec = [](const HMM_Vec3 &v) {
+                    return std::isfinite(v.X) && std::isfinite(v.Y) && std::isfinite(v.Z);
+                };
+                if (!finite_vec(s.position) || !finite_vec(s.bounding_rect) || !finite_vec(s.scale)) {
+                    continue;
+                }
+
+                snaps.push_back(s);
             }
-
-            snaps.push_back(s);
         }
     }
 
@@ -782,7 +784,10 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
             shadow_params.projection = light_proj;
             sg_apply_uniforms(0, SG_RANGE(shadow_params));
 
-            sg_draw(0, mesh->index_count, 1);
+            // for skyboxes and shit
+            if (inst.obj.enable_shading) {
+                sg_draw(0, mesh->index_count, 1);
+            }
         }
     }
 }
@@ -815,6 +820,7 @@ void render_meshes() {
         sg_view diffuse_view;
         sg_view specular_view;
         sg_view normal_view;
+        sg_view emissive_view;
         bool views_created = false;
     };
     std::vector<MeshGroup> groups;
@@ -933,6 +939,13 @@ void render_meshes() {
                 normal_view_desc.texture.image = mat->normal_image;
                 g.normal_view = sg_make_view(&normal_view_desc);
             }
+
+            if (mat->has_emissive_texture && mat->emissive_image.id != SG_INVALID_ID) {
+                sg_view_desc emissive_view_desc = {};
+                emissive_view_desc.texture.image = mat->emissive_image;
+                g.emissive_view = sg_make_view(&emissive_view_desc);
+            }
+
             g.views_created = true;
         }
 
@@ -974,8 +987,17 @@ void render_meshes() {
                 cerr << "Invalid normal texture view while rendering" << endl;
             }
 
-            state.bind.views[3] = shadow_depth_tex_view;
-            state.bind.samplers[3] = shadow_sampler;
+            if (g.emissive_view.id != SG_INVALID_ID) {
+                state.bind.views[3] = g.emissive_view;
+                state.bind.samplers[3] = mat->emissive_sampler;
+            } else {
+                state.bind.views[3] = { .id = SG_INVALID_ID };
+                state.bind.samplers[3] = { .id = SG_INVALID_ID };
+                cerr << "Invalid emissive texture view while rendering" << endl;
+            }
+
+            state.bind.views[4] = shadow_depth_tex_view;
+            state.bind.samplers[4] = shadow_sampler;
 
             sg_apply_bindings(&state.bind);
 
@@ -1018,6 +1040,9 @@ void render_meshes() {
             }
             if (g.normal_view.id != SG_INVALID_ID) {
                 sg_destroy_view(g.normal_view);
+            }
+            if (g.emissive_view.id != SG_INVALID_ID) {
+                sg_destroy_view(g.emissive_view);
             }
         }
     }
@@ -2855,8 +2880,29 @@ void render_editor() {
         }
 
         if (ImGui::CollapsingHeader("OBJECT")) {
-            ImGui::BeginChild("OBJECT", ImVec2(256, 300), true);
 
+            ImGui::BeginChild("INDEX MOVEMENT", ImVec2(20, 45), ImGuiChildFlags_None);
+            if (ImGui::Button("^")) {
+                if (selected_object_index > 0) {
+                    Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    vis_groups[selected_mesh_visgroup].objects.insert(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index - 1, std::move(object_to_move));
+                    selected_object_index--;
+                }
+            }
+            if (ImGui::Button("v")) {
+                if (selected_object_index < vis_groups[selected_mesh_visgroup].objects.size() - 1) {
+                    Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    vis_groups[selected_mesh_visgroup].objects.insert(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index + 1, std::move(object_to_move));
+                    selected_object_index++;
+                }
+            }
+            ImGui::EndChild();
+
+            ImGui::SameLine();
+
+            ImGui::BeginChild("OBJECT", ImVec2(256, 300), true);
             for (int v = 0; v < vis_groups.size(); v++) {
                 VisGroup visgroup = vis_groups[v];
                 for (int i = 0; i < visgroup.objects.size(); i++) {

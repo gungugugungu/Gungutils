@@ -55,8 +55,10 @@ layout(binding = 1) uniform texture2D _metallic_roughness_tex2D;
 layout(binding = 1) uniform sampler metallic_roughness_tex_smp;
 layout(binding = 2) uniform texture2D _normal_tex2D;
 layout(binding = 2) uniform sampler normal_tex_smp;
-layout(binding = 3) uniform texture2D _shadow_tex2D;
-layout(binding = 3) uniform sampler shadow_tex_smp;
+layout(binding = 3) uniform texture2D _emissive_tex2D;
+layout(binding = 3) uniform sampler emissive_tex_smp;
+layout(binding = 4) uniform texture2D _shadow_tex2D;
+layout(binding = 4) uniform sampler shadow_tex_smp;
 
 layout(binding = 2) uniform model_fs_params {
     float shininess;
@@ -76,9 +78,11 @@ layout(binding = 3) uniform lighting_params {
     vec4 ambient_color;
     mat4 light_space;
 };
+
 #define base_color_texture2D sampler2D(_base_color_tex2D, base_color_tex_smp)
 #define metallic_roughness_texture2D sampler2D(_metallic_roughness_tex2D, metallic_roughness_tex_smp)
 #define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
+#define emissive_tex2D sampler2D(_emissive_tex2D, emissive_tex_smp)
 #define shadow_texture2D sampler2DShadow(_shadow_tex2D, shadow_tex_smp)
 
 const float PI = 3.14159265359;
@@ -142,6 +146,7 @@ void main() {
     vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
     vec3 N = normalize(TBN * tangentNormal);
+    vec3 emissive_tex_color = texture(emissive_tex2D, TexCoord).xyz;
 
     const float AMBIENT_STRENGTH = 0.35;
     vec3 ambient_col = ambient_color.xyz;
@@ -235,7 +240,7 @@ void main() {
         finalRgb = ambientTerm + Lo;
     }
 
-    FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity);
+    FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity)+vec4(emissive_tex_color, 0.0f);
 }
 @end
 
