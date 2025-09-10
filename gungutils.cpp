@@ -97,9 +97,11 @@ const int max_light_amount = 150.0f;
 Surface diffuse_surf;
 Surface specular_surf;
 Surface normal_surf;
+Surface emissive_surf;
 sg_image diffuse_img = {SG_INVALID_ID};
 sg_image specular_img = {SG_INVALID_ID};
 sg_image normal_img = {SG_INVALID_ID};
+sg_image emissive_img = {SG_INVALID_ID};
 
 Surface as_visualizer;
 Surface light_visualizer;
@@ -512,48 +514,54 @@ void prepare_mesh_buffers(Object& object) {
         material->normal_sampler_desc.mag_filter = SG_FILTER_LINEAR;
         material->normal_sampler = sg_make_sampler(&material->normal_sampler_desc);
 
-        if (material->has_diffuse_texture) {
+        material->emissive_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        material->emissive_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        material->emissive_sampler_desc.min_filter = SG_FILTER_LINEAR;
+        material->emissive_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        material->emissive_sampler = sg_make_sampler(&material->emissive_sampler_desc);
+
+        if (material->has_color_texture) {
             material->base_color_image = validate_and_make_image(&material->base_color_image_desc, "diffuse");
             if (material->base_color_image.id == SG_INVALID_ID) {
                 cerr << "Oh no failed to create diffuse image ohhh noooo" << endl;
-                material->has_diffuse_texture = false;
+                material->has_color_texture = false;
             }
         } else {
-            diffuse_surf.clear(1, 1, {1.0f, 1.0f, 1.0f, 1.0f});
             diffuse_surf.get_sokol_image_data_unflipped();
             material->base_color_image_data = new uint8_t[diffuse_surf.sokol_data_u8.size()];
             memcpy(material->base_color_image_data, diffuse_surf.sokol_data_u8.data(), diffuse_surf.sokol_data_u8.size());
             material->base_color_image_data_size = diffuse_surf.sokol_data_u8.size();
-            material->base_color_image_desc.width = 1;
-            material->base_color_image_desc.height = 1;
+            material->base_color_image_desc.width = diffuse_surf.pixels[0].size();
+            material->base_color_image_desc.height = diffuse_surf.pixels.size();
             material->base_color_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             material->base_color_image_desc.data.subimage[0][0].ptr = material->base_color_image_data;
             material->base_color_image_desc.data.subimage[0][0].size = material->base_color_image_data_size;
             material->base_color_image = validate_and_make_image(&material->base_color_image_desc, "default_diffuse");
-            material->has_diffuse_texture = true;
+            material->has_color_texture = true;
             cout << "No diffuse image, setting default" << endl;
         }
-        if (material->has_specular_texture) {
+
+        if (material->has_metallic_roughness_texture) {
             material->metallic_roughness_image = validate_and_make_image(&material->metallic_roughness_image_desc, "specular");
             if (material->metallic_roughness_image.id == SG_INVALID_ID) {
                 cerr << "Oh no failed to create specualr image ohhh noooo" << endl;
-                material->has_specular_texture = false;
+                material->has_metallic_roughness_texture = false;
             }
         } else {
-            specular_surf.clear(1, 1, {0.0f, 0.0f, 0.0f, 1.0f});
             specular_surf.get_sokol_image_data_unflipped();
             material->metallic_roughness_image_data = new uint8_t[specular_surf.sokol_data_u8.size()];
             memcpy(material->metallic_roughness_image_data, specular_surf.sokol_data_u8.data(), specular_surf.sokol_data_u8.size());
             material->metallic_roughness_image_data_size = specular_surf.sokol_data_u8.size();
-            material->metallic_roughness_image_desc.width = 1;
-            material->metallic_roughness_image_desc.height = 1;
+            material->metallic_roughness_image_desc.width = specular_surf.pixels[0].size();
+            material->metallic_roughness_image_desc.height = specular_surf.pixels.size();
             material->metallic_roughness_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             material->metallic_roughness_image_desc.data.subimage[0][0].ptr = material->metallic_roughness_image_data;
             material->metallic_roughness_image_desc.data.subimage[0][0].size = material->metallic_roughness_image_data_size;
             material->metallic_roughness_image = validate_and_make_image(&material->metallic_roughness_image_desc, "default_specular");
-            material->has_specular_texture = true;
+            material->has_metallic_roughness_texture = true;
             cout << "No specular image, setting default" << endl;
         }
+
         if (material->has_normal_texture) {
             material->normal_image = validate_and_make_image(&material->normal_texture_desc, "normal");
             if (material->normal_image.id == SG_INVALID_ID) {
@@ -561,19 +569,39 @@ void prepare_mesh_buffers(Object& object) {
                 material->has_normal_texture = false;
             }
         } else {
-            normal_surf.clear(1, 1, {0.5f, 0.5f, 1.0f, 1.0f});
             normal_surf.get_sokol_image_data_unflipped();
             material->normal_texture_data = new uint8_t[normal_surf.sokol_data_u8.size()];
             memcpy(material->normal_texture_data, normal_surf.sokol_data_u8.data(), normal_surf.sokol_data_u8.size());
             material->normal_texture_data_size = normal_surf.sokol_data_u8.size();
-            material->normal_texture_desc.width = 1;
-            material->normal_texture_desc.height = 1;
+            material->normal_texture_desc.width = normal_surf.pixels[0].size();
+            material->normal_texture_desc.height = normal_surf.pixels.size();
             material->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
             material->normal_texture_desc.data.subimage[0][0].ptr = material->normal_texture_data;
             material->normal_texture_desc.data.subimage[0][0].size = material->normal_texture_data_size;
             material->normal_image = validate_and_make_image(&material->normal_texture_desc, "default_normal");
             material->has_normal_texture = true;
             cout << "No normal image, setting default" << endl;
+        }
+
+        if (material->has_emissive_texture) {
+            material->emissive_image = validate_and_make_image(&material->emissive_image_desc, "emissive");
+            if (material->emissive_image.id == SG_INVALID_ID) {
+                cerr << "You won't believe what happened to the emissive image during buffer preparation" << endl;
+                material->has_emissive_texture = false;
+            }
+        } else {
+            emissive_surf.get_sokol_image_data_unflipped();
+            material->emissive_image_data = new uint8_t[emissive_surf.sokol_data_u8.size()];
+            memcpy(material->emissive_image_data, emissive_surf.sokol_data_u8.data(), emissive_surf.sokol_data_u8.size());
+            material->emissive_image_data_size = emissive_surf.sokol_data_u8.size();
+            material->emissive_image_desc.width = emissive_surf.pixels[0].size();
+            material->emissive_image_desc.height = emissive_surf.pixels.size();
+            material->emissive_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+            material->emissive_image_desc.data.subimage[0][0].ptr = material->emissive_image_data;
+            material->emissive_image_desc.data.subimage[0][0].size = material->emissive_image_data_size;
+            material->emissive_image = validate_and_make_image(&material->emissive_image_desc, "default_emissive");
+            material->has_emissive_texture = true;
+            cout << "No emissive image, setting default" << endl;
         }
 
         std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
@@ -888,13 +916,13 @@ void render_meshes() {
             g.specular_view = { .id = SG_INVALID_ID };
             g.normal_view = { .id = SG_INVALID_ID };
 
-            if (mat->has_diffuse_texture && mat->base_color_image.id != SG_INVALID_ID) {
+            if (mat->has_color_texture && mat->base_color_image.id != SG_INVALID_ID) {
                 sg_view_desc diffuse_view_desc = {};
                 diffuse_view_desc.texture.image = mat->base_color_image;
                 g.diffuse_view = sg_make_view(&diffuse_view_desc);
             }
 
-            if (mat->has_specular_texture && mat->metallic_roughness_image.id != SG_INVALID_ID) {
+            if (mat->has_metallic_roughness_texture && mat->metallic_roughness_image.id != SG_INVALID_ID) {
                 sg_view_desc specular_view_desc = {};
                 specular_view_desc.texture.image = mat->metallic_roughness_image;
                 g.specular_view = sg_make_view(&specular_view_desc);
@@ -1782,6 +1810,8 @@ vector<Object> load_gltf(const std::string& filename) {
             for (size_t j = 0; j < icount; ++j) base_indices[j] = static_cast<uint32_t>(j);
         }
 
+        Object obj;
+
         Mesh* base_mesh = new Mesh();
         base_mesh->vertices = base_vertices;
         base_mesh->vertex_count = vcount;
@@ -1794,7 +1824,6 @@ vector<Object> load_gltf(const std::string& filename) {
 
             // TODO: load material alpha
             // TODO: values into default images based on material data (not pre-coded)
-            // TODO: ooh and while you're here can you load the emissive texture as well?
 
             if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);
@@ -1803,7 +1832,7 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->base_color_image_data = texture_data;
                     mat->base_color_image_desc = img_desc;
                     mat->base_color_image_data_size = img_desc.data.subimage[0][0].size;
-                    mat->has_diffuse_texture = true;
+                    mat->has_color_texture = true;
                 }
             }
 
@@ -1814,7 +1843,7 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->metallic_roughness_image_data = u_specular_texture_data;
                     mat->metallic_roughness_image_desc = u_specular_img_desc;
                     mat->metallic_roughness_image_data_size = u_specular_img_desc.data.subimage[0][0].size;
-                    mat->has_specular_texture = true;
+                    mat->has_metallic_roughness_texture = true;
                 }
             }
 
@@ -1828,11 +1857,21 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->has_normal_texture = true;
                 }
             }
+
+            if (material.emissiveTexture.index >= 0) {
+                auto [u_emissive_texture_data, u_emissive_img_desc] = loadTexture(material.emissiveTexture.index);
+
+                if (u_emissive_texture_data && u_emissive_img_desc.width > 0) {
+                    mat->emissive_image_data = u_emissive_texture_data;
+                    mat->emissive_image_data_size = u_emissive_img_desc.data.subimage[0][0].size;
+                    mat->emissive_image_desc = u_emissive_img_desc;
+                    mat->has_emissive_texture = true;
+                }
+            }
         }
 
         base_mesh->material = mat;
 
-        Object obj;
         obj.mesh = nullptr;
         obj.position = node.translation.size() == 3 ? HMM_V3(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]), static_cast<float>(node.translation[2])) : HMM_V3(0, 0, 0);
         obj.scale = node.scale.size() == 3 ? HMM_V3(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]), static_cast<float>(node.scale[2])) : HMM_V3(1, 1, 1);
@@ -2173,7 +2212,7 @@ void save_scene(const string& path) {
                     mat_json["diff"] = material->roughness;
                     mat_json["spec"] = material->metallic;
 
-                    if (material->has_diffuse_texture && material->base_color_image_data && material->base_color_image_data_size > 0) {
+                    if (material->has_color_texture && material->base_color_image_data && material->base_color_image_data_size > 0) {
                         mat_json["diff_tex"] = nlohmann::json::object();
                         auto& diff_tex = mat_json["diff_tex"];
                         diff_tex["w"] = material->base_color_image_desc.width;
@@ -2192,7 +2231,7 @@ void save_scene(const string& path) {
                         };
                     }
 
-                    if (material->has_specular_texture && material->metallic_roughness_image_data && material->metallic_roughness_image_data_size > 0) {
+                    if (material->has_metallic_roughness_texture && material->metallic_roughness_image_data && material->metallic_roughness_image_data_size > 0) {
                         mat_json["spec_tex"] = nlohmann::json::object();
                         auto& spec_tex = mat_json["spec_tex"];
                         spec_tex["w"] = material->metallic_roughness_image_desc.width;
@@ -2425,7 +2464,7 @@ void load_scene(const string& path) {
 
                             if (mat_json.contains("diff_tex")) {
                                 const auto& diff_tex = mat_json["diff_tex"];
-                                material->has_diffuse_texture = true;
+                                material->has_color_texture = true;
 
                                 material->base_color_image_desc.width = diff_tex["w"];
                                 material->base_color_image_desc.height = diff_tex["h"];
@@ -2448,7 +2487,7 @@ void load_scene(const string& path) {
 
                             if (mat_json.contains("spec_tex")) {
                                 const auto& spec_tex = mat_json["spec_tex"];
-                                material->has_specular_texture = true;
+                                material->has_metallic_roughness_texture = true;
 
                                 material->metallic_roughness_image_desc.width = spec_tex["w"];
                                 material->metallic_roughness_image_desc.height = spec_tex["h"];
@@ -2787,11 +2826,11 @@ void render_editor() {
                     if (ImGui::Selectable(label.c_str(), is_selected)) {
                         selected_object_index = i;
                         selected_mesh_visgroup = v;
-                        if (vis_groups[v].objects[i].mesh->material->has_diffuse_texture) {
+                        if (vis_groups[v].objects[i].mesh->material->has_color_texture) {
                             editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->base_color_image_desc);
                             editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->base_color_sampler_desc);
                         }
-                        if (vis_groups[v].objects[i].mesh->material->has_specular_texture) {
+                        if (vis_groups[v].objects[i].mesh->material->has_metallic_roughness_texture) {
                             editor_specular_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->metallic_roughness_image_desc);
                             editor_specular_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->metallic_roughness_sampler_desc);
                         }
@@ -2892,7 +2931,8 @@ void render_editor() {
                     }
                 }
                 if (ImGui::CollapsingHeader("TEXTURES")) {
-                    if (selected_object->mesh->material->has_diffuse_texture) {
+                    ImGui::Text("BASE COLOR");
+                    if (selected_object->mesh->material->has_color_texture) {
                         sg_view_desc editor_view_desc = {};
                         editor_view_desc.texture.image = selected_object->mesh->material->base_color_image;
                         sg_view editor_display_view = sg_make_view(&editor_view_desc);
@@ -2904,7 +2944,8 @@ void render_editor() {
                             temp_editor_views.push_back(editor_display_view);
                         }
                     }
-                    if (selected_object->mesh->material->has_specular_texture) {
+                    ImGui::Text("METALLIC ROUGHNESS");
+                    if (selected_object->mesh->material->has_metallic_roughness_texture) {
                         sg_view_desc editor_specular_view_desc = {};
                         editor_specular_view_desc.texture.image = selected_object->mesh->material->metallic_roughness_image;
                         sg_view editor_specular_display_view = sg_make_view(&editor_specular_view_desc);
@@ -2916,6 +2957,7 @@ void render_editor() {
                             temp_editor_views.push_back(editor_specular_display_view);
                         }
                     }
+                    ImGui::Text("NORMAL MAP");
                     if (selected_object->mesh->material->has_normal_texture) {
                         sg_view_desc editor_normal_view_desc = {};
                         editor_normal_view_desc.texture.image = selected_object->mesh->material->normal_image;
@@ -2926,6 +2968,19 @@ void render_editor() {
                             ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_normal_display_view, selected_object->mesh->material->normal_sampler);
                             ImGui::Image(imtex_id, ImVec2(128, 128));
                             temp_editor_views.push_back(editor_normal_display_view);
+                        }
+                    }
+                    ImGui::Text("EMISSIVE");
+                    if (selected_object->mesh->material->has_emissive_texture) {
+                        sg_view_desc editor_emissive_view_desc = {};
+                        editor_emissive_view_desc.texture.image = selected_object->mesh->material->emissive_image;
+                        sg_view editor_emissive_display_view = sg_make_view(&editor_emissive_view_desc);
+                        if (editor_emissive_display_view.id == SG_INVALID_ID) {
+                            ImGui::Text("Failed to create emissive view!");
+                        } else {
+                            ImTextureID imtex_id = simgui_imtextureid_with_sampler(editor_emissive_display_view, selected_object->mesh->material->emissive_sampler);
+                            ImGui::Image(imtex_id, ImVec2(128, 128));
+                            temp_editor_views.push_back(editor_emissive_display_view);
                         }
                     }
                 }
@@ -3539,6 +3594,7 @@ void _init() {
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
     normal_surf.clear(16, 16, {0.5, 0.5, 1.0f, 1.0f});
+    emissive_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
 
     sg_image_desc diffuse_img_desc = {};
     diffuse_img_desc.width = diffuse_surf.pixels[0].size();
@@ -3560,6 +3616,13 @@ void _init() {
     normal_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
     normal_img_desc.data = normal_surf.get_sokol_image_data();
     normal_img = sg_make_image(&normal_img_desc);
+
+    sg_image_desc emissive_img_desc = {};
+    emissive_img_desc.width = emissive_surf.pixels[0].size();
+    emissive_img_desc.height = emissive_surf.pixels.size();
+    emissive_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    emissive_img_desc.data = emissive_surf.get_sokol_image_data();
+    emissive_img = sg_make_image(&emissive_img_desc);
 
     as_visualizer.load_from_file("audiosource.png");
     light_visualizer.load_from_file("lightsource.png");
@@ -3789,11 +3852,11 @@ void _event(SDL_Event* e) {
                                 selected_mesh_visgroup = vg_idx;
 
                                 auto* mesh = visgroup.objects[obj_idx].mesh;
-                                if (mesh->material->has_diffuse_texture) {
+                                if (mesh->material->has_color_texture) {
                                     editor_display_image = sg_make_image(&mesh->material->base_color_image_desc);
                                     editor_display_sampler = sg_make_sampler(&mesh->material->base_color_sampler_desc);
                                 }
-                                if (mesh->material->has_specular_texture) {
+                                if (mesh->material->has_metallic_roughness_texture) {
                                     editor_specular_display_image = sg_make_image(&mesh->material->metallic_roughness_image_desc);
                                     editor_specular_display_sampler = sg_make_sampler(&mesh->material->metallic_roughness_sampler_desc);
                                 }

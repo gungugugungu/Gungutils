@@ -7,9 +7,10 @@
 
 class Material {
 public:
-    bool has_diffuse_texture = false;
-    bool has_specular_texture = false;
+    bool has_color_texture = false;
+    bool has_metallic_roughness_texture = false;
     bool has_normal_texture = false;
+    bool has_emissive_texture = false;
 
     sg_image_desc base_color_image_desc = {};
     sg_sampler_desc base_color_sampler_desc = {};
@@ -27,12 +28,19 @@ public:
     uint8_t* normal_texture_data = nullptr;
     size_t normal_texture_data_size = 0;
 
+    sg_image_desc emissive_image_desc = {};
+    sg_sampler_desc emissive_sampler_desc = {};
+    uint8_t* emissive_image_data = nullptr;
+    size_t emissive_image_data_size = 0;
+
     sg_image base_color_image = { .id = SG_INVALID_ID };
     sg_sampler base_color_sampler = { .id = SG_INVALID_ID };
     sg_image metallic_roughness_image = { .id = SG_INVALID_ID };
     sg_sampler metallic_roughness_sampler = { .id = SG_INVALID_ID };
     sg_image normal_image = { .id = SG_INVALID_ID };
     sg_sampler normal_sampler = { .id = SG_INVALID_ID };
+    sg_image emissive_image = { .id = SG_INVALID_ID };
+    sg_sampler emissive_sampler = { .id = SG_INVALID_ID };
 
     float roughness = 0.5f;
     float metallic = 0.5f;
@@ -63,7 +71,6 @@ public:
         pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
         pipeline_desc.depth.write_enabled = true;
         pipeline_desc.cull_mode = SG_CULLMODE_FRONT;
-        // NOTE TO SELF: I'm pretty sure labels are optional, but if something's buggy, that's the label
         custom_pipeline = sg_make_pipeline(&pipeline_desc);
 
         has_custom_shader = true;
@@ -74,6 +81,10 @@ public:
         if (base_color_sampler.id != SG_INVALID_ID) sg_destroy_sampler(base_color_sampler);
         if (metallic_roughness_image.id != SG_INVALID_ID) sg_destroy_image(metallic_roughness_image);
         if (metallic_roughness_sampler.id != SG_INVALID_ID) sg_destroy_sampler(metallic_roughness_sampler);
+        if (normal_image.id != SG_INVALID_ID) sg_destroy_image(normal_image);
+        if (normal_sampler.id != SG_INVALID_ID) sg_destroy_sampler(normal_sampler);
+        if (emissive_image.id != SG_INVALID_ID) sg_destroy_image(emissive_image);
+        if (emissive_sampler.id != SG_INVALID_ID) sg_destroy_sampler(emissive_sampler);
         if (has_custom_shader == true) {sg_destroy_shader(custom_shader); sg_destroy_pipeline(custom_pipeline);}
         delete[] base_color_image_data;
         delete[] metallic_roughness_image_data;
