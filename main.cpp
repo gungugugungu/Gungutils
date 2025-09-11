@@ -33,6 +33,8 @@ void init() {
     print_fmod_error(result);
 
     load_scene("maps/cottage.gmap");
+
+    load_skybox("skybox.png");
 }
 
 void frame() {

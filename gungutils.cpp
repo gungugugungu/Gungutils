@@ -1,5 +1,12 @@
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
+#define SOKOL_IMGUI_NO_SOKOL_APP
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define TINYGLTF_IMPLEMENTATION
+#define TINYOBJLOADER_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#define STB_TRUETYPE_IMPLEMENTATION
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -21,14 +28,9 @@
 #include "sokol/sokol_gfx.h"
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
-#define SOKOL_IMGUI_NO_SOKOL_APP
 #include "sokol/util/sokol_imgui.h"
 #include "HandmadeMath/HandmadeMath.h"
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define TINYGLTF_IMPLEMENTATION
 #include "tinygltf/tiny_gltf.h"
-#define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobjloader/tiny_obj_loader.h"
 #include "SDL3/SDL.h"
 #include "FModStudio/api/core/inc/fmod.hpp"
@@ -38,9 +40,7 @@
 #include "json/include/nlohmann/json.hpp"
 #include <reactphysics3d/reactphysics3d.h>
 #include "meshoptimizer/src/meshoptimizer.h"
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb/stb_image_resize2.h"
-#define STB_TRUETYPE_IMPLEMENTATION
 #include "stb/stb_truetype.h"
 // shaders
 #include "shaders/mainshader.glsl.h"
@@ -49,11 +49,13 @@
 #include "shaders/particles.glsl.h"
 #include "shaders/billboard.glsl.h"
 #include "shaders/shadow.glsl.h"
+#include "shaders/skybox.glsl.h"
 // sources
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
+#include "rendering/Skybox.h"
 #include "utils/Animation.h"
 #include "rendering/Post Processing.h"
 #include "rendering/Light.h"
@@ -84,7 +86,7 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 1024;
+int shadow_map_size = 1024; // TODO: cascaded shadowmaps
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
@@ -1094,6 +1096,34 @@ void render_state_surf() {
     sg_destroy_image(surf_img);
 }
 
+void render_skybox() {
+    sg_apply_pipeline(skybox_pipeline);
+
+    if (skybox_vbuf.id == SG_INVALID_ID || skybox_ibuf.id == SG_INVALID_ID) {
+        cout << "invalid skybox buffer" << endl;
+    }
+    state.bind.vertex_buffers[0] = skybox_vbuf;
+    state.bind.index_buffer = skybox_ibuf;
+
+    sg_view_desc view_desc{};
+    view_desc.label = "skybox_view";
+    view_desc.texture.image = skybox_img;
+
+    sg_view skybox_view = sg_make_view(&view_desc);
+
+    state.bind.views[0] = skybox_view;
+    state.bind.samplers[0] = skybox_sampler;
+    sg_apply_bindings(&state.bind);
+
+    skybox_vs_params_t skybox_vs_params;
+    skybox_vs_params.projection = vs_params.projection;
+    skybox_vs_params.view = vs_params.view;
+
+    sg_apply_uniforms(UB_skybox_vs_params, SG_RANGE(skybox_vs_params));
+
+    sg_draw(0, 36, 1);
+}
+
 void render_first_pass() {
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
@@ -1284,6 +1314,8 @@ void render_first_pass() {
     sg_begin_pass(&pass);
 
     sg_apply_viewport(0, 0, w_width, w_height, true);
+
+    render_skybox();
 
     render_meshes();
 
@@ -3442,7 +3474,7 @@ void render_editor() {
             HMM_Mat4 scale_matrix = HMM_Scale(selected_object->scale);
             HMM_Mat4 object_matrix = HMM_MulM4(translation, HMM_MulM4(rotation_matrix, scale_matrix));
 
-            HMM_Mat4 delta_matrix = HMM_M4D(1.0f); // omg is that a metal gear solid 3: snake eater remastered aka metal gear solid DELTA: snake eater reference?
+            HMM_Mat4 delta_matrix = HMM_M4D(1.0f);
 
             if (ImGuizmo::Manipulate(&vs_params.view.Elements[0][0], &vs_params.projection.Elements[0][0], current_gizmo_operation, current_gizmo_mode, &object_matrix.Elements[0][0], &delta_matrix.Elements[0][0])) {
 
@@ -3678,6 +3710,21 @@ void _init() {
     billboard_pipeline_desc.colors->blend.op_alpha = SG_BLENDOP_ADD;
     billboard_pipeline_desc.label = "billboard-pipeline";
     billboard_pipeline = sg_make_pipeline(&billboard_pipeline_desc);
+
+    sg_shader skybox_shader = sg_make_shader(skybox_shader_desc(sg_query_backend()));
+    sg_pipeline_desc skybox_pipeline_desc = {};
+    skybox_pipeline_desc.shader = skybox_shader;
+    skybox_pipeline_desc.layout.attrs[ATTR_skybox_aPos].format = SG_VERTEXFORMAT_FLOAT3;
+    skybox_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    skybox_pipeline_desc.color_count = 1;
+    skybox_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    skybox_pipeline_desc.depth.write_enabled = false;
+    skybox_pipeline_desc.cull_mode = SG_CULLMODE_NONE;
+    skybox_pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
+    skybox_pipeline_desc.label = "skybox-pipeline";
+    skybox_pipeline = sg_make_pipeline(&skybox_pipeline_desc);
+
+    initialize_skybox_buffers();
 
     diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
     specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});

@@ -30,7 +30,8 @@ void main() {
     mat3 normalMat = mat3(transpose(inverse(model)));
     vNormal = normalize(normalMat * aNormal);
     vec3 tangent = normalize(normalMat * aTangent);
-    vec3 bitangent = cross(tangent, vNormal);
+    tangent = normalize(tangent - dot(tangent, vNormal) * vNormal);
+    vec3 bitangent = cross(vNormal, tangent);
     venable_shading = enable_shading;
     vWorldPos = (model * vec4(aPos, 1.0)).xyz;
     vTangent = tangent;
@@ -140,8 +141,8 @@ void main() {
     float alpha = base_color.a;
     vec3 mr = texture(metallic_roughness_texture2D, TexCoord).rgb;
     float ao = mr.r;
-    float roughness = mr.g;
-    float metallic = mr.b;
+    float roughness = max(mr.g, 0.04);
+    float metallic = max(mr.b, 0.04);
     vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz;
     vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
@@ -223,7 +224,8 @@ void main() {
             float G = GeometrySmith(NdotV, NdotL, roughness);
             vec3 F = fresnelSchlick(HdotV, F0);
 
-            vec3 specular = D * G * F / (4.0 * NdotL * NdotV + 0.0001);
+            float denom = 4.0 * NdotL * NdotV + 0.001;
+            vec3 specular = D * G * F / max(denom, 0.001);
 
             vec3 kS = F;
             vec3 kD = vec3(1.0) - kS;
