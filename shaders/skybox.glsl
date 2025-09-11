@@ -11,8 +11,12 @@ layout(binding = 0) uniform skybox_vs_params {
 out vec3 uvw;
 
 void main() {
+    mat3 view_rotation = mat3(view);
+    mat4 view_no_translation = mat4(view_rotation);
+
+    vec4 pos = projection * view_no_translation * vec4(aPos, 1.0);
     uvw = aPos;
-    vec4 pos = projection * view * vec4(aPos, 1.0);
+
     gl_Position = pos.xyww;
 }
 @end

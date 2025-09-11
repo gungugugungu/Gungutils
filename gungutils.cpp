@@ -1840,13 +1840,15 @@ vector<Object> load_gltf(const std::string& filename) {
             } else {
                 Surface default_surface;
                 default_surface.clear(16, 16, {static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[0]), static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[1]), static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[2]), 1.0f});
-                mat->base_color_image_desc.data = default_surface.get_sokol_image_data();
-                mat->base_color_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
+                default_surface.get_sokol_image_data();
+                mat->base_color_image_data = new uint8_t[default_surface.sokol_data_u8.size()];;
                 memcpy(mat->base_color_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
                 mat->base_color_image_data_size = default_surface.sokol_data_u8.size();
                 mat->base_color_image_desc.width = default_surface.pixels[0].size();
                 mat->base_color_image_desc.height = default_surface.pixels.size();
                 mat->base_color_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->base_color_image_desc.data.subimage[0]->ptr = mat->base_color_image_data;
+                mat->base_color_image_desc.data.subimage[0]->size = mat->base_color_image_data_size;
                 mat->base_color_image = validate_and_make_image(&mat->base_color_image_desc, "base_color");
                 mat->has_color_texture = true;
                 cout << "No base color image in GLTF, loading default values" << endl;
@@ -1864,13 +1866,15 @@ vector<Object> load_gltf(const std::string& filename) {
             } else {
                 Surface default_surface;
                 default_surface.clear(16, 16, {0.0f, static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), 1.0f});
-                mat->metallic_roughness_image_desc.data = default_surface.get_sokol_image_data();
+                default_surface.get_sokol_image_data();
                 mat->metallic_roughness_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
                 memcpy(mat->metallic_roughness_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
                 mat->metallic_roughness_image_data_size = default_surface.sokol_data_u8.size();
                 mat->metallic_roughness_image_desc.width = default_surface.pixels[0].size();
                 mat->metallic_roughness_image_desc.height = default_surface.pixels.size();
                 mat->metallic_roughness_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->metallic_roughness_image_desc.data.subimage[0]->ptr = mat->metallic_roughness_image_data;
+                mat->metallic_roughness_image_desc.data.subimage[0]->size = mat->metallic_roughness_image_data_size;
                 mat->metallic_roughness_image = validate_and_make_image(&mat->metallic_roughness_image_desc, "mr_image");
                 mat->has_metallic_roughness_texture = true;
                 cout << "No metallic roughness image in GLTF, loading default values" << endl;
@@ -1888,13 +1892,15 @@ vector<Object> load_gltf(const std::string& filename) {
             } else {
                 Surface default_surface;
                 default_surface.clear(16, 16, {0.5f, 0.5f, 1.0f, 1.0f});
-                mat->normal_texture_desc.data = default_surface.get_sokol_image_data();
+                default_surface.get_sokol_image_data();
                 mat->normal_texture_data = new uint8_t[default_surface.sokol_data_u8.size()];
                 memcpy(mat->normal_texture_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
                 mat->normal_texture_data_size = default_surface.sokol_data_u8.size();
                 mat->normal_texture_desc.width = default_surface.pixels[0].size();
                 mat->normal_texture_desc.height = default_surface.pixels.size();
                 mat->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->normal_texture_desc.data.subimage[0]->ptr = mat->normal_texture_data;
+                mat->normal_texture_desc.data.subimage[0]->size = mat->normal_texture_data_size;
                 mat->normal_image = validate_and_make_image(&mat->normal_texture_desc, "normal_image");
                 mat->has_normal_texture = true;
                 cout << "No normal texture in GLTF, loading default values" << endl;
@@ -1912,13 +1918,15 @@ vector<Object> load_gltf(const std::string& filename) {
             }  else {
                 Surface default_surface;
                 default_surface.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
-                mat->emissive_image_desc.data = default_surface.get_sokol_image_data();
+                default_surface.get_sokol_image_data();
                 mat->emissive_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
                 memcpy(mat->emissive_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
                 mat->emissive_image_data_size = default_surface.sokol_data_u8.size();
                 mat->emissive_image_desc.width = default_surface.pixels[0].size();
                 mat->emissive_image_desc.height = default_surface.pixels.size();
                 mat->emissive_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->emissive_image_desc.data.subimage[0]->ptr = mat->emissive_image_data;
+                mat->emissive_image_desc.data.subimage[0]->size = mat->emissive_image_data_size;
                 mat->emissive_image = validate_and_make_image(&mat->emissive_image_desc, "normal_image");
                 mat->has_emissive_texture = true;
                 cout << "No emissive texture in GLTF, loading default values" << endl;
