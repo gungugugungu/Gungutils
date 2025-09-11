@@ -96,10 +96,6 @@ float camera_far = 1050.0f;
 
 const int max_light_amount = 150.0f;
 
-Surface diffuse_surf;
-Surface specular_surf;
-Surface normal_surf;
-Surface emissive_surf;
 sg_image diffuse_img = {SG_INVALID_ID};
 sg_image specular_img = {SG_INVALID_ID};
 sg_image normal_img = {SG_INVALID_ID};
@@ -528,19 +524,6 @@ void prepare_mesh_buffers(Object& object) {
                 cerr << "Oh no failed to create diffuse image ohhh noooo" << endl;
                 material->has_color_texture = false;
             }
-        } else {
-            diffuse_surf.get_sokol_image_data_unflipped();
-            material->base_color_image_data = new uint8_t[diffuse_surf.sokol_data_u8.size()];
-            memcpy(material->base_color_image_data, diffuse_surf.sokol_data_u8.data(), diffuse_surf.sokol_data_u8.size());
-            material->base_color_image_data_size = diffuse_surf.sokol_data_u8.size();
-            material->base_color_image_desc.width = diffuse_surf.pixels[0].size();
-            material->base_color_image_desc.height = diffuse_surf.pixels.size();
-            material->base_color_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->base_color_image_desc.data.subimage[0][0].ptr = material->base_color_image_data;
-            material->base_color_image_desc.data.subimage[0][0].size = material->base_color_image_data_size;
-            material->base_color_image = validate_and_make_image(&material->base_color_image_desc, "default_diffuse");
-            material->has_color_texture = true;
-            cout << "No diffuse image, setting default" << endl;
         }
 
         if (material->has_metallic_roughness_texture) {
@@ -549,19 +532,6 @@ void prepare_mesh_buffers(Object& object) {
                 cerr << "Oh no failed to create specualr image ohhh noooo" << endl;
                 material->has_metallic_roughness_texture = false;
             }
-        } else {
-            specular_surf.get_sokol_image_data_unflipped();
-            material->metallic_roughness_image_data = new uint8_t[specular_surf.sokol_data_u8.size()];
-            memcpy(material->metallic_roughness_image_data, specular_surf.sokol_data_u8.data(), specular_surf.sokol_data_u8.size());
-            material->metallic_roughness_image_data_size = specular_surf.sokol_data_u8.size();
-            material->metallic_roughness_image_desc.width = specular_surf.pixels[0].size();
-            material->metallic_roughness_image_desc.height = specular_surf.pixels.size();
-            material->metallic_roughness_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->metallic_roughness_image_desc.data.subimage[0][0].ptr = material->metallic_roughness_image_data;
-            material->metallic_roughness_image_desc.data.subimage[0][0].size = material->metallic_roughness_image_data_size;
-            material->metallic_roughness_image = validate_and_make_image(&material->metallic_roughness_image_desc, "default_specular");
-            material->has_metallic_roughness_texture = true;
-            cout << "No specular image, setting default" << endl;
         }
 
         if (material->has_normal_texture) {
@@ -570,19 +540,6 @@ void prepare_mesh_buffers(Object& object) {
                 cerr << "Oh no failed to create normal image ohhh noooo" << endl;
                 material->has_normal_texture = false;
             }
-        } else {
-            normal_surf.get_sokol_image_data_unflipped();
-            material->normal_texture_data = new uint8_t[normal_surf.sokol_data_u8.size()];
-            memcpy(material->normal_texture_data, normal_surf.sokol_data_u8.data(), normal_surf.sokol_data_u8.size());
-            material->normal_texture_data_size = normal_surf.sokol_data_u8.size();
-            material->normal_texture_desc.width = normal_surf.pixels[0].size();
-            material->normal_texture_desc.height = normal_surf.pixels.size();
-            material->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->normal_texture_desc.data.subimage[0][0].ptr = material->normal_texture_data;
-            material->normal_texture_desc.data.subimage[0][0].size = material->normal_texture_data_size;
-            material->normal_image = validate_and_make_image(&material->normal_texture_desc, "default_normal");
-            material->has_normal_texture = true;
-            cout << "No normal image, setting default" << endl;
         }
 
         if (material->has_emissive_texture) {
@@ -591,19 +548,6 @@ void prepare_mesh_buffers(Object& object) {
                 cerr << "You won't believe what happened to the emissive image during buffer preparation" << endl;
                 material->has_emissive_texture = false;
             }
-        } else {
-            emissive_surf.get_sokol_image_data_unflipped();
-            material->emissive_image_data = new uint8_t[emissive_surf.sokol_data_u8.size()];
-            memcpy(material->emissive_image_data, emissive_surf.sokol_data_u8.data(), emissive_surf.sokol_data_u8.size());
-            material->emissive_image_data_size = emissive_surf.sokol_data_u8.size();
-            material->emissive_image_desc.width = emissive_surf.pixels[0].size();
-            material->emissive_image_desc.height = emissive_surf.pixels.size();
-            material->emissive_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            material->emissive_image_desc.data.subimage[0][0].ptr = material->emissive_image_data;
-            material->emissive_image_desc.data.subimage[0][0].size = material->emissive_image_data_size;
-            material->emissive_image = validate_and_make_image(&material->emissive_image_desc, "default_emissive");
-            material->has_emissive_texture = true;
-            cout << "No emissive image, setting default" << endl;
         }
 
         std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
@@ -1122,6 +1066,8 @@ void render_skybox() {
     sg_apply_uniforms(UB_skybox_vs_params, SG_RANGE(skybox_vs_params));
 
     sg_draw(0, 36, 1);
+
+    sg_destroy_view(skybox_view);
 }
 
 void render_first_pass() {
@@ -1891,6 +1837,19 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->base_color_image_data_size = img_desc.data.subimage[0][0].size;
                     mat->has_color_texture = true;
                 }
+            } else {
+                Surface default_surface;
+                default_surface.clear(16, 16, {static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[0]), static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[1]), static_cast<float>(material.pbrMetallicRoughness.baseColorFactor[2]), 1.0f});
+                mat->base_color_image_desc.data = default_surface.get_sokol_image_data();
+                mat->base_color_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
+                memcpy(mat->base_color_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
+                mat->base_color_image_data_size = default_surface.sokol_data_u8.size();
+                mat->base_color_image_desc.width = default_surface.pixels[0].size();
+                mat->base_color_image_desc.height = default_surface.pixels.size();
+                mat->base_color_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->base_color_image = validate_and_make_image(&mat->base_color_image_desc, "base_color");
+                mat->has_color_texture = true;
+                cout << "No base color image in GLTF, loading default values" << endl;
             }
 
             if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
@@ -1902,6 +1861,19 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->metallic_roughness_image_data_size = u_specular_img_desc.data.subimage[0][0].size;
                     mat->has_metallic_roughness_texture = true;
                 }
+            } else {
+                Surface default_surface;
+                default_surface.clear(16, 16, {0.0f, static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), 1.0f});
+                mat->metallic_roughness_image_desc.data = default_surface.get_sokol_image_data();
+                mat->metallic_roughness_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
+                memcpy(mat->metallic_roughness_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
+                mat->metallic_roughness_image_data_size = default_surface.sokol_data_u8.size();
+                mat->metallic_roughness_image_desc.width = default_surface.pixels[0].size();
+                mat->metallic_roughness_image_desc.height = default_surface.pixels.size();
+                mat->metallic_roughness_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->metallic_roughness_image = validate_and_make_image(&mat->metallic_roughness_image_desc, "mr_image");
+                mat->has_metallic_roughness_texture = true;
+                cout << "No metallic roughness image in GLTF, loading default values" << endl;
             }
 
             if (material.normalTexture.index >= 0) {
@@ -1913,6 +1885,19 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->normal_texture_data_size = u_normal_img_desc.data.subimage[0][0].size;
                     mat->has_normal_texture = true;
                 }
+            } else {
+                Surface default_surface;
+                default_surface.clear(16, 16, {0.5f, 0.5f, 1.0f, 1.0f});
+                mat->normal_texture_desc.data = default_surface.get_sokol_image_data();
+                mat->normal_texture_data = new uint8_t[default_surface.sokol_data_u8.size()];
+                memcpy(mat->normal_texture_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
+                mat->normal_texture_data_size = default_surface.sokol_data_u8.size();
+                mat->normal_texture_desc.width = default_surface.pixels[0].size();
+                mat->normal_texture_desc.height = default_surface.pixels.size();
+                mat->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->normal_image = validate_and_make_image(&mat->normal_texture_desc, "normal_image");
+                mat->has_normal_texture = true;
+                cout << "No normal texture in GLTF, loading default values" << endl;
             }
 
             if (material.emissiveTexture.index >= 0) {
@@ -1924,6 +1909,19 @@ vector<Object> load_gltf(const std::string& filename) {
                     mat->emissive_image_desc = u_emissive_img_desc;
                     mat->has_emissive_texture = true;
                 }
+            }  else {
+                Surface default_surface;
+                default_surface.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
+                mat->emissive_image_desc.data = default_surface.get_sokol_image_data();
+                mat->emissive_image_data = new uint8_t[default_surface.sokol_data_u8.size()];
+                memcpy(mat->emissive_image_data, default_surface.sokol_data_u8.data(), default_surface.sokol_data_u8.size());
+                mat->emissive_image_data_size = default_surface.sokol_data_u8.size();
+                mat->emissive_image_desc.width = default_surface.pixels[0].size();
+                mat->emissive_image_desc.height = default_surface.pixels.size();
+                mat->emissive_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+                mat->emissive_image = validate_and_make_image(&mat->emissive_image_desc, "normal_image");
+                mat->has_emissive_texture = true;
+                cout << "No emissive texture in GLTF, loading default values" << endl;
             }
         }
 
@@ -2266,8 +2264,6 @@ void save_scene(const string& path) {
                     auto& mat_json = mesh_json["mat"];
 
                     Material* material = mesh->material;
-                    mat_json["diff"] = material->roughness;
-                    mat_json["spec"] = material->metallic;
 
                     if (material->has_color_texture && material->base_color_image_data && material->base_color_image_data_size > 0) {
                         mat_json["diff_tex"] = nlohmann::json::object();
@@ -2530,13 +2526,6 @@ void load_scene(const string& path) {
                             const auto& mat_json = mesh_json["mat"];
                             Material* material = new Material();
                             mesh->material = material;
-
-                            if (mat_json.contains("diff")) {
-                                material->roughness = mat_json["diff"];
-                            }
-                            if (mat_json.contains("spec")) {
-                                material->metallic = mat_json["spec"];
-                            }
 
                             if (mat_json.contains("diff_tex")) {
                                 const auto& diff_tex = mat_json["diff_tex"];
@@ -3725,39 +3714,6 @@ void _init() {
     skybox_pipeline = sg_make_pipeline(&skybox_pipeline_desc);
 
     initialize_skybox_buffers();
-
-    diffuse_surf.clear(16, 16, {1.0f, 1.0f, 1.0f, 1.0f});
-    specular_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
-    normal_surf.clear(16, 16, {0.5, 0.5, 1.0f, 1.0f});
-    emissive_surf.clear(16, 16, {0.0f, 0.0f, 0.0f, 1.0f});
-
-    sg_image_desc diffuse_img_desc = {};
-    diffuse_img_desc.width = diffuse_surf.pixels[0].size();
-    diffuse_img_desc.height = diffuse_surf.pixels.size();
-    diffuse_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    diffuse_img_desc.data = diffuse_surf.get_sokol_image_data();
-    diffuse_img = sg_make_image(&diffuse_img_desc);
-
-    sg_image_desc specular_img_desc = {};
-    specular_img_desc.width = specular_surf.pixels[0].size();
-    specular_img_desc.height = specular_surf.pixels.size();
-    specular_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    specular_img_desc.data = specular_surf.get_sokol_image_data();
-    specular_img = sg_make_image(&specular_img_desc);
-
-    sg_image_desc normal_img_desc = {};
-    normal_img_desc.width = normal_surf.pixels[0].size();
-    normal_img_desc.height = normal_surf.pixels.size();
-    normal_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    normal_img_desc.data = normal_surf.get_sokol_image_data();
-    normal_img = sg_make_image(&normal_img_desc);
-
-    sg_image_desc emissive_img_desc = {};
-    emissive_img_desc.width = emissive_surf.pixels[0].size();
-    emissive_img_desc.height = emissive_surf.pixels.size();
-    emissive_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    emissive_img_desc.data = emissive_surf.get_sokol_image_data();
-    emissive_img = sg_make_image(&emissive_img_desc);
 
     as_visualizer.load_from_file("audiosource.png");
     light_visualizer.load_from_file("lightsource.png");

@@ -42,9 +42,6 @@ public:
     sg_image emissive_image = { .id = SG_INVALID_ID };
     sg_sampler emissive_sampler = { .id = SG_INVALID_ID };
 
-    float roughness = 0.5f;
-    float metallic = 0.5f;
-
     bool has_custom_shader = false;
     sg_shader custom_shader = { .id = SG_INVALID_ID };
     sg_pipeline custom_pipeline = { .id = SG_INVALID_ID };
