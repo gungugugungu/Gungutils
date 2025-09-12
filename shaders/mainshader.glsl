@@ -60,6 +60,8 @@ layout(binding = 3) uniform texture2D _emissive_tex2D;
 layout(binding = 3) uniform sampler emissive_tex_smp;
 layout(binding = 4) uniform texture2D _shadow_tex2D;
 layout(binding = 4) uniform sampler shadow_tex_smp;
+layout(binding = 5) uniform textureCube _skybox_tex2D;
+layout(binding = 5) uniform sampler skybox_tex_smp;
 
 layout(binding = 2) uniform model_fs_params {
     float shininess;

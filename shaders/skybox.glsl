@@ -15,7 +15,18 @@ void main() {
     mat4 view_no_translation = mat4(view_rotation);
 
     vec4 pos = projection * view_no_translation * vec4(aPos, 1.0);
-    uvw = aPos;
+
+    vec3 dir = aPos;
+    if (abs(dir.x) > abs(dir.y) && abs(dir.x) > abs(dir.z)) {
+        dir.x = -dir.x;
+        dir.y = -dir.y;
+    }
+    if (abs(dir.z) > abs(dir.x) && abs(dir.z) > abs(dir.y)) {
+        dir.x = -dir.x;
+        dir.y = -dir.y;
+    }
+
+    uvw = vec3(dir.x, -dir.y, dir.z);
 
     gl_Position = pos.xyww;
 }
@@ -30,7 +41,11 @@ layout(binding = 0) uniform sampler tex2d_smp;
 in vec3 uvw;
 
 void main() {
-    FragColor = texture(samplerCube(_tex2d, tex2d_smp), uvw);
+    vec3 color = texture(samplerCube(_tex2d, tex2d_smp), uvw).xyz;
+
+    color = pow(color, vec3(1.0/2.2));
+
+    FragColor = vec4(color, 1.0f);
 }
 @end
 
