@@ -247,13 +247,12 @@ void main() {
     // skybox reflections
     vec3 R = reflect(-V, N);
 
-    float mipLevel = roughness * 8.0;
-    vec3 skyboxReflection = textureLod(skybox_textureCube, R, mipLevel).rgb;
+    vec3 skyboxReflection = texture(skybox_textureCube, R).rgb;
 
     float NdotV = max(dot(N, V), 0.0);
     vec3 F_reflection = fresnelSchlickRoughness(NdotV, F0, roughness);
 
-    vec3 reflectionContribution = skyboxReflection * F_reflection * (1.0 - roughness * 0.7);
+    vec3 reflectionContribution = skyboxReflection * F_reflection * (1.0 - roughness);
 
     vec3 finalRgb = albedo;
     if (venable_shading == 1) {
