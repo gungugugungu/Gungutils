@@ -1837,7 +1837,6 @@ vector<Object> load_gltf(const std::string& filename) {
             const auto& material = model.materials[primitive.material];
 
             // TODO: load material alpha
-            // TODO: values into default images based on material data (not pre-coded)
 
             if (material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
                 auto [texture_data, img_desc] = loadTexture(material.pbrMetallicRoughness.baseColorTexture.index);

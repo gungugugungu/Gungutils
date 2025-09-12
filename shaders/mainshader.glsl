@@ -260,6 +260,8 @@ void main() {
     }
 
     FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity)+vec4(emissive_tex_color, 0.0f);
+
+    // TODO: ffs man fix pbr already
 }
 @end
 

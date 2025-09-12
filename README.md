@@ -13,10 +13,10 @@
 - Frustum culling
 - A simple profiler in the editor
 - Shadow map for directional lights
+- Simple and easy skybox system (for equirectangular or cubemap images)
 
 # TODO
 - Multiple materials per mesh
-- Emissive materials
 - Godrays
 - Bloom
 - Point light shadows
