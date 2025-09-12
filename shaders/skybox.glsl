@@ -13,20 +13,9 @@ out vec3 uvw;
 void main() {
     mat3 view_rotation = mat3(view);
     mat4 view_no_translation = mat4(view_rotation);
-
     vec4 pos = projection * view_no_translation * vec4(aPos, 1.0);
 
-    vec3 dir = aPos;
-    if (abs(dir.x) > abs(dir.y) && abs(dir.x) > abs(dir.z)) {
-        dir.x = -dir.x;
-        dir.y = -dir.y;
-    }
-    if (abs(dir.z) > abs(dir.x) && abs(dir.z) > abs(dir.y)) {
-        dir.x = -dir.x;
-        dir.y = -dir.y;
-    }
-
-    uvw = vec3(dir.x, -dir.y, dir.z);
+    uvw = aPos;
 
     gl_Position = pos.xyww;
 }

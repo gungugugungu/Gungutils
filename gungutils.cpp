@@ -240,7 +240,8 @@ void init_shadowmaps() {
     shadow_pip_desc.layout.attrs[ATTR_shadow_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2;
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
-    shadow_pip_desc.color_count = 0;
+    shadow_pip_desc.color_count = 1;
+    shadow_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     shadow_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
     shadow_pip_desc.depth.write_enabled = true;
@@ -730,14 +731,6 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
             shadow_params.projection = light_proj;
             sg_apply_uniforms(0, SG_RANGE(shadow_params));
 
-            /*GLint viewport[4];
-            glGetIntegerv(GL_VIEWPORT, viewport);
-            cout << viewport[0] << " " << viewport[1] << " " << viewport[2] << " " << viewport[3] << endl;
-
-            GLint scissor[4];
-            glGetIntegerv(GL_SCISSOR_BOX, scissor);
-            cout << scissor[0] << " " << scissor[1] << " " << scissor[2] << " " << scissor[3] << endl;*/
-
             // originally for the skyboxes, but I think I'll just keep it.
             if (inst.obj.enable_shading) {
                 sg_draw(0, mesh->index_count, 1);
@@ -1169,6 +1162,9 @@ void render_shadow_pass() {
     shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
     shadow_action.depth.clear_value = 1.0f;
     shadow_action.depth.store_action = SG_STOREACTION_STORE;
+    shadow_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    shadow_action.colors[0].clear_value = {1.0f, 1.0f, 1.0f, 1.0f};
+    shadow_action.colors[0].store_action = SG_STOREACTION_DONTCARE;
     sg_pass shadow_pass = {};
     shadow_pass.action = shadow_action;
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
@@ -1268,8 +1264,6 @@ void render_first_pass() {
     pass.label = "offscreen-pass";
 
     sg_begin_pass(&pass);
-
-    sg_apply_viewport(0, 0, w_width, w_height, true);
 
     render_skybox();
 

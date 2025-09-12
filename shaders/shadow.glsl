@@ -16,7 +16,12 @@ void main() {
 @end
 
 @fs shadow_fs
-void main() {}
+
+out vec4 fraggy;
+
+void main() {
+    fraggy = vec4(0.5f, 0.5f, 1.0f, 1.0f);
+}
 @end
 
 @program shadow shadow_vs shadow_fs

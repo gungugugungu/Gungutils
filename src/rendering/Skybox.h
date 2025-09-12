@@ -134,12 +134,12 @@ void load_skybox(const char* filename) { // function for loading equirectangular
                     float v = 2.0f * (y + 0.5f) / static_cast<float>(face_size) - 1.0f;
                     HMM_Vec3 dir;
                     switch (face) {
-                        case 0: dir = HMM_V3(1.0f, -v, -u); break; // +X
-                        case 1: dir = HMM_V3(-1.0f, -v, u); break; // -X
-                        case 2: dir = HMM_V3(u, 1.0f, v); break; // +Y
-                        case 3: dir = HMM_V3(u, -1.0f, -v); break; // -Y
-                        case 4: dir = HMM_V3(u, -v, 1.0f); break; // +Z
-                        case 5: dir = HMM_V3(-u, -v, -1.0f); break; // -Z
+                        case 0: dir = HMM_V3(-1.0f, v, -u); break; // +x
+                        case 1: dir = HMM_V3(1.0f, v, u); break; // -x
+                        case 2: dir = HMM_V3(-u, -1.0f, v); break; // +y
+                        case 3: dir = HMM_V3(-u, 1.0f, -v); break; // -y
+                        case 4: dir = HMM_V3(-u, v, 1.0f); break; // +z
+                        case 5: dir = HMM_V3(u, v, -1.0f); break; // -z
                     }
                     dir = HMM_NormV3(dir);
                     float theta = atan2f(dir.X, dir.Z);
