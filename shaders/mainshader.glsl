@@ -87,6 +87,7 @@ layout(binding = 3) uniform lighting_params {
 #define normal_texture2D sampler2D(_normal_tex2D, normal_tex_smp)
 #define emissive_tex2D sampler2D(_emissive_tex2D, emissive_tex_smp)
 #define shadow_texture2D sampler2DShadow(_shadow_tex2D, shadow_tex_smp)
+#define skybox_textureCube samplerCube(_skybox_tex2D, skybox_tex_smp)
 
 const float PI = 3.14159265359;
 
@@ -116,6 +117,10 @@ float GeometrySmith(float NdotV, float NdotL, float roughness) {
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 float calculateShadow(vec4 shadowCoord) {
@@ -239,9 +244,20 @@ void main() {
         }
     }
 
+    // skybox reflections
+    vec3 R = reflect(-V, N);
+
+    float mipLevel = roughness * 8.0;
+    vec3 skyboxReflection = textureLod(skybox_textureCube, R, mipLevel).rgb;
+
+    float NdotV = max(dot(N, V), 0.0);
+    vec3 F_reflection = fresnelSchlickRoughness(NdotV, F0, roughness);
+
+    vec3 reflectionContribution = skyboxReflection * F_reflection * (1.0 - roughness * 0.7);
+
     vec3 finalRgb = albedo;
     if (venable_shading == 1) {
-        finalRgb = ambientTerm + Lo;
+        finalRgb = ambientTerm + Lo + reflectionContribution;
     }
 
     FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity)+vec4(emissive_tex_color, 0.0f);

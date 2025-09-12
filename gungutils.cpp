@@ -740,6 +740,12 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
 }
 
 void render_meshes() {
+    sg_view_desc view_desc{};
+    view_desc.label = "skybox_view";
+    view_desc.texture.image = skybox_img;
+
+    sg_view skybox_view = sg_make_view(&view_desc);
+
     all_vertex_count = 0;
     all_index_count = 0;
     struct Instance {
@@ -945,6 +951,8 @@ void render_meshes() {
 
             state.bind.views[4] = shadow_depth_tex_view;
             state.bind.samplers[4] = shadow_sampler;
+            state.bind.views[5] = skybox_view;
+            state.bind.samplers[5] = skybox_sampler;
 
             sg_apply_bindings(&state.bind);
 
@@ -993,6 +1001,7 @@ void render_meshes() {
             }
         }
     }
+    sg_destroy_view(skybox_view);
 }
 
 void render_visualizers();
