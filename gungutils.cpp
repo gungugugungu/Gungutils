@@ -29,6 +29,7 @@
 #include "sokol/sokol_fetch.h"
 #include "sokol/sokol_time.h"
 #include "sokol/util/sokol_imgui.h"
+#include "sokol/sokol_log.h"
 #include "HandmadeMath/HandmadeMath.h"
 #include "tinygltf/tiny_gltf.h"
 #include "tinyobjloader/tiny_obj_loader.h"
@@ -86,7 +87,7 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 1024; // TODO: cascaded shadowmaps
+int shadow_map_size = 1024;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
@@ -702,7 +703,6 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
         }
     }
 
-    sg_apply_pipeline(shadow_pip);
     state.bind.views[0] = {SG_INVALID_ID};
     state.bind.samplers[0] = {SG_INVALID_ID};
 
@@ -730,7 +730,15 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
             shadow_params.projection = light_proj;
             sg_apply_uniforms(0, SG_RANGE(shadow_params));
 
-            // for skyboxes and shit
+            /*GLint viewport[4];
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            cout << viewport[0] << " " << viewport[1] << " " << viewport[2] << " " << viewport[3] << endl;
+
+            GLint scissor[4];
+            glGetIntegerv(GL_SCISSOR_BOX, scissor);
+            cout << scissor[0] << " " << scissor[1] << " " << scissor[2] << " " << scissor[3] << endl;*/
+
+            // originally for the skyboxes, but I think I'll just keep it.
             if (inst.obj.enable_shading) {
                 sg_draw(0, mesh->index_count, 1);
             }
@@ -1070,11 +1078,7 @@ void render_skybox() {
     sg_destroy_view(skybox_view);
 }
 
-void render_first_pass() {
-    int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
-
-    // shadowmap pass
+void render_shadow_pass() {
     if (shadow_depth_img.id == SG_INVALID_ID) {
         sg_image_desc shadow_img_desc = {};
         shadow_img_desc.usage.depth_stencil_attachment = true;
@@ -1172,11 +1176,17 @@ void render_first_pass() {
 
     sg_begin_pass(&shadow_pass);
 
-    sg_apply_viewport(0, 0, shadow_map_size, shadow_map_size, true);
-
+    sg_apply_pipeline(shadow_pip);
     render_shadow_meshes(light_view, light_proj);
 
     sg_end_pass();
+}
+
+void render_first_pass() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    render_shadow_pass();
 
     if (post_state.color_img.width != w_width || post_state.color_img.height != w_height) {
         if (post_state.rendered_color_img.id != SG_INVALID_ID) {
@@ -1302,8 +1312,6 @@ void render_second_pass() {
     pass.label = "swapchain-pass";
 
     sg_begin_pass(&pass);
-
-    sg_apply_viewport(0, 0, w_width, w_height, true);
 
     sg_apply_pipeline(post_state.post_pipeline);
 
@@ -4024,7 +4032,7 @@ void _event(SDL_Event* e) {
             }
         }
         if (e->key.key == SDLK_SPACE && state.editor_open) {
-            world->update(time_state.dt);
+            render_shadow_pass();
         }
     }
     if (e->type == SDL_EVENT_KEY_UP) {
@@ -4104,6 +4112,7 @@ int main(int argc, char* argv[]) {
     desc.pipeline_pool_size = 1024;
     desc.view_pool_size = 8192;
     desc.environment = env;
+    desc.logger.func = slog_func;
     sg_setup(&desc);
     stm_setup();
     Time_Init(time_state);
