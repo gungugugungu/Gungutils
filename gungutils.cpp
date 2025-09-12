@@ -1278,7 +1278,7 @@ void render_first_pass() {
 
     render_meshes();
 
-    render_visualizers();
+    if (state.editor_open) render_visualizers();
     _draw_all_billboards(state.camera_pos);
 
     for (auto& psys : state.particle_systems) {
