@@ -3377,7 +3377,7 @@ void render_editor() {
 
         if (ImGui::CollapsingHeader("LOGS")) {
             ImGui::BeginChild("LOGS", ImVec2(600, 200), true);
-            for (int i = 0; i < MAX_LOGS; i++) {
+            for (int i = 0; i < MAX_LOGS-1; i++) {
                 if (logs[i].text.length() > 0) {
                     if (logs[i].type == LogType::ERROR) {
                         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), logs[i].text.c_str());
