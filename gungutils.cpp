@@ -52,6 +52,7 @@
 #include "shaders/shadow.glsl.h"
 #include "shaders/skybox.glsl.h"
 // sources
+#include "utils/Log.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
@@ -195,7 +196,7 @@ void load_font(stbtt_fontinfo *font_info, const char *filename) {
     fclose(font_file);
 
     stbtt_InitFont(font_info, font_buffer, 0);
-    cout << "loaded font " << filename << endl;
+    iprint("loaded font " + to_string(*filename));
 }
 
 struct Plane {
@@ -398,39 +399,36 @@ sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
 
 void prepare_mesh_buffers(Object& object) {
     auto prepare_single_mesh = [](Mesh& mesh) {
+        std::cout << "=========================" << std::endl;
         if (!mesh.vertices || mesh.vertex_count == 0) {
-            std::cerr << "ERROR: Invalid vertex data!" << std::endl;
+            eprint("Invalid vertex data!");
             exit(-1);
         }
 
         if (!mesh.indices || mesh.index_count == 0) {
-            std::cerr << "ERROR: Invalid index data!" << std::endl;
+            eprint("Invalid index data!");
             exit(-1);
         }
 
-        std::cout << "=== MESH BUFFER DEBUG ===" << std::endl;
-        std::cout << "Vertex count: " << mesh.vertex_count << std::endl;
-        std::cout << "Index count: " << mesh.index_count << std::endl;
-        std::cout << "Buffer size: " << (mesh.vertex_count * 8 * sizeof(float)) << " bytes" << std::endl;
-        std::cout << "Expected layout: 8 floats per vertex (pos=3, norm=3, uv=2)" << std::endl;
+        iprint("Vertex count: " + to_string(mesh.vertex_count));
+        iprint("Index count: " + to_string(mesh.index_count));
 
         for (size_t i = 0; i < mesh.vertex_count; ++i) {
             float px = mesh.vertices[i*8 + 0];
             float py = mesh.vertices[i*8 + 1];
             float pz = mesh.vertices[i*8 + 2];
             if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz)) {
-                std::cerr << "ERROR: Invalid vertex position at " << i << std::endl;
+                eprint("ERROR: Invalid vertex position at " + to_string(i));
                 exit(-1);
             }
         }
 
         for (size_t i = 0; i < mesh.index_count; ++i) {
             if (mesh.indices[i] >= mesh.vertex_count) {
-                std::cout << "ERROR: Index " << i << " value " << mesh.indices[i] << " >= vertex_count " << mesh.vertex_count << std::endl;
+                eprint("ERROR: Index " + to_string(i) + " value " + to_string(mesh.indices[i]) + " >= vertex_count " + to_string(mesh.vertex_count));
                 break;
             }
         }
-        std::cout << "=========================" << std::endl;
 
         const size_t index_count  = mesh.index_count;
         const size_t vertex_count = mesh.vertex_count;
@@ -494,8 +492,6 @@ void prepare_mesh_buffers(Object& object) {
 
         Material* material = mesh.material;
 
-        // TODO: custom sampler
-
         material->base_color_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
         material->base_color_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
         material->base_color_sampler_desc.min_filter = SG_FILTER_LINEAR;
@@ -552,14 +548,12 @@ void prepare_mesh_buffers(Object& object) {
             }
         }
 
-        std::cout << "meshoptimizer: original verts=" << vertex_count << " -> new verts=" << mesh.vertex_count << ", indices=" << index_count << ", 16bit=" << (mesh.use_uint16_indices ? "yes" : "no") << std::endl;
+        iprint("meshoptimizer: original verts=" + to_string(vertex_count) + " -> new verts=" + to_string(mesh.vertex_count) + ", indices=" + to_string(index_count) + ", 16bit=" + to_string(*(mesh.use_uint16_indices ? "yes" : "no")));
     };
 
     if (object.mesh) {
         prepare_single_mesh(*object.mesh);
-        uint64_t time = stm_now();
         object.initialize_bounds();
-        cout << "Bounds initialized in " << stm_ms(stm_since(time)) << " ms" << endl;
     }
 
     for (Mesh* shape_key : object.shape_keys) {
@@ -1008,7 +1002,7 @@ void render_visualizers();
 
 void render_state_surf() {
     if (state.window_surface.pixels.empty() || state.window_surface.pixels[0].empty()) {
-        cout << "the window surface is empty which I don't know how you did like what the fuck man?" << endl;
+        wprint("the window surface is empty");
         return;
     }
 
@@ -1054,7 +1048,7 @@ void render_skybox() {
     sg_apply_pipeline(skybox_pipeline);
 
     if (skybox_vbuf.id == SG_INVALID_ID || skybox_ibuf.id == SG_INVALID_ID) {
-        cout << "invalid skybox buffer" << endl;
+        wprint("invalid skybox buffer");
     }
     state.bind.vertex_buffers[0] = skybox_vbuf;
     state.bind.index_buffer = skybox_ibuf;
@@ -1098,11 +1092,10 @@ void render_shadow_pass() {
         sg_view_desc depth_tex_view_desc2 = {};
         depth_tex_view_desc2.texture.image = shadow_depth_img;
         shadow_depth_tex_view = sg_make_view(&depth_tex_view_desc2);
-        cout << "shadowmap created" << endl;
     }
 
     if (shadow_depth_img.id == SG_INVALID_ID) {
-        cerr << "Could create shadow depth image" << endl;
+        eprint("could create shadow depth image");
         return;
     }
 
@@ -1469,10 +1462,8 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     }
 
     if (hit_found) {
-        std::cout << "raycast at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
         return {true, closest_point, hit_obj};
     }
-    std::cout << "raycast missed" << std::endl;
     return {false, HMM_V3(0, 0, 0), nullptr};
 }
 
@@ -1535,12 +1526,9 @@ RaycastResult raycast_point_to_point(const HMM_Vec3& start_point, const HMM_Vec3
     }
 
     if (hit_found) {
-        std::cout << "point-to-point raycast hit at: (" << closest_point.X << ", " << closest_point.Y << ", " << closest_point.Z << ")" << std::endl;
         return {true, closest_point, hit_obj};
-    } else {
-        std::cout << "point-to-point raycast missed" << std::endl;
-        return {false, HMM_V3(0, 0, 0), nullptr};
     }
+    return {false, HMM_V3(0, 0, 0), nullptr};
 }
 
 // helper function for gltf loading
@@ -1586,15 +1574,15 @@ vector<Object> load_gltf(const std::string& filename) {
     bool res = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
     vector<Object> objects;
 
-    if (!warn.empty()) std::cout << "WARN: " << warn << std::endl;
-    if (!err.empty()) std::cout << "ERR: " << err << std::endl;
+    if (!warn.empty()) wprint("GLTF WARN: " + warn);
+    if (!err.empty()) wprint("GLTF ERROR: " + err);
     if (!res) {
-        std::cout << "Failed to load GLTF: " << filename << std::endl;
+        eprint("Failed to load GLB from path " + filename);
         return vector<Object>();
     }
 
     auto loadTexture = [&](int textureIndex) -> std::pair<uint8_t*, sg_image_desc> {
-        cout << "loading texture" << endl;
+        iprint("loading texture");
         if (textureIndex < 0 || textureIndex >= model.textures.size()) {
             return {nullptr, {}};
         }
@@ -1608,7 +1596,6 @@ vector<Object> load_gltf(const std::string& filename) {
         uint8_t* texture_data = nullptr;
 
         auto flip_tex_vertically_local = [&](unsigned char* data, int width, int height, int channels) -> void {
-            cout << "flipping texture vertically" << endl;
             int row_size = width * channels;
             unsigned char* temp_row = new unsigned char[row_size];
             for (int y = 0; y < height / 2; ++y) {
@@ -1622,7 +1609,6 @@ vector<Object> load_gltf(const std::string& filename) {
         };
 
         auto expand_to_rgba = [&](const unsigned char* src, int w, int h, int channels)->std::pair<uint8_t*, size_t> {
-            cout << "expanding to rgba" << endl;
             const size_t out_pixels = (size_t)w * (size_t)h;
             size_t out_size = out_pixels * 4;
             uint8_t* out = new uint8_t[out_size];
@@ -1653,7 +1639,6 @@ vector<Object> load_gltf(const std::string& filename) {
                     img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
                     img_desc.data.subimage[0][0].ptr = texture_data;
                     img_desc.data.subimage[0][0].size = data_size;
-                    cout << "set 4 channel texture data" << endl;
                 } else {
                     const unsigned char* src = image.image.data();
                     auto [expanded, expanded_size] = expand_to_rgba(src, w, h, channels);
@@ -1664,7 +1649,6 @@ vector<Object> load_gltf(const std::string& filename) {
                     img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
                     img_desc.data.subimage[0][0].ptr = texture_data;
                     img_desc.data.subimage[0][0].size = expanded_size;
-                    cout << "setting other channel number data?" << endl;
                 }
             } else {
                 return {nullptr, {}};
@@ -1673,7 +1657,7 @@ vector<Object> load_gltf(const std::string& filename) {
             std::string base_dir = filename.substr(0, filename.find_last_of("/\\") + 1);
             std::string full_path = base_dir + image.uri;
 
-            cout << "loading texture from path" << endl;
+            iprint("GLB texture loading from path " + full_path);
 
             int img_width = 0, img_height = 0, num_channels = 0;
             const int desired_channels = 4;
@@ -1694,15 +1678,14 @@ vector<Object> load_gltf(const std::string& filename) {
             const auto& bufferView = model.bufferViews[image.bufferView];
             const auto& buffer = model.buffers[bufferView.buffer];
 
-            cout << "something to do with bufferviews idk" << endl;
+            iprint("GLB texture loading from file");
 
             const uint8_t* data = buffer.data.data() + bufferView.byteOffset;
             size_t data_size = bufferView.byteLength;
 
             int img_width = 0, img_height = 0, num_channels = 0;
             const int desired_channels = 4;
-            stbi_uc* pixels = stbi_load_from_memory(data, static_cast<int>(data_size),
-                                                  &img_width, &img_height, &num_channels, desired_channels);
+            stbi_uc* pixels = stbi_load_from_memory(data, static_cast<int>(data_size), &img_width, &img_height, &num_channels, desired_channels);
 
             if (pixels) {
                 img_desc.width = img_width;
@@ -1720,7 +1703,6 @@ vector<Object> load_gltf(const std::string& filename) {
             }
         }
 
-        cout << "returning texture data" << endl;
         return {texture_data, img_desc};
     };
 
@@ -1861,7 +1843,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->base_color_image_desc.data.subimage[0]->size = mat->base_color_image_data_size;
                 mat->base_color_image = validate_and_make_image(&mat->base_color_image_desc, "base_color");
                 mat->has_color_texture = true;
-                cout << "No base color image in GLTF, loading default values" << endl;
+                iprint("no base color image in GLTF, loading default values");
             }
 
             if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
@@ -1887,7 +1869,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->metallic_roughness_image_desc.data.subimage[0]->size = mat->metallic_roughness_image_data_size;
                 mat->metallic_roughness_image = validate_and_make_image(&mat->metallic_roughness_image_desc, "mr_image");
                 mat->has_metallic_roughness_texture = true;
-                cout << "No metallic roughness image in GLTF, loading default values" << endl;
+                iprint("no metallic roughness image in GLTF, loading default values");
             }
 
             if (material.normalTexture.index >= 0) {
@@ -1913,7 +1895,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->normal_texture_desc.data.subimage[0]->size = mat->normal_texture_data_size;
                 mat->normal_image = validate_and_make_image(&mat->normal_texture_desc, "normal_image");
                 mat->has_normal_texture = true;
-                cout << "No normal texture in GLTF, loading default values" << endl;
+                iprint("no normal texture in GLTF, loading default values");
             }
 
             if (material.emissiveTexture.index >= 0) {
@@ -1939,7 +1921,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->emissive_image_desc.data.subimage[0]->size = mat->emissive_image_data_size;
                 mat->emissive_image = validate_and_make_image(&mat->emissive_image_desc, "normal_image");
                 mat->has_emissive_texture = true;
-                cout << "No emissive texture in GLTF, loading default values" << endl;
+                iprint("no emissive texture in GLTF, loading default values");
             }
         }
 
@@ -2012,87 +1994,10 @@ vector<Object> load_gltf(const std::string& filename) {
     return objects;
 }
 
-/*bool load_obj(
-    const std::string& filename,
-    float** out_vertices,
-    uint32_t* out_vertex_count,
-    uint32_t** out_indices,
-    uint32_t* out_index_count
-) {
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
-
-    *out_vertices = nullptr;
-    *out_vertex_count = 0;
-    *out_indices = nullptr;
-    *out_index_count = 0;
-
-    bool ok = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename.c_str(), nullptr, true);
-    if (!warn.empty()) std::cout << "WARN: " << warn << "\n";
-    if (!err.empty())  std::cerr << "ERR: " << err << "\n";
-    if (!ok)          return false;
-
-    std::vector<float> vertices;
-    std::vector<uint32_t> indices;
-    std::map<std::tuple<int, int, int>, uint32_t> vertex_index_map;
-
-    for (const auto& shape : shapes) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            int fv = shape.mesh.num_face_vertices[f];
-            for (size_t v = 0; v < fv; v++) {
-                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
-                auto key = std::make_tuple(idx.vertex_index, idx.normal_index, idx.texcoord_index);
-
-                if (auto it = vertex_index_map.find(key); it != vertex_index_map.end()) {
-                    indices.push_back(it->second);
-                } else {
-                    float px = attrib.vertices[3 * idx.vertex_index + 0];
-                    float py = attrib.vertices[3 * idx.vertex_index + 1];
-                    float pz = attrib.vertices[3 * idx.vertex_index + 2];
-
-                    float nx = 0.0f, ny = 0.0f, nz = 0.0f;
-                    if (idx.normal_index >= 0) {
-                        nx = attrib.normals[3 * idx.normal_index + 0];
-                        ny = attrib.normals[3 * idx.normal_index + 1];
-                        nz = attrib.normals[3 * idx.normal_index + 2];
-                    }
-
-                    float u = 0.0f, v_ = 0.0f;
-                    if (idx.texcoord_index >= 0) {
-                        u = attrib.texcoords[2 * idx.texcoord_index + 0];
-                        v_ = attrib.texcoords[2 * idx.texcoord_index + 1];
-                    }
-
-                    vertices.insert(vertices.end(), {px, py, pz, nx, ny, nz, u, v_});
-                    uint32_t new_index = static_cast<uint32_t>(vertex_index_map.size());
-                    vertex_index_map[key] = new_index;
-                    indices.push_back(new_index);
-                }
-            }
-            index_offset += fv;
-        }
-    }
-
-    const size_t vertex_data_size = vertices.size() * sizeof(float);
-    *out_vertices = new float[vertices.size()];
-    memcpy(*out_vertices, vertices.data(), vertex_data_size);
-    *out_vertex_count = static_cast<uint32_t>(vertices.size() / 8);
-
-    const size_t index_data_size = indices.size() * sizeof(uint32_t);
-    *out_indices = new uint32_t[indices.size()];
-    memcpy(*out_indices, indices.data(), index_data_size);
-    *out_index_count = static_cast<uint32_t>(indices.size());
-
-    return true;
-}*/
-
 void print_fmod_error(FMOD_RESULT result) {
     if (result != FMOD_OK)
     {
-        printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+        eprint("FMOD error: " + to_string(result) + "; " + to_string(*FMOD_ErrorString(result)));
         exit(-1);
     }
 }
@@ -2431,10 +2336,10 @@ void save_scene(const string& path) {
         if (file.is_open()) {
             file.write(reinterpret_cast<const char*>(compressed_data.data()), compressed_size);
             file.close();
-            std::cout << "Compressed scene saved to: " << path << std::endl;
-            std::cout << "Original size: " << json_str.length() << " bytes" << std::endl;
-            std::cout << "Compressed size: " << compressed_size << " bytes" << std::endl;
-            std::cout << "Compression ratio: " << (float)compressed_size / json_str.length() * 100 << "%" << std::endl;
+            iprint("scene saved to:     " + path);
+            iprint("original size:      " + to_string(json_str.length()) + " bytes");
+            iprint("compressed size:    " + to_string(compressed_size) + " bytes");
+            iprint("compression ratio:  " + to_string(static_cast<float>(compressed_size) / json_str.length() * 100) + "%");
         }
     }
 }
@@ -2442,7 +2347,7 @@ void save_scene(const string& path) {
 void load_scene(const string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        std::cerr << "Failed to open compressed file: " << path << std::endl;
+        eprint("failed to open scene from path: " + path);
         return;
     }
 
@@ -2451,7 +2356,7 @@ void load_scene(const string& path) {
 
     std::vector<Bytef> compressed_data(compressed_size);
     if (!file.read(reinterpret_cast<char*>(compressed_data.data()), compressed_size)) {
-        std::cerr << "Failed to read compressed data" << std::endl;
+        eprint("failed to read compressed data");
         return;
     }
     file.close();
@@ -2468,7 +2373,7 @@ void load_scene(const string& path) {
     }
 
     if (result != Z_OK) {
-        std::cerr << "Decompression failed with error: " << result << std::endl;
+        eprint("decompression failed with error: " + to_string(result));
         return;
     }
 
@@ -2771,7 +2676,7 @@ void load_scene(const string& path) {
         state.ambient_light = HMM_V3(ambient[0], ambient[1], ambient[2]);
     }
 
-    std::cout << "Compressed scene loaded from: " << path << std::endl;
+    iprint("scene loaded from: " + path);
 }
 
 Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME NAME
@@ -4089,7 +3994,7 @@ void fetch_callback(const sfetch_response_t* response) {
     } else if (response->failed) {
         state.pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
         state.pass_action.colors[0].clear_value = { 1.0f, 0.0f, 0.0f, 1.0f };
-        std::cout << "ohhh no, failed to fetch the texture =(" << std::endl;
+        eprint("failed to fetch image in fetch_callback");
     }
     texture_index++;
 }
