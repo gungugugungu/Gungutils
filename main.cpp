@@ -13,6 +13,16 @@ bool show_jeff = false;
 AnimationPlayer anim_player;
 Animation animation;
 
+class RotateComponent : public Component {
+public:
+    void update(Object* owner) override {
+        owner->position.Y += 1.0*time_state.dt;
+    }
+    std::unique_ptr<Component> clone() const override {
+        return std::make_unique<RotateComponent>(*this);
+    }
+};
+
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
     //SDL_HideCursor();
@@ -35,6 +45,10 @@ void init() {
     load_scene("maps/cottage.gmap");
 
     load_skybox("skybox.png");
+
+    for (auto& obj : get_objects_by_script_id(2)) {
+        obj->add_component<RotateComponent>();
+    }
 }
 
 void frame() {

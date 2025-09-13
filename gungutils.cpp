@@ -22,6 +22,8 @@
 #include <memory>
 #include <functional>
 #include <fstream>
+#include <typeindex>
+#include <unordered_map>
 #include "imgui/imgui.h"
 #include "implot/implot.h"
 #include "ImGuizmo/ImGuizmo.h"
@@ -55,7 +57,6 @@
 #include "utils/Log.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
-#include "utils/Component.h"
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
 #include "rendering/Skybox.h"
@@ -3794,6 +3795,12 @@ void _frame() {
     ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
     ssao_params.u_near = camera_near;
     ssao_params.u_far = camera_far;
+
+    for (auto& vg : vis_groups) {
+        for (auto& obj : vg.objects) {
+            obj.update_components();
+        }
+    }
 
     render_first_pass();
     render_second_pass();
