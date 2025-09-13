@@ -149,7 +149,7 @@ void main() {
     vec3 mr = texture(metallic_roughness_texture2D, TexCoord).rgb;
     float ao = mr.r;
     float roughness = max(mr.g, 0.04);
-    float metallic = max(mr.b, 0.04);
+    float metallic = mr.b;
     vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz;
     vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
@@ -158,17 +158,21 @@ void main() {
 
     const float AMBIENT_STRENGTH = 0.35;
     vec3 ambient_col = ambient_color.xyz;
-    vec3 ambientTerm = ambient_col * AMBIENT_STRENGTH * albedo * ao;
+    vec3 ambientTerm = ambient_col * AMBIENT_STRENGTH * albedo * ao * (1.0 - metallic);
 
     vec3 V = normalize(camera_pos.xyz - vWorldPos);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = vec3(0.0);
 
+    vec3 F0_die = vec3(0.04);
+    vec3 F0_metal = albedo;
+
     float shadow = 0.0;
     if (light_amount > 0 && light_types_packed[0][0] == 0) {
         shadow = calculateShadow(vShadowCoord);
     }
+
     for (int i = 0; i < light_amount; i++) {
         int idx = i >> 2;
         int comp = i & 3;
@@ -229,18 +233,22 @@ void main() {
 
             float D = DistributionGGX(NdotH, roughness);
             float G = GeometrySmith(NdotV, NdotL, roughness);
-            vec3 F = fresnelSchlick(HdotV, F0);
 
-            float denom = 4.0 * NdotL * NdotV + 0.001;
-            vec3 specular = D * G * F / max(denom, 0.001);
+            vec3 F_die = fresnelSchlick(HdotV, F0_die);
+            vec3 F_metal = fresnelSchlick(HdotV, F0_metal);
 
-            vec3 kS = F;
-            vec3 kD = vec3(1.0) - kS;
-            kD *= 1.0 - metallic;
+            vec3 specular_die = D * G * F_die / max(4.0 * NdotL * NdotV, 0.001);
+            vec3 specular_metal = D * G * F_metal / max(4.0 * NdotL * NdotV, 0.001);
 
-            vec3 diffuse = (kD * albedo / PI);
+            vec3 kD_die = vec3(1.0) - F_die;
+            vec3 diffuse_die = kD_die * albedo / PI;
 
-            Lo += (diffuse + specular) * lightColor * NdotL * atten * thisShadow;
+            vec3 die_term = diffuse_die + specular_die;
+            vec3 metal_term = specular_metal;
+
+            vec3 radiance = (die_term * (1.0 - metallic) + metal_term * metallic) * lightColor * NdotL * atten * thisShadow;
+
+            Lo += radiance;
         }
     }
 
@@ -250,9 +258,13 @@ void main() {
     vec3 skyboxReflection = texture(skybox_textureCube, R).rgb;
 
     float NdotV = max(dot(N, V), 0.0);
-    vec3 F_reflection = fresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 F_die_refl = fresnelSchlickRoughness(NdotV, F0_die, roughness);
+    vec3 F_metal_refl = fresnelSchlickRoughness(NdotV, F0_metal, roughness);
 
-    vec3 reflectionContribution = skyboxReflection * F_reflection * (1.0 - roughness);
+    vec3 reflection_die = skyboxReflection * F_die_refl * (1.0 - roughness);
+    vec3 reflection_metal = skyboxReflection * F_metal_refl * (1.0 - roughness);
+
+    vec3 reflectionContribution = (1.0 - metallic) * reflection_die + metallic * reflection_metal;
 
     vec3 finalRgb = albedo;
     if (venable_shading == 1) {
@@ -260,8 +272,6 @@ void main() {
     }
 
     FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity)+vec4(emissive_tex_color, 0.0f);
-
-    // TODO: ffs man fix pbr already
 }
 @end
 
