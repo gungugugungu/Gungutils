@@ -548,7 +548,7 @@ void prepare_mesh_buffers(Object& object) {
             }
         }
 
-        iprint("meshoptimizer: original verts=" + to_string(vertex_count) + " -> new verts=" + to_string(mesh.vertex_count) + ", indices=" + to_string(index_count) + ", 16bit=" + to_string(*(mesh.use_uint16_indices ? "yes" : "no")));
+        iprint("original verts=" + to_string(vertex_count) + " -> new verts=" + to_string(mesh.vertex_count) + ", indices=" + to_string(index_count));
     };
 
     if (object.mesh) {
@@ -2712,9 +2712,8 @@ sg_image editor_specular_display_image;
 sg_sampler editor_specular_display_sampler;
 
 void render_editor() {
-    std::vector<sg_view> temp_editor_views;
-
     if (state.editor_open) {
+        std::vector<sg_view> temp_editor_views;
         ImGuizmo::SetOrthographic(false);
         ImGuizmo::BeginFrame();
 
@@ -3376,6 +3375,22 @@ void render_editor() {
             }
         }
 
+        if (ImGui::CollapsingHeader("LOGS")) {
+            ImGui::BeginChild("LOGS", ImVec2(600, 200), true);
+            for (int i = 0; i < MAX_LOGS; i++) {
+                if (logs[i].text.length() > 0) {
+                    if (logs[i].type == LogType::ERROR) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), logs[i].text.c_str());
+                    } else if (logs[i].type == LogType::WARNING) {
+                        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), logs[i].text.c_str());
+                    } else {
+                        ImGui::Text(logs[i].text.c_str());
+                    }
+                }
+            }
+            ImGui::EndChild();
+        }
+
         ImGui::End();
 
         if (selected_object_index != -1 && selected_mesh_visgroup != -1) {
@@ -3403,10 +3418,10 @@ void render_editor() {
                 }
             }
         }
-    }
-    simgui_render();
-    for (auto& view : temp_editor_views) {
-        sg_destroy_view(view);
+        simgui_render();
+        for (auto& view : temp_editor_views) {
+            sg_destroy_view(view);
+        }
     }
 }
 
@@ -3464,8 +3479,6 @@ void _init() {
     simgui_desc_t imgui_desc = {};
     simgui_setup(imgui_desc);
     ImPlot::CreateContext();
-    //ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // FMOD
     FMOD_RESULT result;
