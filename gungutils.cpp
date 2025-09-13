@@ -2712,6 +2712,7 @@ sg_image editor_display_image;
 sg_sampler editor_display_sampler;
 sg_image editor_specular_display_image;
 sg_sampler editor_specular_display_sampler;
+ImGuizmo::OPERATION current_gizmo_operation = ImGuizmo::TRANSLATE;
 
 void render_editor() {
     if (state.editor_open) {
@@ -2722,7 +2723,6 @@ void render_editor() {
         ImGuiIO& io = ImGui::GetIO();
         ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 
-        static ImGuizmo::OPERATION current_gizmo_operation = ImGuizmo::TRANSLATE;
         static ImGuizmo::MODE current_gizmo_mode = ImGuizmo::WORLD;
 
         if (grid_visible) ImGuizmo::DrawGrid(&vs_params.view.Elements[0][0], &vs_params.projection.Elements[0][0], HMM_M4D(1.0f).Elements[0], 100.f);
@@ -3021,8 +3021,6 @@ void render_editor() {
                     if (ImGui::Button("RE-PREPARE BUFFERS")) {
                         prepare_mesh_buffers(*selected_object);
                     }
-                    ImGui::SameLine();
-                    ImGui::Text("This wastes memory");
                     if (ImGui::Button("DELETE")) {
                         vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
                         selected_object_index = -1;
@@ -3806,7 +3804,7 @@ void _frame() {
     render_second_pass();
 
     // input
-    if (state.editor_open) {
+    if (state.editor_open && state.rmb) {
         float camera_speed = 5.f * time_state.dt;
         if (state.inputs[SDLK_W] == true) {
             HMM_Vec3 offset = HMM_MulV3F(state.camera_front, camera_speed);
@@ -3960,8 +3958,19 @@ void _event(SDL_Event* e) {
                 SDL_HideCursor();
             }
         }
-        if (e->key.key == SDLK_SPACE && state.editor_open) {
-            render_shadow_pass();
+        if (state.editor_open && !state.rmb) {
+            if (e->key.key == SDLK_G) {
+                current_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
+            }
+            if (e->key.key == SDLK_R) {
+                current_gizmo_operation = ImGuizmo::OPERATION::ROTATE;
+            }
+            if (e->key.key == SDLK_S) {
+                current_gizmo_operation = ImGuizmo::OPERATION::SCALE;
+            }
+            /*if (e->key.key == SDLK_F) {
+                current_gizmo_operation = ImGuizmo::OPERATION::BOUNDS;
+            }*/ // TODO: this bs
         }
     }
     if (e->type == SDL_EVENT_KEY_UP) {
