@@ -5,12 +5,21 @@
 #ifndef OBJECT_H
 #define OBJECT_H
 
+class Object;
+
+class Component {
+public:
+    void update(Object* owner);
+    void destroy(Object* owner);
+};
+
 class Object {
 public:
     HMM_Vec3 position{0,0,0};
     HMM_Quat rotation{0,0,0,1};
     HMM_Vec3 scale{1,1,1};
     float opacity = 1.0f;
+
 
     Mesh* mesh;
 
@@ -22,8 +31,30 @@ public:
 
     int script_id = -1;
 
+    std::vector<Component> components;
+
     void select_shape_key(int index) {
         mesh = shape_keys[index];
+    }
+
+    void add_component(Component component) {
+        components.emplace_back(component);
+    }
+
+    void update_components() {
+        for (auto c : components) {
+            c.update(this);
+        }
+    }
+
+    void remove_component(Component component) {
+        for (auto& component : components) {
+            if (memcmp(&component, &component, sizeof(Component))) {
+                component.destroy(this);
+                break;
+            }
+        }
+        components.erase(std::remove(components.begin(), components.end(), component), components.end());
     }
 
     void initialize_bounds() {

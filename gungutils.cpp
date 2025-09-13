@@ -55,6 +55,7 @@
 #include "utils/Log.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
+#include "utils/Component.h"
 #include "rendering/Object.h"
 #include "rendering/VisGroup.h"
 #include "rendering/Skybox.h"
@@ -3389,6 +3390,7 @@ void render_editor() {
                 }
             }
             ImGui::EndChild();
+            // TODO: custom developer commands
         }
 
         ImGui::End();

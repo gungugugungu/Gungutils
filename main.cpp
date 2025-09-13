@@ -34,9 +34,6 @@ void init() {
 
     load_scene("maps/cottage.gmap");
 
-    eprint("Look, an error!");
-    wprint("Oh no this is a warning!!");
-
     load_skybox("skybox.png");
 }
 
