@@ -535,7 +535,7 @@ void prepare_mesh_buffers(Object& object) {
         if (material->has_color_texture) {
             material->base_color_image = validate_and_make_image(&material->base_color_image_desc, "diffuse");
             if (material->base_color_image.id == SG_INVALID_ID) {
-                cerr << "Oh no failed to create diffuse image ohhh noooo" << endl;
+                eprint("failed to create diffuse image");
                 material->has_color_texture = false;
             }
         }
@@ -543,7 +543,7 @@ void prepare_mesh_buffers(Object& object) {
         if (material->has_metallic_roughness_texture) {
             material->metallic_roughness_image = validate_and_make_image(&material->metallic_roughness_image_desc, "specular");
             if (material->metallic_roughness_image.id == SG_INVALID_ID) {
-                cerr << "Oh no failed to create specualr image ohhh noooo" << endl;
+                eprint("failed to create specular image");
                 material->has_metallic_roughness_texture = false;
             }
         }
@@ -551,7 +551,7 @@ void prepare_mesh_buffers(Object& object) {
         if (material->has_normal_texture) {
             material->normal_image = validate_and_make_image(&material->normal_texture_desc, "normal");
             if (material->normal_image.id == SG_INVALID_ID) {
-                cerr << "Oh no failed to create normal image ohhh noooo" << endl;
+                eprint("failed to create normal image");
                 material->has_normal_texture = false;
             }
         }
@@ -559,7 +559,7 @@ void prepare_mesh_buffers(Object& object) {
         if (material->has_emissive_texture) {
             material->emissive_image = validate_and_make_image(&material->emissive_image_desc, "emissive");
             if (material->emissive_image.id == SG_INVALID_ID) {
-                cerr << "You won't believe what happened to the emissive image during buffer preparation" << endl;
+                eprint("failed to create emissive image");
                 material->has_emissive_texture = false;
             }
         }
@@ -929,7 +929,7 @@ void render_meshes() {
             } else {
                 state.bind.views[0] = { .id = SG_INVALID_ID };
                 state.bind.samplers[0] = { .id = SG_INVALID_ID };
-                cerr << "Invalid diffuse texture view while rendering" << endl;
+                eprint("invalid diffuse texture view while rendering");
             }
 
             if (g.specular_view.id != SG_INVALID_ID) {
@@ -938,7 +938,7 @@ void render_meshes() {
             } else {
                 state.bind.views[1] = { .id = SG_INVALID_ID };
                 state.bind.samplers[1] = { .id = SG_INVALID_ID };
-                cerr << "Invalid specular texture view while rendering" << endl;
+                eprint("invalid specular texture view while rendering");
             }
 
             if (g.normal_view.id != SG_INVALID_ID) {
@@ -947,7 +947,7 @@ void render_meshes() {
             } else {
                 state.bind.views[2] = { .id = SG_INVALID_ID };
                 state.bind.samplers[2] = { .id = SG_INVALID_ID };
-                cerr << "Invalid normal texture view while rendering" << endl;
+                eprint("invalid normal texture view while rendering");
             }
 
             if (g.emissive_view.id != SG_INVALID_ID) {
@@ -956,7 +956,7 @@ void render_meshes() {
             } else {
                 state.bind.views[3] = { .id = SG_INVALID_ID };
                 state.bind.samplers[3] = { .id = SG_INVALID_ID };
-                cerr << "Invalid emissive texture view while rendering" << endl;
+                eprint("invalid emissive texture view while rendering");
             }
 
             state.bind.views[4] = shadow_depth_tex_view;
