@@ -29,7 +29,7 @@ layout(binding = 1) uniform sampler u_depth_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
 #define depth2D sampler2D(u_depth2D, u_depth_smp)
 
-layout(binding = 2) uniform fs_params { // TODO: add post processing into the shader
+layout(binding = 2) uniform pp_params {
     float vignette_strength;
     float vignette_radius;
     vec3 color_tint;
@@ -200,6 +200,17 @@ void main() {
     if (max_diff > outline_trigger_dist) {
         final_color = vec3(0.0, 0.0, 0.0); // outline
     }*/ // removed for now
+
+    final_color *= exp2(exposure);
+    final_color += vec3(brightness);
+    final_color = (final_color - vec3(0.5)) * contrast + vec3(0.5);
+    float luminance = dot(final_color, vec3(0.299, 0.587, 0.114));
+    final_color = mix(vec3(luminance), final_color, saturation);
+    final_color *= color_tint;
+    float dist = length(uv - vec2(0.5));
+    float norm_dist = dist / sqrt(0.5);
+    float vignette_factor = max(0.0, 1.0 - vignette_strength * pow(norm_dist, vignette_radius));
+    final_color *= vignette_factor;
 
     frag_color = vec4(final_color, 1.0);
 }

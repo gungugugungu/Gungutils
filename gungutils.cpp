@@ -137,7 +137,6 @@ struct AppState {
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
     HMM_Vec3 ambient_light = {0.5f, 0.5f, 0.5f};
-
     sg_pipeline surf_pipeline;
     Surface window_surface{};
     vector<ParticleSystem> particle_systems;
@@ -251,6 +250,21 @@ void init_shadowmaps() {
     shadow_pip_desc.cull_mode = SG_CULLMODE_FRONT;
     shadow_pip_desc.label = "shadow-pipeline";
     shadow_pip = sg_make_pipeline(&shadow_pip_desc);
+}
+
+sg_image bloom_img;
+sg_view bloom_att_view = {SG_INVALID_ID};
+sg_view bloom_tex_view = {SG_INVALID_ID};
+sg_sampler bloom_smp;
+float bloom_threshold = 0.9f;
+float bloom_blur_strength = 16.0f;
+sg_pipeline bloom_pip;
+
+void init_bloom() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+
 }
 
 void init_post_processing() {
@@ -3323,6 +3337,16 @@ void render_editor() {
             }
 
             ImGui::EndTabBar();
+        }
+
+        if (ImGui::CollapsingHeader("POST PROCESSING")) {
+            ImGui::SliderFloat("EXPOSURE", &post_state.uniforms.exposure, 0.0f, 10.0f, "%.1f");
+            ImGui::SliderFloat("BRIGHTNESS", &post_state.uniforms.brightness, 0.0f, 10.0f, "%.1f");
+            ImGui::SliderFloat("CONTRAST", &post_state.uniforms.contrast, 0.0f, 10.0f, "%.1f");
+            ImGui::SliderFloat("SATURATION", &post_state.uniforms.saturation, 0.0f, 10.0f, "%.1f");
+            ImGui::SliderFloat("VIGNETTE STRENGTH", &post_state.uniforms.vignette_strength, 0.0f, 10.0f, "%.1f");
+            ImGui::SliderFloat("VIGNETTE RADIUS", &post_state.uniforms.vignette_radius, 0.0f, 10.0f, "%.1f");
+            ImGui::ColorEdit3("TINT", &post_state.uniforms.color_tint.X);
         }
 
         ImGui::Separator();

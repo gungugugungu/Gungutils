@@ -24,17 +24,7 @@ struct PostProcessState {
     sg_sampler rendered_post_sampler;
     sg_sampler rendered_depth_sampler;
 
-    struct PostProcessUniforms {
-        float vignette_strength;
-        float vignette_radius;
-        HMM_Vec3 color_tint;
-        float exposure;
-        float contrast;
-        float brightness;
-        float saturation;
-        float time;
-        float _padding[2];
-    } uniforms;
+    pp_params_t uniforms;
 };
 
 #endif //POST_PROCESSING_H
