@@ -1105,7 +1105,7 @@ void render_shadow_pass() {
 
     HMM_Vec3 extent = HMM_SubV3(max_bounds, min_bounds);
     float max_lateral = std::max(extent.X, extent.Y) * 0.5f;
-    shadow_ortho_size = std::max(50.0f, max_lateral * 1.1f);
+    shadow_ortho_size = std::max(15.0f, max_lateral * 1.1f);
     shadow_far = std::max(100.0f, extent.Z * 1.1f + 50.0f);
 
     HMM_Vec3 center = HMM_MulV3F(HMM_AddV3(min_bounds, max_bounds), 0.5f);
@@ -2108,18 +2108,18 @@ void make_audiosource_by_index(int index) {
 
 void render_visualizers() {
     for (auto& as : state.audio_sources) {
-        draw_billboard(&as_visualizer, as->position, 0.5f);
+        draw_billboard(&as_visualizer, as->position, 0.25f);
     }
     for (auto& light : state.point_lights) {
         light_visualizer.color.XYZ = light.color;
-        draw_billboard(&light_visualizer, light.position, 0.5f);
+        draw_billboard(&light_visualizer, light.position, 0.25f);
     }
     for (auto& light : state.spot_lights) {
         light_visualizer.color.XYZ = light.color;
-        draw_billboard(&light_visualizer, light.position, 0.5f);
+        draw_billboard(&light_visualizer, light.position, 0.25f);
     }
     for (auto& helper : state.helpers) {
-        draw_billboard(&hpr_visualizer, helper->position, 0.5f);
+        draw_billboard(&hpr_visualizer, helper->position, 0.25f);
     }
 }
 
@@ -3968,9 +3968,6 @@ void _event(SDL_Event* e) {
             if (e->key.key == SDLK_S) {
                 current_gizmo_operation = ImGuizmo::OPERATION::SCALE;
             }
-            /*if (e->key.key == SDLK_F) {
-                current_gizmo_operation = ImGuizmo::OPERATION::BOUNDS;
-            }*/ // TODO: this bs
         }
     }
     if (e->type == SDL_EVENT_KEY_UP) {
