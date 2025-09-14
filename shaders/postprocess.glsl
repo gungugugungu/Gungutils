@@ -26,8 +26,11 @@ layout(binding = 0) uniform texture2D u_texture2D;
 layout(binding = 0) uniform sampler u_texture_smp;
 layout(binding = 1) uniform texture2D u_depth2D;
 layout(binding = 1) uniform sampler u_depth_smp;
+layout(binding = 2) uniform texture2D u_bloom2D;
+layout(binding = 2) uniform sampler u_bloom_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
 #define depth2D sampler2D(u_depth2D, u_depth_smp)
+#define bloom2D sampler2D(u_bloom2D, u_bloom_smp)
 
 layout(binding = 2) uniform pp_params {
     float vignette_strength;

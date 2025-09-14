@@ -53,6 +53,7 @@
 #include "shaders/billboard.glsl.h"
 #include "shaders/shadow.glsl.h"
 #include "shaders/skybox.glsl.h"
+#include "shaders/bloom_filter.glsl.h"
 // sources
 #include "utils/Log.h"
 #include "rendering/Material.h"
@@ -253,18 +254,78 @@ void init_shadowmaps() {
 }
 
 sg_image bloom_img;
+sg_image bloom_depth_img;
 sg_view bloom_att_view = {SG_INVALID_ID};
+sg_view bloom_depth_att_view = {SG_INVALID_ID};
 sg_view bloom_tex_view = {SG_INVALID_ID};
+sg_view bloom_depth_tex_view = {SG_INVALID_ID};
 sg_sampler bloom_smp;
-float bloom_threshold = 0.9f;
-float bloom_blur_strength = 16.0f;
+sg_sampler bloom_depth_smp;
+bloom_filter_params_t bloom_params;
 sg_pipeline bloom_pip;
 
 void init_bloom() {
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
 
+    sg_image_desc bloom_img_desc = {};
+    bloom_img_desc.width = w_width;
+    bloom_img_desc.height = w_height;
+    bloom_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    bloom_img_desc.sample_count = 1;
+    bloom_img_desc.usage.color_attachment = true;
+    bloom_img_desc.label = "bloom-render-target";
+    bloom_img = sg_make_image(&bloom_img_desc);
 
+    sg_image_desc bloom_depth_img_desc = {};
+    bloom_depth_img_desc.width = w_width;
+    bloom_depth_img_desc.height = w_height;
+    bloom_depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    bloom_depth_img_desc.sample_count = 1;
+    bloom_depth_img_desc.usage.depth_stencil_attachment = true;
+    bloom_depth_img_desc.label = "bloom-depth-render-target";
+    bloom_depth_img = sg_make_image(&bloom_depth_img_desc);
+
+    sg_sampler_desc bloom_smp_desc = {};
+    bloom_smp_desc.min_filter = SG_FILTER_LINEAR;
+    bloom_smp_desc.mag_filter = SG_FILTER_LINEAR;
+    bloom_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    bloom_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    bloom_smp = sg_make_sampler(&bloom_smp_desc);
+    bloom_depth_smp = sg_make_sampler(&bloom_smp_desc);
+
+    sg_view_desc bloom_att_desc = {};
+    bloom_att_desc.color_attachment.image = bloom_img;
+    bloom_att_view = sg_make_view(&bloom_att_desc);
+
+    sg_view_desc bloom_depth_att_desc = {};
+    bloom_depth_att_desc.depth_stencil_attachment.image = bloom_depth_img;
+    bloom_depth_att_view = sg_make_view(&bloom_depth_att_desc);
+
+    sg_view_desc bloom_tex_desc = {};
+    bloom_tex_desc.texture.image = bloom_img;
+    bloom_tex_view = sg_make_view(&bloom_tex_desc);
+
+    sg_view_desc bloom_depth_tex_desc = {};
+    bloom_depth_tex_desc.texture.image = bloom_depth_img;
+    bloom_depth_tex_view = sg_make_view(&bloom_depth_tex_desc);
+
+    sg_shader bloom_filter_shader = sg_make_shader(bloom_filter_shader_desc(sg_query_backend()));
+    sg_pipeline_desc bloom_pip_desc = {};
+    bloom_pip_desc.shader = bloom_filter_shader;
+    bloom_pip_desc.layout.attrs[ATTR_bloom_filter_position].format = SG_VERTEXFORMAT_FLOAT3;
+    bloom_pip_desc.layout.attrs[ATTR_bloom_filter_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    bloom_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    bloom_pip_desc.color_count = 1;
+    bloom_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    bloom_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    bloom_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    bloom_pip_desc.depth.write_enabled = true;
+    bloom_pip_desc.cull_mode = SG_CULLMODE_NONE;
+    bloom_pip_desc.label = "bloom_pipeline";
+    bloom_pip = sg_make_pipeline(&bloom_pip_desc);
+
+    bloom_params.threshold = 2.0f;
 }
 
 void init_post_processing() {
@@ -307,7 +368,7 @@ void init_post_processing() {
     post_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
     post_pip_desc.depth.write_enabled = true;
     post_pip_desc.cull_mode = SG_CULLMODE_NONE;
-    post_pip_desc.label = "post-process-pipeline";
+    post_pip_desc.label = "post_process_pipeline";
     post_state.post_pipeline = sg_make_pipeline(&post_pip_desc);
 
     sg_sampler_desc smp_desc = {};
@@ -1196,7 +1257,7 @@ void render_shadow_pass() {
     sg_end_pass();
 }
 
-void render_first_pass() {
+void render_offscreen_pass() {
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
 
@@ -1297,7 +1358,44 @@ void render_first_pass() {
     sg_end_pass();
 }
 
-void render_second_pass() {
+void render_bloom_pass() {
+    if (bloom_img.id == SG_INVALID_ID) {
+        eprint("invalid bloom image");
+        return;
+    }
+
+    sg_pass_action offscreen_pass_action = {};
+    offscreen_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    offscreen_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    offscreen_pass_action.depth.clear_value = 1.0f;
+
+    sg_pass pass = {};
+    pass.action = offscreen_pass_action;
+    pass.attachments.colors[0] = bloom_att_view;
+    pass.attachments.depth_stencil = bloom_depth_att_view;
+    pass.label = "offscreen-pass";
+
+    sg_begin_pass(&pass);
+
+    sg_apply_pipeline(bloom_pip);
+
+    sg_bindings bindies;
+    bindies.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    bindies.views[0] = post_state.rendered_color_tex_view;
+    bindies.samplers[0] = post_state.rendered_post_sampler;
+    bindies.views[1] = post_state.rendered_depth_tex_view;
+    bindies.samplers[1] = post_state.rendered_depth_sampler;
+    sg_apply_bindings(&bindies);
+
+    sg_apply_uniforms(UB_bloom_filter_params, SG_RANGE(bloom_params));
+
+    sg_draw(0, 3, 1);
+
+    sg_end_pass();
+}
+
+void render_pp_pass() {
     if (post_state.rendered_color_img.id == SG_INVALID_ID) {
         printf("ERROR: No valid color image from first pass!\n");
         return;
@@ -3366,6 +3464,18 @@ void render_editor() {
             ImGui::SliderFloat("VIGNETTE STRENGTH", &post_state.uniforms.vignette_strength, 0.0f, 10.0f, "%.1f");
             ImGui::SliderFloat("VIGNETTE RADIUS", &post_state.uniforms.vignette_radius, 0.0f, 10.0f, "%.1f");
             ImGui::ColorEdit3("TINT", &post_state.uniforms.color_tint.X);
+            ImGui::Separator();
+            ImGui::Text("BLOOM FILTER TEXTURE:");
+            sg_view_desc bloom_preview_desc = {};
+            bloom_preview_desc.texture.image = bloom_img;
+            sg_view bloom_display_view = sg_make_view(&bloom_preview_desc);
+            if (bloom_display_view.id == SG_INVALID_ID) {
+                ImGui::Text("I don't know how you did this but there's no bloom fitler image");
+            } else {
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
+                ImGui::Image(imtex_id, ImVec2(455, 256));
+                temp_editor_views.push_back(bloom_display_view);
+            }
         }
 
         ImGui::Separator();
@@ -3592,6 +3702,7 @@ void _init() {
     state.pass_action.depth.clear_value = 1.0f;
 
     init_shadowmaps();
+    init_bloom();
     init_post_processing();
 
     // 2d rendering pipeline
@@ -3843,8 +3954,9 @@ void _frame() {
         }
     }
 
-    render_first_pass();
-    render_second_pass();
+    render_offscreen_pass();
+    render_bloom_pass();
+    render_pp_pass();
 
     // input
     if (state.editor_open && state.rmb) {
