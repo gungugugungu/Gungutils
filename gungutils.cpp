@@ -1359,6 +1359,54 @@ void render_offscreen_pass() {
 }
 
 void render_bloom_pass() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    if (bloom_img.id == SG_INVALID_ID) {
+        if (bloom_img.id != SG_INVALID_ID) {
+            sg_destroy_view(bloom_att_view);
+            sg_destroy_view(bloom_depth_att_view);
+            sg_destroy_view(bloom_tex_view);
+            sg_destroy_view(bloom_depth_tex_view);
+            sg_destroy_image(bloom_img);
+            sg_destroy_image(bloom_depth_img);
+        }
+
+        sg_image_desc bloom_img_desc = {};
+        bloom_img_desc.width = w_width;
+        bloom_img_desc.height = w_height;
+        bloom_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+        bloom_img_desc.sample_count = 1;
+        bloom_img_desc.usage.color_attachment = true;
+        bloom_img_desc.label = "bloom-render-target";
+        bloom_img = sg_make_image(&bloom_img_desc);
+
+        sg_image_desc bloom_depth_img_desc = {};
+        bloom_depth_img_desc.width = w_width;
+        bloom_depth_img_desc.height = w_height;
+        bloom_depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+        bloom_depth_img_desc.sample_count = 1;
+        bloom_depth_img_desc.usage.depth_stencil_attachment = true;
+        bloom_depth_img_desc.label = "bloom-depth-render-target";
+        bloom_depth_img = sg_make_image(&bloom_depth_img_desc);
+
+        sg_view_desc bloom_att_desc = {};
+        bloom_att_desc.color_attachment.image = bloom_img;
+        bloom_att_view = sg_make_view(&bloom_att_desc);
+
+        sg_view_desc bloom_depth_att_desc = {};
+        bloom_depth_att_desc.depth_stencil_attachment.image = bloom_depth_img;
+        bloom_depth_att_view = sg_make_view(&bloom_depth_att_desc);
+
+        sg_view_desc bloom_tex_desc = {};
+        bloom_tex_desc.texture.image = bloom_img;
+        bloom_tex_view = sg_make_view(&bloom_tex_desc);
+
+        sg_view_desc bloom_depth_tex_desc = {};
+        bloom_depth_tex_desc.texture.image = bloom_depth_img;
+        bloom_depth_tex_view = sg_make_view(&bloom_depth_tex_desc);
+    }
+
     if (bloom_img.id == SG_INVALID_ID) {
         eprint("invalid bloom image");
         return;
