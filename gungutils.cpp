@@ -54,6 +54,7 @@
 #include "shaders/shadow.glsl.h"
 #include "shaders/skybox.glsl.h"
 #include "shaders/bloom_filter.glsl.h"
+#include "shaders/bloom_blur.glsl.h"
 // sources
 #include "utils/Log.h"
 #include "rendering/Material.h"
@@ -262,7 +263,12 @@ sg_view bloom_depth_tex_view = {SG_INVALID_ID};
 sg_sampler bloom_smp;
 sg_sampler bloom_depth_smp;
 bloom_filter_params_t bloom_params;
-sg_pipeline bloom_pip;
+struct {
+    float strength;
+    int type;
+} bloom_blur_params;
+sg_pipeline bloom_filter_pip;
+sg_pipeline bloom_blur_pip;
 
 void init_bloom() {
     int w_width, w_height;
@@ -323,9 +329,12 @@ void init_bloom() {
     bloom_pip_desc.depth.write_enabled = true;
     bloom_pip_desc.cull_mode = SG_CULLMODE_NONE;
     bloom_pip_desc.label = "bloom_pipeline";
-    bloom_pip = sg_make_pipeline(&bloom_pip_desc);
+    bloom_filter_pip = sg_make_pipeline(&bloom_pip_desc);
+    bloom_pip_desc.shader = sg_make_shader(bloom_blur_shader_desc(sg_query_backend()));
+    bloom_blur_pip = sg_make_pipeline(&bloom_pip_desc);
 
-    bloom_params.threshold = 2.0f;
+    bloom_params.threshold = 1.5f;
+    bloom_blur_params.strength = 1.5f;
 }
 
 void init_post_processing() {
@@ -1418,6 +1427,12 @@ void render_bloom_pass() {
     offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     offscreen_pass_action.depth.clear_value = 1.0f;
 
+    sg_pass_action blur_pass_action = {};
+    blur_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    blur_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    blur_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    blur_pass_action.depth.clear_value = 1.0f;
+
     sg_pass pass = {};
     pass.action = offscreen_pass_action;
     pass.attachments.colors[0] = bloom_att_view;
@@ -1426,7 +1441,7 @@ void render_bloom_pass() {
 
     sg_begin_pass(&pass);
 
-    sg_apply_pipeline(bloom_pip);
+    sg_apply_pipeline(bloom_filter_pip);
 
     sg_bindings bindies;
     bindies.vertex_buffers[0] = {.id = SG_INVALID_ID};
@@ -1440,6 +1455,24 @@ void render_bloom_pass() {
 
     sg_draw(0, 3, 1);
 
+    sg_end_pass();
+
+    pass.action = blur_pass_action;
+    sg_begin_pass(&pass); // horizontal blur
+    sg_apply_pipeline(bloom_blur_pip);
+    sg_bindings blur_binds;
+    blur_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    blur_binds.views[0] = bloom_tex_view;
+    blur_binds.samplers[0] = bloom_smp;
+    sg_apply_bindings(&blur_binds);
+    bloom_blur_params.type = 0;
+    sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
+    sg_end_pass();
+    sg_begin_pass(&pass); // vertical blur
+    sg_apply_pipeline(bloom_blur_pip);
+    sg_apply_bindings(&blur_binds);
+    bloom_blur_params.type = 1;
+    sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
     sg_end_pass();
 }
 
@@ -1473,7 +1506,7 @@ void render_pp_pass() {
 
     sg_apply_pipeline(post_state.post_pipeline);
 
-    post_state.uniforms.time = (float)stm_sec(stm_now());
+    post_state.uniforms.time = stm_sec(stm_now());
 
     post_state.post_bindings.vertex_buffers[0] = {.id = SG_INVALID_ID};
     post_state.post_bindings.views[0] = post_state.rendered_color_tex_view;
