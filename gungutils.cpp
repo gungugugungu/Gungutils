@@ -2340,6 +2340,14 @@ void save_scene(const string& path) {
 
     j["ambient"] = {state.ambient_light.X, state.ambient_light.Y, state.ambient_light.Z};
 
+    j["pp_exposure"] = post_state.uniforms.exposure;
+    j["pp_brightness"] = post_state.uniforms.brightness;
+    j["pp_contrast"] = post_state.uniforms.contrast;
+    j["pp_saturation"] = post_state.uniforms.saturation;
+    j["pp_vignette_strength"] = post_state.uniforms.vignette_strength;
+    j["pp_vignette_radius"] = post_state.uniforms.vignette_radius;
+    j["pp_color_tint"] = {post_state.uniforms.color_tint.X, post_state.uniforms.color_tint.Y, post_state.uniforms.color_tint.Z};
+
     std::string json_str = j.dump();
 
     uLongf compressed_size = compressBound(json_str.length());
@@ -2690,6 +2698,17 @@ void load_scene(const string& path) {
     if (j.contains("ambient")) {
         auto ambient = j["ambient"];
         state.ambient_light = HMM_V3(ambient[0], ambient[1], ambient[2]);
+    }
+
+    if (j.contains("pp_exposure")) post_state.uniforms.exposure = j["pp_exposure"];
+    if (j.contains("pp_brightness")) post_state.uniforms.brightness = j["pp_brightness"];
+    if (j.contains("pp_contrast")) post_state.uniforms.contrast = j["pp_contrast"];
+    if (j.contains("pp_saturation")) post_state.uniforms.saturation = j["pp_saturation"];
+    if (j.contains("pp_vignette_strength")) post_state.uniforms.vignette_strength = j["pp_vignette_strength"];
+    if (j.contains("pp_vignette_radius")) post_state.uniforms.vignette_radius = j["pp_vignette_radius"];
+    if (j.contains("pp_color_tint")) {
+        auto tint = j["pp_color_tint"];
+        post_state.uniforms.color_tint = HMM_V3(tint[0], tint[1], tint[2]);
     }
 
     iprint("scene loaded from: " + path);
