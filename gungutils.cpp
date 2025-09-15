@@ -269,6 +269,14 @@ struct {
 } bloom_blur_params;
 sg_pipeline bloom_filter_pip;
 sg_pipeline bloom_blur_pip;
+sg_image bloom_blur_img;
+sg_image bloom_blur_depth_img;
+sg_view bloom_blur_att_view = {SG_INVALID_ID};
+sg_view bloom_blur_depth_att_view = {SG_INVALID_ID};
+sg_view bloom_blur_tex_view = {SG_INVALID_ID};
+sg_view bloom_blur_depth_tex_view = {SG_INVALID_ID};
+sg_sampler bloom_blur_smp;
+sg_sampler bloom_blur_depth_smp;
 
 void init_bloom() {
     int w_width, w_height;
@@ -282,6 +290,7 @@ void init_bloom() {
     bloom_img_desc.usage.color_attachment = true;
     bloom_img_desc.label = "bloom-render-target";
     bloom_img = sg_make_image(&bloom_img_desc);
+    bloom_blur_img = sg_make_image(&bloom_img_desc);
 
     sg_image_desc bloom_depth_img_desc = {};
     bloom_depth_img_desc.width = w_width;
@@ -291,6 +300,7 @@ void init_bloom() {
     bloom_depth_img_desc.usage.depth_stencil_attachment = true;
     bloom_depth_img_desc.label = "bloom-depth-render-target";
     bloom_depth_img = sg_make_image(&bloom_depth_img_desc);
+    bloom_blur_depth_img = sg_make_image(&bloom_depth_img_desc);
 
     sg_sampler_desc bloom_smp_desc = {};
     bloom_smp_desc.min_filter = SG_FILTER_LINEAR;
@@ -299,22 +309,39 @@ void init_bloom() {
     bloom_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     bloom_smp = sg_make_sampler(&bloom_smp_desc);
     bloom_depth_smp = sg_make_sampler(&bloom_smp_desc);
+    bloom_blur_smp = sg_make_sampler(&bloom_smp_desc);
 
     sg_view_desc bloom_att_desc = {};
     bloom_att_desc.color_attachment.image = bloom_img;
     bloom_att_view = sg_make_view(&bloom_att_desc);
 
+    sg_view_desc bloom_blur_att_desc = {};
+    bloom_blur_att_desc.color_attachment.image = bloom_blur_img;
+    bloom_blur_att_view = sg_make_view(&bloom_blur_att_desc);
+
     sg_view_desc bloom_depth_att_desc = {};
     bloom_depth_att_desc.depth_stencil_attachment.image = bloom_depth_img;
     bloom_depth_att_view = sg_make_view(&bloom_depth_att_desc);
+
+    sg_view_desc bloom_blur_depth_att_desc = {};
+    bloom_blur_depth_att_desc.depth_stencil_attachment.image = bloom_blur_depth_img;
+    bloom_blur_depth_att_view = sg_make_view(&bloom_blur_depth_att_desc);
 
     sg_view_desc bloom_tex_desc = {};
     bloom_tex_desc.texture.image = bloom_img;
     bloom_tex_view = sg_make_view(&bloom_tex_desc);
 
+    sg_view_desc bloom_blur_tex_desc = {};
+    bloom_blur_tex_desc.texture.image = bloom_blur_img;
+    bloom_blur_tex_view = sg_make_view(&bloom_blur_tex_desc);
+
     sg_view_desc bloom_depth_tex_desc = {};
     bloom_depth_tex_desc.texture.image = bloom_depth_img;
     bloom_depth_tex_view = sg_make_view(&bloom_depth_tex_desc);
+
+    sg_view_desc bloom_blur_depth_tex_desc = {};
+    bloom_blur_depth_tex_desc.texture.image = bloom_blur_depth_img;
+    bloom_blur_depth_tex_view = sg_make_view(&bloom_blur_depth_tex_desc);
 
     sg_shader bloom_filter_shader = sg_make_shader(bloom_filter_shader_desc(sg_query_backend()));
     sg_pipeline_desc bloom_pip_desc = {};
@@ -330,7 +357,18 @@ void init_bloom() {
     bloom_pip_desc.cull_mode = SG_CULLMODE_NONE;
     bloom_pip_desc.label = "bloom_pipeline";
     bloom_filter_pip = sg_make_pipeline(&bloom_pip_desc);
-    bloom_pip_desc.shader = sg_make_shader(bloom_blur_shader_desc(sg_query_backend()));
+    sg_pipeline_desc bloom_blur_pip_desc = {};
+    bloom_blur_pip_desc.shader = sg_make_shader(bloom_blur_shader_desc(sg_query_backend()));
+    bloom_blur_pip_desc.layout.attrs[ATTR_bloom_blur_position].format = SG_VERTEXFORMAT_FLOAT3;
+    bloom_blur_pip_desc.layout.attrs[ATTR_bloom_blur_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    bloom_blur_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    bloom_blur_pip_desc.color_count = 1;
+    bloom_blur_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    bloom_blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    bloom_blur_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    bloom_blur_pip_desc.depth.write_enabled = true;
+    bloom_blur_pip_desc.cull_mode = SG_CULLMODE_NONE;
+    bloom_blur_pip_desc.label = "bloom_blur_pipeline";
     bloom_blur_pip = sg_make_pipeline(&bloom_pip_desc);
 
     bloom_params.threshold = 1.5f;
@@ -1437,7 +1475,13 @@ void render_bloom_pass() {
     pass.action = offscreen_pass_action;
     pass.attachments.colors[0] = bloom_att_view;
     pass.attachments.depth_stencil = bloom_depth_att_view;
-    pass.label = "offscreen-pass";
+    pass.label = "bloom_filter_pass";
+
+    sg_pass blur_pass = {};
+    blur_pass.action = blur_pass_action;
+    blur_pass.attachments.colors[0] = bloom_blur_att_view;
+    blur_pass.attachments.depth_stencil = bloom_blur_depth_att_view;
+    blur_pass.label = "bloom_blur_pass";
 
     sg_begin_pass(&pass);
 
@@ -1457,8 +1501,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    pass.action = blur_pass_action;
-    sg_begin_pass(&pass); // horizontal blur
+    sg_begin_pass(&blur_pass); // horizontal blur
     sg_apply_pipeline(bloom_blur_pip);
     sg_bindings blur_binds;
     blur_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
@@ -1467,12 +1510,14 @@ void render_bloom_pass() {
     sg_apply_bindings(&blur_binds);
     bloom_blur_params.type = 0;
     sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
+    sg_draw(0, 3, 1);
     sg_end_pass();
-    sg_begin_pass(&pass); // vertical blur
+    sg_begin_pass(&blur_pass); // vertical blur
     sg_apply_pipeline(bloom_blur_pip);
     sg_apply_bindings(&blur_binds);
     bloom_blur_params.type = 1;
     sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
+    sg_draw(0, 3, 1);
     sg_end_pass();
 }
 
@@ -3556,6 +3601,17 @@ void render_editor() {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
+            }
+            ImGui::Text("BLUR TEXTURE:");
+            sg_view_desc blur_preview_desc = {};
+            blur_preview_desc.texture.image = bloom_blur_img;
+            sg_view blur_display_view = sg_make_view(&blur_preview_desc);
+            if (blur_display_view.id == SG_INVALID_ID) {
+                ImGui::Text("I don't know how you did this but there's no blur image");
+            } else {
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(blur_display_view, bloom_blur_smp);
+                ImGui::Image(imtex_id, ImVec2(455, 256));
+                temp_editor_views.push_back(blur_display_view);
             }
         }
 
