@@ -372,7 +372,7 @@ void init_bloom() {
     bloom_blur_pip = sg_make_pipeline(&bloom_pip_desc);
 
     bloom_params.threshold = 1.5f;
-    bloom_blur_params.strength = 1.5f;
+    bloom_blur_params.strength = 0.5f;
 }
 
 void init_post_processing() {
@@ -1501,24 +1501,30 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    sg_begin_pass(&blur_pass); // horizontal blur
-    sg_apply_pipeline(bloom_blur_pip);
     sg_bindings blur_binds;
     blur_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
     blur_binds.views[0] = bloom_tex_view;
     blur_binds.samplers[0] = bloom_smp;
-    sg_apply_bindings(&blur_binds);
-    bloom_blur_params.type = 0;
-    sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
-    sg_draw(0, 3, 1);
-    sg_end_pass();
-    sg_begin_pass(&blur_pass); // vertical blur
-    sg_apply_pipeline(bloom_blur_pip);
-    sg_apply_bindings(&blur_binds);
-    bloom_blur_params.type = 1;
-    sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
-    sg_draw(0, 3, 1);
-    sg_end_pass();
+    for (int i = 0; i < 5; i++) {
+        sg_begin_pass(&blur_pass); // horizontal blur
+        sg_apply_pipeline(bloom_blur_pip);
+        sg_apply_bindings(&blur_binds);
+        bloom_blur_params.type = 0;
+        sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
+        sg_draw(0, 3, 1);
+        sg_end_pass();
+
+        sg_begin_pass(&blur_pass); // vertical blur
+        sg_apply_pipeline(bloom_blur_pip);
+        sg_apply_bindings(&blur_binds);
+        bloom_blur_params.type = 1;
+        sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
+        sg_draw(0, 3, 1);
+        sg_end_pass();
+
+        blur_binds.views[0] = bloom_blur_tex_view;
+        blur_binds.samplers[0] = bloom_smp;
+    }
 }
 
 void render_pp_pass() {

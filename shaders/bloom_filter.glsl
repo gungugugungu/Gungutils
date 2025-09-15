@@ -40,6 +40,7 @@ void main() {
     vec3 color = texture(texture2D, uv).rgb;
     float d = texture(depth2D, uv).r;
 
+    //frag_color = vec4(0.0, 0.0, 0.0, 1.0);
     if (color.r+color.g+color.b >= threshold) {
         frag_color = vec4(color, 1.0);
     }
