@@ -54,7 +54,7 @@
 #include "shaders/shadow.glsl.h"
 #include "shaders/skybox.glsl.h"
 #include "shaders/bloom_filter.glsl.h"
-#include "shaders/bloom_blur.glsl.h"
+#include "shaders/blur.glsl.h"
 // sources
 #include "utils/Log.h"
 #include "rendering/Material.h"
@@ -263,20 +263,111 @@ sg_view bloom_depth_tex_view = {SG_INVALID_ID};
 sg_sampler bloom_smp;
 sg_sampler bloom_depth_smp;
 bloom_filter_params_t bloom_params;
-struct {
-    float strength;
-    int type;
-} bloom_blur_params;
 sg_pipeline bloom_filter_pip;
-sg_pipeline bloom_blur_pip;
-sg_image bloom_blur_img;
-sg_image bloom_blur_depth_img;
-sg_view bloom_blur_att_view = {SG_INVALID_ID};
-sg_view bloom_blur_depth_att_view = {SG_INVALID_ID};
-sg_view bloom_blur_tex_view = {SG_INVALID_ID};
-sg_view bloom_blur_depth_tex_view = {SG_INVALID_ID};
-sg_sampler bloom_blur_smp;
-sg_sampler bloom_blur_depth_smp;
+sg_pipeline blur_pip;
+
+void init_blur_filter() {
+    sg_pipeline_desc blur_pip_desc = {};
+    blur_pip_desc.shader = sg_make_shader(blur_shader_desc(sg_query_backend()));
+    blur_pip_desc.layout.attrs[ATTR_blur_position].format = SG_VERTEXFORMAT_FLOAT3;
+    blur_pip_desc.layout.attrs[ATTR_blur_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    blur_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    blur_pip_desc.color_count = 1;
+    blur_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    blur_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    blur_pip_desc.depth.write_enabled = true;
+    blur_pip_desc.cull_mode = SG_CULLMODE_NONE;
+    blur_pip_desc.label = "bloom_blur_pipeline";
+    blur_pip = sg_make_pipeline(&blur_pip_desc);
+}
+
+void blur_image(sg_image input_image, float strength, int passes) {
+    struct {
+        float strength;
+        int type;
+    } blur_params;
+    blur_params.strength = strength;
+
+    sg_view_desc blur_att_desc = {};
+    blur_att_desc.color_attachment.image = input_image;
+    sg_view blur_att_view = sg_make_view(&blur_att_desc);
+
+    sg_view_desc blur_att_2_desc = {};
+    blur_att_2_desc.color_attachment.image = input_image;
+    sg_view blur_att_2_view = sg_make_view(&blur_att_2_desc);
+
+    sg_view_desc blur_tex_desc = {};
+    blur_tex_desc.texture.image = input_image;
+    sg_view blur_tex_view = sg_make_view(&blur_tex_desc);
+
+    sg_view_desc blur_tex_2_desc = {};
+    blur_tex_2_desc.texture.image = input_image;
+    sg_view blur_tex_2_view = sg_make_view(&blur_tex_2_desc);
+
+    sg_sampler_desc blur_smp_desc = {};
+    blur_smp_desc.min_filter = SG_FILTER_LINEAR;
+    blur_smp_desc.mag_filter = SG_FILTER_LINEAR;
+    blur_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    blur_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    sg_sampler blur_smp = sg_make_sampler(&blur_smp_desc);
+
+    sg_pass_action blur_pass_action_1 = {};
+    blur_pass_action_1.colors[0].load_action = SG_LOADACTION_CLEAR;
+    blur_pass_action_1.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    blur_pass_action_1.depth.load_action = SG_LOADACTION_DONTCARE;
+
+    sg_pass_action blur_pass_action_2 = {};
+    blur_pass_action_2.colors[0].load_action = SG_LOADACTION_CLEAR;
+    blur_pass_action_2.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    blur_pass_action_2.depth.load_action = SG_LOADACTION_DONTCARE;
+
+    sg_pass blur_pass_1 = {};
+    blur_pass_1.action = blur_pass_action_1;
+    blur_pass_1.attachments.colors[0] = blur_att_view;
+    blur_pass_1.attachments.depth_stencil = {.id = SG_INVALID_ID}; // IF THERE'S AN ISSUE, THIS IS THE MAIN SUSPECT
+    blur_pass_1.label = "blur_pass_2";
+
+    sg_pass blur_pass_2 = {};
+    blur_pass_2.action = blur_pass_action_2;
+    blur_pass_2.attachments.colors[0] = blur_att_2_view;
+    blur_pass_2.attachments.depth_stencil = {.id = SG_INVALID_ID}; // AND THIS TOO
+    blur_pass_2.label = "blur_pass_2";
+
+    sg_bindings blur_binds;
+    blur_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    blur_binds.views[0] = blur_tex_view;
+    blur_binds.samplers[0] = blur_smp;
+
+    sg_bindings blur_binds_2;
+    blur_binds_2.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    blur_binds_2.views[0] = blur_tex_2_view;
+    blur_binds_2.samplers[0] = blur_smp;
+
+    for (int i = 0; i < passes; i++) {
+        sg_begin_pass(&blur_pass_1); // horizontal blur
+        sg_apply_pipeline(blur_pip);
+        sg_apply_bindings(&blur_binds_2);
+        blur_params.type = 0;
+        sg_apply_uniforms(2, SG_RANGE(blur_params));
+        sg_draw(0, 3, 1);
+        sg_end_pass();
+
+        sg_begin_pass(&blur_pass_2); // vertical blur
+        sg_apply_pipeline(blur_pip);
+        sg_apply_bindings(&blur_binds);
+        blur_params.type = 1;
+        sg_apply_uniforms(2, SG_RANGE(blur_params));
+        sg_draw(0, 3, 1);
+        sg_end_pass();
+    }
+
+    sg_destroy_view(blur_att_view);
+    sg_destroy_view(blur_att_2_view);
+    sg_destroy_view(blur_tex_view);
+    sg_destroy_view(blur_tex_2_view);
+    sg_destroy_sampler(blur_smp);
+}
 
 void init_bloom() {
     int w_width, w_height;
@@ -290,7 +381,6 @@ void init_bloom() {
     bloom_img_desc.usage.color_attachment = true;
     bloom_img_desc.label = "bloom-render-target";
     bloom_img = sg_make_image(&bloom_img_desc);
-    bloom_blur_img = sg_make_image(&bloom_img_desc);
 
     sg_image_desc bloom_depth_img_desc = {};
     bloom_depth_img_desc.width = w_width;
@@ -300,7 +390,6 @@ void init_bloom() {
     bloom_depth_img_desc.usage.depth_stencil_attachment = true;
     bloom_depth_img_desc.label = "bloom-depth-render-target";
     bloom_depth_img = sg_make_image(&bloom_depth_img_desc);
-    bloom_blur_depth_img = sg_make_image(&bloom_depth_img_desc);
 
     sg_sampler_desc bloom_smp_desc = {};
     bloom_smp_desc.min_filter = SG_FILTER_LINEAR;
@@ -309,39 +398,22 @@ void init_bloom() {
     bloom_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
     bloom_smp = sg_make_sampler(&bloom_smp_desc);
     bloom_depth_smp = sg_make_sampler(&bloom_smp_desc);
-    bloom_blur_smp = sg_make_sampler(&bloom_smp_desc);
 
     sg_view_desc bloom_att_desc = {};
     bloom_att_desc.color_attachment.image = bloom_img;
     bloom_att_view = sg_make_view(&bloom_att_desc);
 
-    sg_view_desc bloom_blur_att_desc = {};
-    bloom_blur_att_desc.color_attachment.image = bloom_blur_img;
-    bloom_blur_att_view = sg_make_view(&bloom_blur_att_desc);
-
     sg_view_desc bloom_depth_att_desc = {};
     bloom_depth_att_desc.depth_stencil_attachment.image = bloom_depth_img;
     bloom_depth_att_view = sg_make_view(&bloom_depth_att_desc);
-
-    sg_view_desc bloom_blur_depth_att_desc = {};
-    bloom_blur_depth_att_desc.depth_stencil_attachment.image = bloom_blur_depth_img;
-    bloom_blur_depth_att_view = sg_make_view(&bloom_blur_depth_att_desc);
 
     sg_view_desc bloom_tex_desc = {};
     bloom_tex_desc.texture.image = bloom_img;
     bloom_tex_view = sg_make_view(&bloom_tex_desc);
 
-    sg_view_desc bloom_blur_tex_desc = {};
-    bloom_blur_tex_desc.texture.image = bloom_blur_img;
-    bloom_blur_tex_view = sg_make_view(&bloom_blur_tex_desc);
-
     sg_view_desc bloom_depth_tex_desc = {};
     bloom_depth_tex_desc.texture.image = bloom_depth_img;
     bloom_depth_tex_view = sg_make_view(&bloom_depth_tex_desc);
-
-    sg_view_desc bloom_blur_depth_tex_desc = {};
-    bloom_blur_depth_tex_desc.texture.image = bloom_blur_depth_img;
-    bloom_blur_depth_tex_view = sg_make_view(&bloom_blur_depth_tex_desc);
 
     sg_shader bloom_filter_shader = sg_make_shader(bloom_filter_shader_desc(sg_query_backend()));
     sg_pipeline_desc bloom_pip_desc = {};
@@ -356,24 +428,9 @@ void init_bloom() {
     bloom_pip_desc.depth.write_enabled = true;
     bloom_pip_desc.cull_mode = SG_CULLMODE_NONE;
     bloom_pip_desc.label = "bloom_pipeline";
-
     bloom_filter_pip = sg_make_pipeline(&bloom_pip_desc);
-    sg_pipeline_desc bloom_blur_pip_desc = {};
-    bloom_blur_pip_desc.shader = sg_make_shader(bloom_blur_shader_desc(sg_query_backend()));
-    bloom_blur_pip_desc.layout.attrs[ATTR_bloom_blur_position].format = SG_VERTEXFORMAT_FLOAT3;
-    bloom_blur_pip_desc.layout.attrs[ATTR_bloom_blur_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
-    bloom_blur_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
-    bloom_blur_pip_desc.color_count = 1;
-    bloom_blur_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    bloom_blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
-    bloom_blur_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
-    bloom_blur_pip_desc.depth.write_enabled = true;
-    bloom_blur_pip_desc.cull_mode = SG_CULLMODE_NONE;
-    bloom_blur_pip_desc.label = "bloom_blur_pipeline";
-    bloom_blur_pip = sg_make_pipeline(&bloom_blur_pip_desc);
 
     bloom_params.threshold = 1.5f;
-    bloom_blur_params.strength = 0.5f;
 }
 
 void init_post_processing() {
@@ -1466,23 +1523,11 @@ void render_bloom_pass() {
     offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     offscreen_pass_action.depth.clear_value = 1.0f;
 
-    sg_pass_action blur_pass_action = {};
-    blur_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    blur_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
-    blur_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
-    blur_pass_action.depth.clear_value = 1.0f;
-
     sg_pass pass = {};
     pass.action = offscreen_pass_action;
     pass.attachments.colors[0] = bloom_att_view;
     pass.attachments.depth_stencil = bloom_depth_att_view;
     pass.label = "bloom_filter_pass";
-
-    sg_pass blur_pass = {};
-    blur_pass.action = blur_pass_action;
-    blur_pass.attachments.colors[0] = bloom_blur_att_view;
-    blur_pass.attachments.depth_stencil = bloom_blur_depth_att_view;
-    blur_pass.label = "bloom_blur_pass";
 
     sg_begin_pass(&pass);
 
@@ -1502,30 +1547,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    sg_bindings blur_binds;
-    blur_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
-    blur_binds.views[0] = bloom_tex_view;
-    blur_binds.samplers[0] = bloom_smp;
-    for (int i = 0; i < 5; i++) {
-        sg_begin_pass(&blur_pass); // horizontal blur
-        sg_apply_pipeline(bloom_blur_pip);
-        sg_apply_bindings(&blur_binds);
-        bloom_blur_params.type = 0;
-        sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
-        sg_draw(0, 3, 1);
-        sg_end_pass();
-
-        blur_binds.views[0] = bloom_blur_tex_view;
-        blur_binds.samplers[0] = bloom_blur_smp;
-
-        sg_begin_pass(&blur_pass); // vertical blur
-        sg_apply_pipeline(bloom_blur_pip);
-        sg_apply_bindings(&blur_binds);
-        bloom_blur_params.type = 1;
-        sg_apply_uniforms(2, SG_RANGE(bloom_blur_params));
-        sg_draw(0, 3, 1);
-        sg_end_pass();
-    }
+    blur_image(bloom_img, 1.5f, 5);
 }
 
 void render_pp_pass() {
@@ -3598,7 +3620,7 @@ void render_editor() {
             ImGui::SliderFloat("VIGNETTE RADIUS", &post_state.uniforms.vignette_radius, 0.0f, 10.0f, "%.1f");
             ImGui::ColorEdit3("TINT", &post_state.uniforms.color_tint.X);
             ImGui::Separator();
-            ImGui::Text("BLOOM FILTER TEXTURE:");
+            ImGui::Text("BLOOM TEXTURE:");
             sg_view_desc bloom_preview_desc = {};
             bloom_preview_desc.texture.image = bloom_img;
             sg_view bloom_display_view = sg_make_view(&bloom_preview_desc);
@@ -3608,17 +3630,6 @@ void render_editor() {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
-            }
-            ImGui::Text("BLUR TEXTURE:");
-            sg_view_desc blur_preview_desc = {};
-            blur_preview_desc.texture.image = bloom_blur_img;
-            sg_view blur_display_view = sg_make_view(&blur_preview_desc);
-            if (blur_display_view.id == SG_INVALID_ID) {
-                ImGui::Text("I don't know how you did this but there's no blur image");
-            } else {
-                ImTextureID imtex_id = simgui_imtextureid_with_sampler(blur_display_view, bloom_blur_smp);
-                ImGui::Image(imtex_id, ImVec2(455, 256));
-                temp_editor_views.push_back(blur_display_view);
             }
         }
 
@@ -3845,6 +3856,7 @@ void _init() {
     state.pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     state.pass_action.depth.clear_value = 1.0f;
 
+    init_blur_filter();
     init_shadowmaps();
     init_bloom();
     init_post_processing();

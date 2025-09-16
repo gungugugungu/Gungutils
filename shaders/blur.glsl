@@ -3,7 +3,7 @@
 @ctype vec3 HMM_Vec3
 @ctype vec4 HMM_Vec4
 
-@vs bloom_blur_vs
+@vs blur_vs
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec2 texcoord;
 
@@ -22,7 +22,7 @@ void main() {
 }
 @end
 
-@fs bloom_blur_fs
+@fs blur_fs
 layout(binding = 0) uniform texture2D u_texture2D;
 layout(binding = 0) uniform sampler u_texture_smp;
 #define texture2D sampler2D(u_texture2D, u_texture_smp)
@@ -69,4 +69,4 @@ void main() {
 }
 @end
 
-@program bloom_blur bloom_blur_vs bloom_blur_fs
+@program blur blur_vs blur_fs
