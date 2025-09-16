@@ -66,7 +66,6 @@ void main() {
     }
 
     frag_color = vec4(color * strength, 1.0);
-    frag_color = vec4(1.0f, 0.0f, 0.0f, 1.0f);
 }
 @end
 
