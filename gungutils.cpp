@@ -305,6 +305,31 @@ void blur_image(sg_image input_image, float strength, int passes) {
     blur_tex_2_desc.texture.image = input_image;
     sg_view blur_tex_2_view = sg_make_view(&blur_tex_2_desc);
 
+    sg_image_desc blur_depth_img_desc = {};
+    blur_depth_img_desc.width = sg_query_image_width(input_image);
+    blur_depth_img_desc.height = sg_query_image_height(input_image);
+    blur_depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    blur_depth_img_desc.sample_count = 1;
+    blur_depth_img_desc.usage.depth_stencil_attachment = true;
+    blur_depth_img_desc.label = "bloom_depth_render_target";
+    sg_image blur_depth_img = sg_make_image(&blur_depth_img_desc);
+
+    sg_view_desc blur_depth_att_desc = {};
+    blur_depth_att_desc.depth_stencil_attachment.image = blur_depth_img;
+    sg_view blur_depth_att_view = sg_make_view(&blur_depth_att_desc);
+
+    sg_view_desc blur_depth_att_2_desc = {};
+    blur_depth_att_2_desc.depth_stencil_attachment.image = blur_depth_img;
+    sg_view blur_depth_att_2_view = sg_make_view(&blur_depth_att_2_desc);
+
+    sg_view_desc blur_depth_tex_desc = {};
+    blur_depth_tex_desc.texture.image = blur_depth_img;
+    sg_view blur_depth_tex_view = sg_make_view(&blur_depth_tex_desc);
+
+    sg_view_desc blur_depth_tex_2_desc = {};
+    blur_depth_tex_2_desc.texture.image = blur_depth_img;
+    sg_view blur_depth_tex_2_view = sg_make_view(&blur_depth_tex_2_desc);
+
     sg_sampler_desc blur_smp_desc = {};
     blur_smp_desc.min_filter = SG_FILTER_LINEAR;
     blur_smp_desc.mag_filter = SG_FILTER_LINEAR;
@@ -325,13 +350,13 @@ void blur_image(sg_image input_image, float strength, int passes) {
     sg_pass blur_pass_1 = {};
     blur_pass_1.action = blur_pass_action_1;
     blur_pass_1.attachments.colors[0] = blur_att_view;
-    blur_pass_1.attachments.depth_stencil = {.id = SG_INVALID_ID}; // IF THERE'S AN ISSUE, THIS IS THE MAIN SUSPECT
+    blur_pass_1.attachments.depth_stencil = blur_depth_att_view;
     blur_pass_1.label = "blur_pass_2";
 
     sg_pass blur_pass_2 = {};
     blur_pass_2.action = blur_pass_action_2;
     blur_pass_2.attachments.colors[0] = blur_att_2_view;
-    blur_pass_2.attachments.depth_stencil = {.id = SG_INVALID_ID}; // AND THIS TOO
+    blur_pass_2.attachments.depth_stencil = blur_depth_att_2_view;
     blur_pass_2.label = "blur_pass_2";
 
     sg_bindings blur_binds;
@@ -366,6 +391,11 @@ void blur_image(sg_image input_image, float strength, int passes) {
     sg_destroy_view(blur_att_2_view);
     sg_destroy_view(blur_tex_view);
     sg_destroy_view(blur_tex_2_view);
+    sg_destroy_image(blur_depth_img);
+    sg_destroy_view(blur_depth_att_view);
+    sg_destroy_view(blur_depth_att_2_view);
+    sg_destroy_view(blur_depth_tex_view);
+    sg_destroy_view(blur_depth_tex_2_view);
     sg_destroy_sampler(blur_smp);
 }
 
@@ -1547,7 +1577,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.5f, 5);
+    blur_image(bloom_img, 1.5f, 1);
 }
 
 void render_pp_pass() {
