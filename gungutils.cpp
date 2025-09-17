@@ -92,7 +92,7 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 4096;
+int shadow_map_size = 2048;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
@@ -274,9 +274,9 @@ void init_blur_filter() {
     blur_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     blur_pip_desc.color_count = 1;
     blur_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
-    blur_pip_desc.depth.compare = SG_COMPAREFUNC_NEVER;
-    blur_pip_desc.depth.write_enabled = false;
+    blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    blur_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    blur_pip_desc.depth.write_enabled = true;
     blur_pip_desc.cull_mode = SG_CULLMODE_NONE;
     blur_pip_desc.label = "bloom_blur_pipeline";
     blur_pip = sg_make_pipeline(&blur_pip_desc);
@@ -338,30 +338,34 @@ void blur_image(sg_image input_image, float strength, int passes) {
     binds_temp_to_input.views[0] = temp_tex_view;
     binds_temp_to_input.samplers[0] = blur_smp;
 
-    for (int i = 0; i < passes; i++) {
-        sg_pass horiz_pass = {};
-        horiz_pass.action = blur_pass_action;
-        horiz_pass.attachments.colors[0] = temp_att_view;
-        horiz_pass.label = "blur-horizontal";
-        sg_begin_pass(&horiz_pass);
-        sg_apply_pipeline(blur_pip);
-        sg_apply_bindings(&binds_input_to_temp);
-        blur_params.type = 0; // horizontal
-        sg_apply_uniforms(2, SG_RANGE(blur_params));
-        sg_draw(0, 3, 1);
-        sg_end_pass();
+    if (temp_att_view.id != SG_INVALID_ID || temp_tex_view.id != SG_INVALID_ID || input_att_view.id != SG_INVALID_ID || input_tex_view.id != SG_INVALID_ID || blur_pip.id != SG_INVALID_ID || temp_img.id != SG_INVALID_ID || blur_smp.id != SG_INVALID_ID) {
+        for (int i = 0; i < passes; i++) {
+            sg_pass horiz_pass = {};
+            horiz_pass.action = blur_pass_action;
+            horiz_pass.attachments.colors[0] = temp_att_view;
+            horiz_pass.label = "blur-horizontal";
+            sg_begin_pass(&horiz_pass);
+            sg_apply_pipeline(blur_pip);
+            sg_apply_bindings(&binds_input_to_temp);
+            blur_params.type = 0; // horizontal
+            sg_apply_uniforms(2, SG_RANGE(blur_params));
+            sg_draw(0, 3, 1);
+            sg_end_pass();
 
-        sg_pass vert_pass = {};
-        vert_pass.action = blur_pass_action;
-        vert_pass.attachments.colors[0] = input_att_view;
-        vert_pass.label = "blur-vertical";
-        sg_begin_pass(&vert_pass);
-        sg_apply_pipeline(blur_pip);
-        sg_apply_bindings(&binds_temp_to_input);
-        blur_params.type = 1; // vertical
-        sg_apply_uniforms(2, SG_RANGE(blur_params));
-        sg_draw(0, 3, 1);
-        sg_end_pass();
+            sg_pass vert_pass = {};
+            vert_pass.action = blur_pass_action;
+            vert_pass.attachments.colors[0] = input_att_view;
+            vert_pass.label = "blur-vertical";
+            sg_begin_pass(&vert_pass);
+            sg_apply_pipeline(blur_pip);
+            sg_apply_bindings(&binds_temp_to_input);
+            blur_params.type = 1; // vertical
+            sg_apply_uniforms(2, SG_RANGE(blur_params));
+            sg_draw(0, 3, 1);
+            sg_end_pass();
+        }
+    } else {
+        eprint("invalid buffers during image blur");
     }
 
     sg_destroy_view(temp_att_view);
@@ -1566,7 +1570,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.5f, 1);
+    blur_image(bloom_img, 2.5f, 5);
 }
 
 void render_pp_pass() {

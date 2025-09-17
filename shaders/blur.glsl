@@ -66,7 +66,6 @@ void main() {
     }
 
     frag_color = vec4(color * strength, 1.0);
-    frag_color = texture(texture2D, uv);
 }
 @end
 
