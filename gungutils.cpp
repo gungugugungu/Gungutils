@@ -92,7 +92,7 @@ sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
 sg_sampler shadow_sampler = {SG_INVALID_ID};
 sg_pipeline shadow_pip = {SG_INVALID_ID};
-int shadow_map_size = 1024;
+int shadow_map_size = 4096;
 float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
@@ -244,7 +244,7 @@ void init_shadowmaps() {
     shadow_pip_desc.layout.attrs[ATTR_shadow_aNormal].format = SG_VERTEXFORMAT_FLOAT3;
     shadow_pip_desc.layout.attrs[ATTR_shadow_aUV].format = SG_VERTEXFORMAT_FLOAT2;
     shadow_pip_desc.index_type = SG_INDEXTYPE_UINT32;
-    shadow_pip_desc.color_count = 0;
+    shadow_pip_desc.color_count = 1;
     shadow_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
     shadow_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     shadow_pip_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -1345,16 +1345,29 @@ void render_shadow_pass() {
         light_frustum_planes[5].d = far_p.W / len_far;
     }
 
+    sg_image_desc shadow_img_desc = {};
+    shadow_img_desc.usage.color_attachment = true;
+    shadow_img_desc.width = shadow_map_size;
+    shadow_img_desc.height = shadow_map_size;
+    shadow_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    shadow_img_desc.sample_count = 1;
+    shadow_img_desc.label = "shadow-color-target";
+    sg_image shadow_img = sg_make_image(&shadow_img_desc);
+
+    sg_view_desc shadow_att_view_desc = {};
+    shadow_att_view_desc.color_attachment.image = shadow_img;
+    sg_view shadow_att_view = sg_make_view(&shadow_att_view_desc);
+
     sg_pass_action shadow_action = {};
     shadow_action.depth.load_action = SG_LOADACTION_CLEAR;
     shadow_action.depth.clear_value = 1.0f;
     shadow_action.depth.store_action = SG_STOREACTION_STORE;
     shadow_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     shadow_action.colors[0].clear_value = {1.0f, 1.0f, 1.0f, 1.0f};
-    shadow_action.colors[0].store_action = SG_STOREACTION_DONTCARE;
     sg_pass shadow_pass = {};
     shadow_pass.action = shadow_action;
     shadow_pass.attachments.depth_stencil = shadow_depth_att_view;
+    shadow_pass.attachments.colors[0] = shadow_att_view;
     shadow_pass.label = "shadow-pass";
 
     sg_begin_pass(&shadow_pass);
@@ -1363,6 +1376,9 @@ void render_shadow_pass() {
     render_shadow_meshes(light_view, light_proj);
 
     sg_end_pass();
+
+    sg_destroy_view(shadow_att_view);
+    sg_destroy_image(shadow_img);
 }
 
 void render_offscreen_pass() {
