@@ -1570,7 +1570,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 2.5f, 5);
+    blur_image(bloom_img, 1.05f, 5);
 }
 
 void render_pp_pass() {
@@ -1610,10 +1610,12 @@ void render_pp_pass() {
     post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
     post_state.post_bindings.views[1] = post_state.rendered_depth_tex_view;
     post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
+    post_state.post_bindings.views[2] = bloom_tex_view;
+    post_state.post_bindings.samplers[2] = bloom_smp;
 
     sg_apply_bindings(&post_state.post_bindings);
-    sg_apply_uniforms(2, SG_RANGE(post_state.uniforms));
-    sg_apply_uniforms(3, SG_RANGE(ssao_params));
+    sg_apply_uniforms(0, SG_RANGE(post_state.uniforms));
+    sg_apply_uniforms(1, SG_RANGE(ssao_params));
 
     sg_draw(0, 3, 1);
 

@@ -32,7 +32,7 @@ layout(binding = 2) uniform sampler u_bloom_smp;
 #define depth2D sampler2D(u_depth2D, u_depth_smp)
 #define bloom2D sampler2D(u_bloom2D, u_bloom_smp)
 
-layout(binding = 2) uniform pp_params {
+layout(binding = 0) uniform pp_params {
     float vignette_strength;
     float vignette_radius;
     vec3 color_tint;
@@ -43,7 +43,7 @@ layout(binding = 2) uniform pp_params {
     float time;
 };
 
-layout(binding = 3) uniform ssao_params {
+layout(binding = 1) uniform ssao_params {
     float ao_radius; // radius of occlusion sampling
     float ao_bias; // bias to avoid self-occlusion (e.g. 0.02)
     float ao_strength; // how strongly ao darkens (0..1)
@@ -215,7 +215,9 @@ void main() {
     float vignette_factor = max(0.0, 1.0 - vignette_strength * pow(norm_dist, vignette_radius));
     final_color *= vignette_factor;
 
-    frag_color = vec4(final_color, 1.0);
+    vec3 bloom_color = texture(bloom2D, uv).xyz;
+
+    frag_color = vec4(final_color+bloom_color, 1.0);
 }
 @end
 
