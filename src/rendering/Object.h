@@ -22,6 +22,7 @@ ComponentID get_component_id() {
 class Component {
 public:
     virtual ~Component() = default;
+    virtual void init(Object* owner) = 0;
     virtual void update(Object* owner) = 0;
     virtual void destroy(Object* owner) {}
     virtual std::unique_ptr<Component> clone() const = 0;
@@ -87,7 +88,9 @@ public:
 
     template<typename T, typename... Args>
     void add_component(Args&&... args) {
-        components[get_component_id<T>()] = std::make_unique<T>(std::forward<Args>(args)...);
+        auto component = std::make_unique<T>(std::forward<Args>(args)...);
+        component->init(this);
+        components[get_component_id<T>()] = std::move(component);
     }
 
     template<typename T>

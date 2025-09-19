@@ -66,7 +66,7 @@
 #include "rendering/Post Processing.h"
 #include "rendering/Light.h"
 #include "rendering/Surface.h"
-#include "physics/PhysicsHolder.h"
+#include "physics/PhysicsComponent.h"
 #include "rendering/ParticleSystem.h"
 #include "rendering/Billboard.h"
 #include "ui/UIButton.h"
@@ -134,7 +134,6 @@ struct AppState {
     std::vector<FMOD::Studio::EventDescription*> event_descriptions;
     vector<AudioSource3D*> audio_sources;
     vector<Helper*> helpers;
-    std::vector<std::unique_ptr<PhysicsHolder>> physics_holders;
     DirectionalLight directional_light;
     vector<PointLight> point_lights;
     vector<SpotLight> spot_lights;
@@ -1570,7 +1569,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.05f, 5);
+    blur_image(bloom_img, 1.025f, 5);
 }
 
 void render_pp_pass() {
@@ -3001,6 +3000,19 @@ Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME
     return nullptr;
 }
 
+template<typename T>
+std::vector<Object*> get_objects_with_component() {
+    std::vector<Object*> objects;
+    for (auto& vg : vis_groups) {
+        for (auto& obj : vg.objects) {
+            if (obj.has_component<T>()) {
+                objects.push_back(&obj);
+            }
+        }
+    }
+    return objects;
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
@@ -4039,8 +4051,8 @@ void _frame() {
 
     // Physics
     if (!state.editor_open) world->update(time_state.dt);
-    for (auto& holder : state.physics_holders) {
-        holder->update();
+    for (auto& physics_obj : get_objects_with_component<PhysicsComponent>()) {
+        physics_obj->update_components();
     }
 
     sfetch_dowork();

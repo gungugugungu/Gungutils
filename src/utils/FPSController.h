@@ -30,7 +30,7 @@ public:
         *camera_yaw = std::fmod(*camera_yaw, 2.0f * HMM_PI32);
         if (*camera_yaw < 0.0f) *camera_yaw += 2.0f * HMM_PI32;
 
-        holder.orientation = reactphysics3d::Quaternion::fromEulerAngles(0.0f, *camera_yaw, 0.0f);
+        orientation = reactphysics3d::Quaternion::fromEulerAngles(0.0f, *camera_yaw, 0.0f);
 
         HMM_Vec3 direction = {0.0f, 0.0f, 0.0f};
         if (inputs[SDLK_W] == true) direction.X += 1.0f;
@@ -50,10 +50,10 @@ public:
         } else {
             speed = 10.0f;
         }
-        camera_pos->X = holder.body->getTransform().getPosition().x;
-        camera_pos->Y = holder.body->getTransform().getPosition().y + relative_camera_height;
-        camera_pos->Z = holder.body->getTransform().getPosition().z;
-        // I know it's wrong but I'ma just reuse direction, because I'm not gonna use it after this line anyway
+        camera_pos->X = body->getTransform().getPosition().x;
+        camera_pos->Y = body->getTransform().getPosition().y + relative_camera_height;
+        camera_pos->Z = body->getTransform().getPosition().z;
+        // NOTE: vec3 direction is reused but like who cares, it isn't used after this anyways
         direction.X = cosf(-*camera_yaw) * cosf(*camera_pitch);
         direction.Y = sinf(*camera_pitch);
         direction.Z = sinf(-*camera_yaw) * cosf(*camera_pitch);

@@ -8,16 +8,15 @@
 inline reactphysics3d::PhysicsCommon physicsCommon;
 inline reactphysics3d::PhysicsWorld* world = physicsCommon.createPhysicsWorld();
 
-class PhysicsHolder {
+class PhysicsComponent : public Component {
 public:
-    Object* assigned_object;
     reactphysics3d::Vector3 position;
     reactphysics3d::Quaternion orientation;
     reactphysics3d::Transform transform;
     reactphysics3d::RigidBody* body = world->createRigidBody(transform);
 
     // alternative: create a box collider based on mesh bounds
-    void create_box_collider() const {
+    void create_box_collider(Object* assigned_object) const {
         if (!assigned_object || !assigned_object->mesh->vertices || assigned_object->mesh->vertex_count == 0) {
             return;
         }
@@ -54,15 +53,14 @@ public:
         body->addCollider(boxShape, colliderTransform);
     }
 
-    void assign_mesh(Object* obj) {
-        assigned_object = obj;
-        position.x = obj->position.X;
-        position.y = obj->position.Y;
-        position.z = obj->position.Z;
-        orientation.x = obj->rotation.X;
-        orientation.y = obj->rotation.Y;
-        orientation.z = obj->rotation.Z;
-        orientation.w = obj->rotation.W;
+    void init(Object* owner) override {
+        position.x = owner->position.X;
+        position.y = owner->position.Y;
+        position.z = owner->position.Z;
+        orientation.x = owner->rotation.X;
+        orientation.y = owner->rotation.Y;
+        orientation.z = owner->rotation.Z;
+        orientation.w = owner->rotation.W;
         transform = reactphysics3d::Transform(position, orientation);
 
         if (body) {
@@ -72,29 +70,29 @@ public:
 
         cout << "-----" << endl;
 
-        if (obj->mesh->vertices && obj->mesh->vertex_count > 0) {
+        if (owner->mesh->vertices && owner->mesh->vertex_count > 0) {
             std::vector<reactphysics3d::Vector3> vertices;
-            vertices.reserve(obj->mesh->vertex_count);
+            vertices.reserve(owner->mesh->vertex_count);
 
-            for (size_t i = 0; i < obj->mesh->vertex_count; i++) {
-                float x = obj->mesh->vertices[i * 8 + 0];
-                float y = obj->mesh->vertices[i * 8 + 1];
-                float z = obj->mesh->vertices[i * 8 + 2];
+            for (size_t i = 0; i < owner->mesh->vertex_count; i++) {
+                float x = owner->mesh->vertices[i * 8 + 0];
+                float y = owner->mesh->vertices[i * 8 + 1];
+                float z = owner->mesh->vertices[i * 8 + 2];
 
                 HMM_Vec4 vertex = {x, y, z, 1.0f};
-                HMM_Vec4 scaled = {vertex.X*assigned_object->scale.X, vertex.Y*assigned_object->scale.Y, vertex.Z*assigned_object->scale.Z, 1.0f};
+                HMM_Vec4 scaled = {vertex.X*owner->scale.X, vertex.Y*owner->scale.Y, vertex.Z*owner->scale.Z, 1.0f};
 
                 vertices.emplace_back(scaled.X, scaled.Y, scaled.Z);
             }
 
             std::vector<uint32_t> indices_vec;
-            if (obj->mesh->use_uint16_indices && obj->mesh->indices16) {
-                indices_vec.reserve(obj->mesh->index_count);
-                for (size_t i = 0; i < obj->mesh->index_count; i++) {
-                    indices_vec.push_back(static_cast<uint32_t>(obj->mesh->indices16[i]));
+            if (owner->mesh->use_uint16_indices && owner->mesh->indices16) {
+                indices_vec.reserve(owner->mesh->index_count);
+                for (size_t i = 0; i < owner->mesh->index_count; i++) {
+                    indices_vec.push_back(static_cast<uint32_t>(owner->mesh->indices16[i]));
                 }
-            } else if (obj->mesh->indices) {
-                indices_vec.assign(obj->mesh->indices, obj->mesh->indices + obj->mesh->index_count);
+            } else if (owner->mesh->indices) {
+                indices_vec.assign(owner->mesh->indices, owner->mesh->indices + owner->mesh->index_count);
             }
 
             if (indices_vec.size() % 3 != 0) {
@@ -133,26 +131,29 @@ public:
                         cout << "  " << message.text << endl;
                     }
                     cout << "Falling back to box collider..." << endl;
-                    create_box_collider();
+                    create_box_collider(owner);
                 }
             } else {
                 cout << "Not enough data for convex mesh, using box collider" << endl;
-                create_box_collider();
+                create_box_collider(owner);
             }
         }
         body->setTransform(transform);
     }
 
-    void update() {
-        if (assigned_object != nullptr && body != nullptr) {
-            assigned_object->position.X = body->getTransform().getPosition().x;
-            assigned_object->position.Y = body->getTransform().getPosition().y;
-            assigned_object->position.Z = body->getTransform().getPosition().z;
-            assigned_object->rotation.X = body->getTransform().getOrientation().x;
-            assigned_object->rotation.Y = body->getTransform().getOrientation().y;
-            assigned_object->rotation.Z = body->getTransform().getOrientation().z;
-            assigned_object->rotation.W = body->getTransform().getOrientation().w;
+    void update(Object* owner) override {
+        if (body != nullptr) {
+            owner->position.X = body->getTransform().getPosition().x;
+            owner->position.Y = body->getTransform().getPosition().y;
+            owner->position.Z = body->getTransform().getPosition().z;
+            owner->rotation.X = body->getTransform().getOrientation().x;
+            owner->rotation.Y = body->getTransform().getOrientation().y;
+            owner->rotation.Z = body->getTransform().getOrientation().z;
+            owner->rotation.W = body->getTransform().getOrientation().w;
         }
+    }
+    std::unique_ptr<Component> clone() const override {
+        return std::make_unique<PhysicsComponent>(*this);
     }
 };
 

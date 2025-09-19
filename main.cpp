@@ -35,6 +35,13 @@ void init() {
     load_scene("maps/cottage.gmap");
 
     load_skybox("skybox.png");
+
+    for (auto& obj : vis_groups[0].objects) {
+        obj.add_component<PhysicsComponent>();
+        obj.get_component<PhysicsComponent>()->body->setType(reactphysics3d::BodyType::KINEMATIC);
+    }
+
+    get_objects_by_script_id(0)[0]->get_component<PhysicsComponent>()->body->setType(reactphysics3d::BodyType::DYNAMIC);
 }
 
 void frame() {

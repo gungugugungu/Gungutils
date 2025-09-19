@@ -14,10 +14,10 @@
 - A simple profiler in the editor
 - Shadow map for directional lights
 - Simple and easy skybox system (for equirectangular or cubemap images)
+- Bloom
 
 # TODO
-- Multiple materials per mesh
 - Godrays
-- Bloom
+- Automatic mesh instancing
 - Point light shadows
 - Spot light shadows
