@@ -76,7 +76,7 @@ void main() {
     vec3 ao_color = texture(ao2D, uv).xyz;
     ao_color = vec3(abs(1-ao_color.r));
 
-    frag_color = vec4(final_color + bloom_color, 1.0);
+    frag_color = vec4(final_color + bloom_color - ao_color, 1.0);
 }
 @end
 

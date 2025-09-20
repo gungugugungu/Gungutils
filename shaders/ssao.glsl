@@ -105,9 +105,8 @@ void main() {
 
     float linearDepth = linearize_reversed_depth(d, u_near, u_far);
     float normalizedDepth = (linearDepth - u_near) / (u_far - u_near);
-    normalizedDepth = pow(normalizedDepth, 0.2); // Enhance near details
+    normalizedDepth = pow(normalizedDepth, 0.2);
     ao_output = vec4(normalizedDepth, normalizedDepth, normalizedDepth, 1.0);
-    return;
 
     if (d >= 0.9999) {
         ao_output = vec4(1.0);

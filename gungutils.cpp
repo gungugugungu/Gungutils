@@ -489,8 +489,8 @@ void init_ssao() {
     ssao_pip_desc.label = "ssao-gen-pipeline";
     ssao_pip = sg_make_pipeline(&ssao_pip_desc);
 
-    ssao_params.ao_radius = 3.0f;
-    ssao_params.ao_bias = 0.05f;
+    ssao_params.ao_radius = 1.0f;
+    ssao_params.ao_bias = 0.03f;
     ssao_params.ssao_samples = 64;
 }
 
@@ -1633,7 +1633,7 @@ void render_ssao_pass() {
     ssao_params.screen_size = HMM_Vec2{static_cast<float>(w_width), static_cast<float>(w_height)};
     ssao_params.u_near = camera_near;
     ssao_params.u_far = camera_far;
-    ssao_params.time = 0.0f; // TODO: this shit
+    ssao_params.time = stm_sec(stm_now());
 
     if (ssao_image.id == SG_INVALID_ID || ssao_pip.id == SG_INVALID_ID || ssao_att_view.id == SG_INVALID_ID || ssao_tex_view.id == SG_INVALID_ID) {
         eprint("invalid id somewhere in ssao");
@@ -1682,7 +1682,7 @@ void render_ssao_pass() {
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
 
-    blur_image(ssao_image, 1.0f, 5);
+    blur_image(ssao_image, 1.0f, 7);
 }
 
 void render_pp_pass() {
@@ -4130,7 +4130,21 @@ void _init() {
     hpr_visualizer.load_from_file("hpr.png");
 }
 
+uint64_t last_frame_time;
+double target_frame_time;
+
 void _frame() {
+    uint64_t current_ticks = stm_now();
+    double current_time = stm_sec(current_ticks);
+    double last_time = stm_sec(last_frame_time);
+    double elapsed = current_time - last_time;
+
+    if (elapsed < target_frame_time) {
+        return;
+    }
+
+    last_frame_time = current_ticks;
+
     Time_BeginFrame(time_state);
     int w_width, w_height;
     SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
@@ -4502,12 +4516,14 @@ void fetch_callback(const sfetch_response_t* response) {
     texture_index++;
 }
 
+const float max_fps = 120.0f;
+
 int main(int argc, char* argv[]) {
     srand (static_cast <unsigned> (time(0)));
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", display_bounds.x, display_bounds.y, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};
@@ -4527,7 +4543,9 @@ int main(int argc, char* argv[]) {
     stm_setup();
     Time_Init(time_state);
     _init();
-    //init_callback();
+
+    target_frame_time = 1.0f / max_fps;
+    last_frame_time = stm_now();
 
     while (state.running) {
         static bool first_frame = true;
