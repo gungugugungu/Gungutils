@@ -169,8 +169,8 @@ void main() {
 
     float output_float = clamp(1.0 - occlusion, 0.0, 1.0);
     ao_output = vec4(output_float, output_float, output_float, 1.0);
-    ao_output = texture(depth2D, uv);
-    ao_output = vec4(1.0, 0.0, 0.0, 1.0);
+    float reversed_depth = linearize_reversed_depth(texture(depth2D, uv).r, u_near, u_far);
+    ao_output = vec4(reversed_depth, reversed_depth, reversed_depth, 1.0);
 }
 @end
 

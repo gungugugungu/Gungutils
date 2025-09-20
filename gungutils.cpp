@@ -1629,22 +1629,39 @@ void render_ssao_pass() {
     ssao_proj.Y = tanf(state.fov * 0.5f);
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
     ssao_params.proj = ssao_proj;
-    ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
+    ssao_params.screen_size = HMM_Vec2{1920.0f, 1080.0f};
     ssao_params.u_near = camera_near;
     ssao_params.u_far = camera_far;
+    ssao_params.time = 0.0f; // TODO: this shit
 
     if (ssao_image.id == SG_INVALID_ID || ssao_pip.id == SG_INVALID_ID || ssao_att_view.id == SG_INVALID_ID || ssao_tex_view.id == SG_INVALID_ID) {
         eprint("invalid id somewhere in ssao");
         return;
     }
 
+    sg_image_desc depth_img_desc = {};
+    depth_img_desc.width = w_width;
+    depth_img_desc.height = w_height;
+    depth_img_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    depth_img_desc.sample_count = 1;
+    depth_img_desc.usage.depth_stencil_attachment = true;
+    depth_img_desc.label = "ssao-depth-render-target";
+    sg_image depth_img = sg_make_image(&depth_img_desc);
+
+    sg_view_desc depth_att_desc = {};
+    depth_att_desc.depth_stencil_attachment.image = depth_img;
+    sg_view depth_att_view = sg_make_view(&depth_att_desc);
+
     sg_pass_action pass_action = {};
     pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    pass_action.depth.load_action = SG_LOADACTION_CLEAR;
+    pass_action.depth.clear_value = 1.0f;
 
     sg_pass pass = {};
     pass.action = pass_action;
     pass.attachments.colors[0] = ssao_att_view;
+    pass.attachments.depth_stencil = depth_att_view;
     pass.label = "ssao_pass";
 
     sg_bindings binds;
@@ -1660,6 +1677,9 @@ void render_ssao_pass() {
     sg_draw(0, 3, 1);
 
     sg_end_pass();
+
+    sg_destroy_view(depth_att_view);
+    sg_destroy_image(depth_img);
 }
 
 void render_pp_pass() {
@@ -4243,8 +4263,8 @@ void _frame() {
     }
 
     render_offscreen_pass();
-    render_ssao_pass();
     render_bloom_pass();
+    render_ssao_pass();
     render_pp_pass();
 
     // input
