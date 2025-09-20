@@ -489,16 +489,14 @@ void init_ssao() {
     ssao_pip_desc.label = "ssao-gen-pipeline";
     ssao_pip = sg_make_pipeline(&ssao_pip_desc);
 
-    ssao_params.ao_radius = 1.0f;
-    ssao_params.ao_bias = 0.03f;
-    ssao_params.ssao_samples = 64;
+    ssao_params.ao_radius = 0.5f;
+    ssao_params.ao_bias = 0.025f;
+    ssao_params.ssao_samples = 16;
 }
 
 void init_post_processing() {
     int width, height;
     SDL_GetWindowSizeInPixels(state.win, &width, &height);
-
-    cout << width << "×" << height << endl;
 
     post_state.color_img = {};
     post_state.color_img.width = width;
@@ -3781,17 +3779,6 @@ void render_editor() {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
-            }
-
-            sg_view_desc ssao_preview_desc = {};
-            ssao_preview_desc.texture.image = ssao_image;
-            sg_view ssao_display_view = sg_make_view(&ssao_preview_desc);
-            if (ssao_display_view.id == SG_INVALID_ID) {
-                ImGui::Text("I don't know how you did this but there's no ssao filter image");
-            } else {
-                ImTextureID imtex_id = simgui_imtextureid_with_sampler(ssao_display_view, ssao_smp);
-                ImGui::Image(imtex_id, ImVec2(455, 256));
-                temp_editor_views.push_back(ssao_display_view);
             }
         }
 

@@ -40,9 +40,35 @@ layout(binding = 0) uniform ssao_params {
 in vec2 uv;
 out vec4 ao_output;
 
-float rand(vec2 co){
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
+const vec3 noise8x8[64] = vec3[](
+vec3( 0.5773, -0.5773,  0.0), vec3(-0.7071,  0.7071,  0.0), vec3(-0.9239,  0.3827,  0.0), vec3( 0.3827,  0.9239,  0.0),
+vec3(-0.3827, -0.9239,  0.0), vec3( 0.9239, -0.3827,  0.0), vec3( 0.7071, -0.7071,  0.0), vec3(-0.5773, -0.5773,  0.0),
+vec3( 0.0000,  1.0000,  0.0), vec3(-1.0000,  0.0000,  0.0), vec3( 0.7071,  0.7071,  0.0), vec3(-0.3827,  0.9239,  0.0),
+vec3( 0.9239,  0.3827,  0.0), vec3( 0.3827, -0.9239,  0.0), vec3(-0.7071, -0.7071,  0.0), vec3( 0.5773,  0.5773,  0.0),
+vec3(-0.8660, -0.5000,  0.0), vec3( 0.5000,  0.8660,  0.0), vec3( 0.9659, -0.2588,  0.0), vec3(-0.2588, -0.9659,  0.0),
+vec3( 0.2588,  0.9659,  0.0), vec3(-0.9659,  0.2588,  0.0), vec3(-0.5000, -0.8660,  0.0), vec3( 0.8660,  0.5000,  0.0),
+vec3( 0.1305,  0.9914,  0.0), vec3(-0.9914, -0.1305,  0.0), vec3( 0.7934,  0.6088,  0.0), vec3(-0.6088,  0.7934,  0.0),
+vec3( 0.6088, -0.7934,  0.0), vec3(-0.7934, -0.6088,  0.0), vec3( 0.9914, -0.1305,  0.0), vec3(-0.1305, -0.9914,  0.0),
+vec3( 0.4226,  0.9063,  0.0), vec3(-0.9063, -0.4226,  0.0), vec3( 0.9063,  0.4226,  0.0), vec3(-0.4226,  0.9063,  0.0),
+vec3( 0.4226, -0.9063,  0.0), vec3(-0.9063,  0.4226,  0.0), vec3(-0.4226, -0.9063,  0.0), vec3( 0.9063, -0.4226,  0.0),
+vec3( 0.7477,  0.6641,  0.0), vec3(-0.6641, -0.7477,  0.0), vec3( 0.6641,  0.7477,  0.0), vec3(-0.7477,  0.6641,  0.0),
+vec3( 0.7477, -0.6641,  0.0), vec3(-0.6641,  0.7477,  0.0), vec3(-0.7477, -0.6641,  0.0), vec3( 0.6641, -0.7477,  0.0),
+vec3( 0.8192,  0.5736,  0.0), vec3(-0.5736, -0.8192,  0.0), vec3( 0.5736,  0.8192,  0.0), vec3(-0.8192,  0.5736,  0.0),
+vec3( 0.8192, -0.5736,  0.0), vec3(-0.5736,  0.8192,  0.0), vec3(-0.8192, -0.5736,  0.0), vec3( 0.5736, -0.8192,  0.0),
+vec3( 0.9848,  0.1736,  0.0), vec3(-0.1736, -0.9848,  0.0), vec3( 0.1736,  0.9848,  0.0), vec3(-0.9848,  0.1736,  0.0),
+vec3( 0.9848, -0.1736,  0.0), vec3(-0.1736,  0.9848,  0.0), vec3(-0.9848, -0.1736,  0.0), vec3( 0.1736, -0.9848,  0.0)
+);
+
+const vec3 kernel16[16] = vec3[](
+vec3( 0.2024, 0.0699, 0.1620), vec3( 0.0515, 0.0929, 0.1659),
+vec3( 0.1261, 0.2124, 0.0214), vec3(-0.2616, -0.0168, -0.0071),
+vec3( 0.0257, -0.0598, 0.3198), vec3( 0.0209, 0.0026, -0.0689),
+vec3(-0.0055, 0.0524, 0.0285), vec3( 0.0037, -0.0719, -0.0129),
+vec3(-0.1338, -0.1982, -0.1630), vec3(-0.1185, 0.0398, 0.0059),
+vec3( 0.0039, -0.2195, 0.0017), vec3(-0.0335, -0.1848, 0.1229),
+vec3( 0.2663, -0.0058, -0.0343), vec3(-0.0199, 0.0223, -0.2024),
+vec3( 0.0132, -0.0236, 0.2041), vec3(-0.1786, 0.1065, -0.0101)
+);
 
 float linearize_reversed_depth(float d, float near, float far) {
     float denom = max((far - d * (far - near)), 1e-6);
@@ -81,32 +107,15 @@ vec2 project_view_to_uv(vec3 viewPos) {
     return ndc * 0.5 + 0.5;
 }
 
-const vec3 kernel16[16] = vec3[](
-vec3( 0.5381, 0.1856, 0.4319),
-vec3( 0.1379, 0.2486, 0.4430),
-vec3( 0.3371, 0.5679, 0.0057),
-vec3(-0.6999, -0.0451, -0.0019),
-vec3( 0.0689, -0.1598, 0.8547),
-vec3( 0.0560, 0.0069, -0.1843),
-vec3(-0.0146, 0.1402, 0.0762),
-vec3( 0.0100, -0.1924, -0.0344),
-vec3(-0.3577, -0.5301, -0.4358),
-vec3(-0.3169, 0.1063, 0.0158),
-vec3( 0.0103, -0.5869, 0.0046),
-vec3(-0.0897, -0.4940, 0.3287),
-vec3( 0.7119, -0.0154, -0.0918),
-vec3(-0.0533, 0.0596, -0.5411),
-vec3( 0.0352, -0.0631, 0.5460),
-vec3(-0.4776, 0.2847, -0.0271)
-);
+vec3 sample_noise(vec2 uv) {
+    vec2 noise_uv = uv * screen_size / 8.0;
+    ivec2 noise_coord = ivec2(int(noise_uv.x) % 8, int(noise_uv.y) % 8);
+    int noise_index = noise_coord.y * 8 + noise_coord.x;
+    return noise8x8[noise_index];
+}
 
 void main() {
     float d = texture(depth2D, uv).r;
-
-    float linearDepth = linearize_reversed_depth(d, u_near, u_far);
-    float normalizedDepth = (linearDepth - u_near) / (u_far - u_near);
-    normalizedDepth = pow(normalizedDepth, 0.2);
-    ao_output = vec4(normalizedDepth, normalizedDepth, normalizedDepth, 1.0);
 
     if (d >= 0.9999) {
         ao_output = vec4(1.0);
@@ -114,34 +123,35 @@ void main() {
     }
 
     vec3 P = reconstruct_view_pos(uv, d);
-
     vec3 N = estimate_normal(uv, d);
 
-    vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-    vec3 tangent = normalize(cross(up, N));
-    vec3 bitangent = cross(N, tangent);
+    vec3 randomVec = sample_noise(uv);
 
-    int samples = clamp(ssao_samples, 1, 32);
+    float hash = fract(sin(dot(uv * screen_size, vec2(12.9898, 78.233))) * 43758.5453);
+    float angle = hash * 6.28318530718;
+    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+    randomVec.xy = rot * randomVec.xy;
+
+    vec3 tangent = normalize(randomVec - N * dot(randomVec, N));
+    vec3 bitangent = cross(N, tangent);
+    mat3 TBN = mat3(tangent, bitangent, N);
+
+    int samples = clamp(ssao_samples, 1, 16);
     float occlusion = 0.0;
 
     for (int i = 0; i < samples; ++i) {
-        vec3 sampleDir;
+        vec3 kernelSample = kernel16[i];
 
-        if (i < 16) {
-            sampleDir = kernel16[i];
-        } else {
-            float a = rand(uv + float(i) * 0.13) * 6.28318530718;
-            float z = rand(uv + float(i) * 0.37);
-            float r = sqrt(max(0.0, 1.0 - z*z));
-            sampleDir = vec3(r * cos(a), r * sin(a), z);
+        float jitter = fract(sin(dot(uv + float(i) * 0.1, vec2(127.1, 311.7))) * 43758.5453) * 2.0 - 1.0;
+        kernelSample += vec3(jitter * 0.1, jitter * 0.07, 0.0);
+        kernelSample = normalize(kernelSample);
+
+        vec3 sampleVec = TBN * kernelSample;
+        if (dot(sampleVec, N) < 0.0) {
+            sampleVec = -sampleVec;
         }
 
-        vec3 sampleVec = tangent * sampleDir.x + bitangent * sampleDir.y + N * abs(sampleDir.z);
-
-        float scale = float(i) / float(samples);
-        scale = mix(0.1, 1.0, scale * scale);
-
-        vec3 samplePos = P + sampleVec * ao_radius * scale;
+        vec3 samplePos = P + sampleVec * ao_radius;
 
         vec2 sampleUV = project_view_to_uv(samplePos);
 
@@ -158,8 +168,8 @@ void main() {
         }
     }
 
-    float occ = clamp(occlusion / float(samples), 0.0, 1.0);
-
+    float validSamples = max(float(samples) - (occlusion == 0.0 ? 0.0 : float(samples) * 0.3), 1.0);
+    float occ = clamp(occlusion / validSamples, 0.0, 1.0);
     float ao = 1.0 - occ;
 
     ao_output = vec4(ao, ao, ao, 1.0);
