@@ -55,6 +55,7 @@
 #include "shaders/skybox.glsl.h"
 #include "shaders/bloom_filter.glsl.h"
 #include "shaders/blur.glsl.h"
+#include "shaders/ssao.glsl.h"
 // sources
 #include "utils/Log.h"
 #include "rendering/Material.h"
@@ -439,6 +440,56 @@ void init_bloom() {
     bloom_params.threshold = 1.5f;
 }
 
+sg_image ssao_image;
+sg_view ssao_att_view;
+sg_view ssao_tex_view;
+sg_sampler ssao_smp;
+sg_pipeline ssao_pip;
+
+void init_ssao() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    sg_image_desc ssao_img_desc = {};
+    ssao_img_desc.width = w_width;
+    ssao_img_desc.height = w_height;
+    ssao_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    ssao_img_desc.sample_count = 1;
+    ssao_img_desc.usage.color_attachment = true;
+    ssao_img_desc.label = "ssao-render-target";
+    ssao_image = sg_make_image(&ssao_img_desc);
+
+    sg_view_desc ssao_att_desc = {};
+    ssao_att_desc.color_attachment.image = ssao_image;
+    ssao_att_view = sg_make_view(&ssao_att_desc);
+
+    sg_view_desc ssao_tex_desc = {};
+    ssao_tex_desc.texture.image = ssao_image;
+    ssao_tex_view = sg_make_view(&ssao_tex_desc);
+
+    sg_sampler_desc ssao_smp_desc = {};
+    ssao_smp_desc.min_filter = SG_FILTER_LINEAR;
+    ssao_smp_desc.mag_filter = SG_FILTER_LINEAR;
+    ssao_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    ssao_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    ssao_smp = sg_make_sampler(&ssao_smp_desc);
+
+    sg_shader ssao_shd = sg_make_shader(ssao_gen_shader_desc(sg_query_backend()));
+    sg_pipeline_desc ssao_pip_desc = {};
+    ssao_pip_desc.shader = ssao_shd;
+    ssao_pip_desc.layout.attrs[ATTR_ssao_gen_position].format = SG_VERTEXFORMAT_FLOAT3;
+    ssao_pip_desc.layout.attrs[ATTR_ssao_gen_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    ssao_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    ssao_pip_desc.color_count = 1;
+    ssao_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    ssao_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    ssao_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    ssao_pip_desc.depth.write_enabled = true;
+    ssao_pip_desc.cull_mode = SG_CULLMODE_NONE;
+    ssao_pip_desc.label = "ssao-gen-pipeline";
+    ssao_pip = sg_make_pipeline(&ssao_pip_desc);
+}
+
 void init_post_processing() {
     int width, height;
     SDL_GetWindowSize(state.win, &width, &height);
@@ -507,8 +558,6 @@ void init_post_processing() {
     ssao_params = ssao_params_t{};
     ssao_params.ao_radius = 0.5f;
     ssao_params.ao_bias = 0.02f;
-    ssao_params.ao_strength = 1.0f;
-    ssao_params.ao_power = 1.75f;
     ssao_params.ssao_samples = 64;
 }
 
@@ -768,7 +817,7 @@ bool is_object_in_frustum(const Object& obj) {
     return true;
 }
 
-std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() {
+std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() { // TODO: occlusion culling for real this time
     struct ObjSnapshot {
         HMM_Vec3 position;
         HMM_Vec3 bounding_rect;
@@ -1572,6 +1621,47 @@ void render_bloom_pass() {
     blur_image(bloom_img, 1.025f, 5);
 }
 
+void render_ssao_pass() {
+    int w_width, w_height;
+    SDL_GetWindowSize(state.win, &w_width, &w_height);
+
+    HMM_Vec2 ssao_proj{};
+    ssao_proj.Y = tanf(state.fov * 0.5f);
+    ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
+    ssao_params.proj = ssao_proj;
+    ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
+    ssao_params.u_near = camera_near;
+    ssao_params.u_far = camera_far;
+
+    if (ssao_image.id == SG_INVALID_ID || ssao_pip.id == SG_INVALID_ID || ssao_att_view.id == SG_INVALID_ID || ssao_tex_view.id == SG_INVALID_ID) {
+        eprint("invalid id somewhere in ssao");
+        return;
+    }
+
+    sg_pass_action pass_action = {};
+    pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+
+    sg_pass pass = {};
+    pass.action = pass_action;
+    pass.attachments.colors[0] = ssao_att_view;
+    pass.label = "ssao_pass";
+
+    sg_bindings binds;
+    binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    binds.views[0] = post_state.rendered_depth_tex_view;
+    binds.samplers[0] = post_state.rendered_depth_sampler;
+
+    sg_begin_pass(&pass);
+
+    sg_apply_pipeline(ssao_pip);
+    sg_apply_bindings(&binds);
+    sg_apply_uniforms(UB_ssao_params, SG_RANGE(ssao_params));
+    sg_draw(0, 3, 1);
+
+    sg_end_pass();
+}
+
 void render_pp_pass() {
     if (post_state.rendered_color_img.id == SG_INVALID_ID) {
         printf("ERROR: No valid color image from first pass!\n");
@@ -1611,10 +1701,11 @@ void render_pp_pass() {
     post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
     post_state.post_bindings.views[2] = bloom_tex_view;
     post_state.post_bindings.samplers[2] = bloom_smp;
+    post_state.post_bindings.views[3] = ssao_tex_view;
+    post_state.post_bindings.samplers[3] = ssao_smp;
 
     sg_apply_bindings(&post_state.post_bindings);
     sg_apply_uniforms(0, SG_RANGE(post_state.uniforms));
-    sg_apply_uniforms(1, SG_RANGE(ssao_params));
 
     sg_draw(0, 3, 1);
 
@@ -3274,6 +3365,11 @@ void render_editor() {
                         vis_groups[0].objects.push_back(new_object);
                     }
                 }
+                if (ImGui::Button("DELETE")) {
+                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    selected_object_index = -1;
+                    selected_mesh_visgroup = -1;
+                }
                 ImGui::Separator();
                 if (selected_object->shape_keys.size() > 1) {
                     if (ImGui::CollapsingHeader("SHAPE KEYS")) {
@@ -3338,16 +3434,6 @@ void render_editor() {
                             ImGui::Image(imtex_id, ImVec2(128, 128));
                             temp_editor_views.push_back(editor_emissive_display_view);
                         }
-                    }
-                }
-                if (ImGui::CollapsingHeader("DANGER ZONE")) {
-                    if (ImGui::Button("RE-PREPARE BUFFERS")) {
-                        prepare_mesh_buffers(*selected_object);
-                    }
-                    if (ImGui::Button("DELETE")) {
-                        vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                        selected_object_index = -1;
-                        selected_mesh_visgroup = -1;
                     }
                 }
             } else {
@@ -3519,6 +3605,11 @@ void render_editor() {
 
                 ImGui::PopItemWidth();
                 ImGui::Separator();
+                if (ImGui::Button("DUPLICATE")) {
+                    state.helpers.emplace_back();
+                    state.helpers.back()->name = selected_helper->name;
+                    state.helpers.back()->position = selected_helper->position;
+                }
                 if (ImGui::Button("DELETE")) {
                     selected_helper->remove();
                     selected_helper_index = -1;
@@ -3667,6 +3758,17 @@ void render_editor() {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
+            }
+
+            sg_view_desc ssao_preview_desc = {};
+            ssao_preview_desc.texture.image = ssao_image;
+            sg_view ssao_display_view = sg_make_view(&ssao_preview_desc);
+            if (ssao_display_view.id == SG_INVALID_ID) {
+                ImGui::Text("I don't know how you did this but there's no ssao filter image");
+            } else {
+                ImTextureID imtex_id = simgui_imtextureid_with_sampler(ssao_display_view, ssao_smp);
+                ImGui::Image(imtex_id, ImVec2(455, 256));
+                temp_editor_views.push_back(ssao_display_view);
             }
         }
 
@@ -3894,6 +3996,7 @@ void _init() {
     state.pass_action.depth.clear_value = 1.0f;
 
     init_blur_filter();
+    init_ssao();
     init_shadowmaps();
     init_bloom();
     init_post_processing();
@@ -4133,14 +4236,6 @@ void _frame() {
     vs_params = {.view = view, .projection = projection};
     billboard_vs_params = {.view = view, .projection = projection};
 
-    HMM_Vec2 ssao_proj{};
-    ssao_proj.Y = tanf(state.fov * 0.5f);
-    ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
-    ssao_params.proj = ssao_proj;
-    ssao_params.screen_size = HMM_Vec2{ static_cast<float>(w_width), static_cast<float>(w_height) };
-    ssao_params.u_near = camera_near;
-    ssao_params.u_far = camera_far;
-
     for (auto& vg : vis_groups) {
         for (auto& obj : vg.objects) {
             obj.update_components();
@@ -4148,6 +4243,7 @@ void _frame() {
     }
 
     render_offscreen_pass();
+    render_ssao_pass();
     render_bloom_pass();
     render_pp_pass();
 
@@ -4315,6 +4411,14 @@ void _event(SDL_Event* e) {
             }
             if (e->key.key == SDLK_S) {
                 current_gizmo_operation = ImGuizmo::OPERATION::SCALE;
+            }
+            if (e->key.key == SDLK_DELETE) {
+                if (selected_object_index != -1) {
+                    auto& vg = vis_groups[selected_mesh_visgroup];
+                    vg.objects.erase(vg.objects.begin() + selected_object_index);
+                    selected_object_index = -1;
+                    selected_mesh_visgroup = -1;
+                }
             }
         }
     }
