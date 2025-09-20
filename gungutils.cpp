@@ -98,8 +98,8 @@ float shadow_ortho_size = 50.0f;
 float shadow_near = 0.1f;
 float shadow_far = 100.0f;
 
-float camera_near = 0.1f;
-float camera_far = 1050.0f;
+const float camera_near = 0.1f;
+const float camera_far = 1050.0f;
 
 const int max_light_amount = 150.0f;
 
@@ -378,7 +378,7 @@ void blur_image(sg_image input_image, float strength, int passes) {
 
 void init_bloom() {
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     sg_image_desc bloom_img_desc = {};
     bloom_img_desc.width = w_width;
@@ -448,7 +448,7 @@ sg_pipeline ssao_pip;
 
 void init_ssao() {
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     sg_image_desc ssao_img_desc = {};
     ssao_img_desc.width = w_width;
@@ -488,11 +488,17 @@ void init_ssao() {
     ssao_pip_desc.cull_mode = SG_CULLMODE_NONE;
     ssao_pip_desc.label = "ssao-gen-pipeline";
     ssao_pip = sg_make_pipeline(&ssao_pip_desc);
+
+    ssao_params.ao_radius = 3.0f;
+    ssao_params.ao_bias = 0.05f;
+    ssao_params.ssao_samples = 64;
 }
 
 void init_post_processing() {
     int width, height;
-    SDL_GetWindowSize(state.win, &width, &height);
+    SDL_GetWindowSizeInPixels(state.win, &width, &height);
+
+    cout << width << "×" << height << endl;
 
     post_state.color_img = {};
     post_state.color_img.width = width;
@@ -554,11 +560,6 @@ void init_post_processing() {
     post_state.uniforms.contrast = 1.0f;
     post_state.uniforms.brightness = 0.0f;
     post_state.uniforms.saturation = 1.0f;
-
-    ssao_params = ssao_params_t{};
-    ssao_params.ao_radius = 0.5f;
-    ssao_params.ao_bias = 0.02f;
-    ssao_params.ssao_samples = 64;
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -1435,7 +1436,7 @@ void render_shadow_pass() {
 
 void render_offscreen_pass() {
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     render_shadow_pass();
 
@@ -1536,7 +1537,7 @@ void render_offscreen_pass() {
 
 void render_bloom_pass() {
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     if (bloom_img.id == SG_INVALID_ID) {
         if (bloom_img.id != SG_INVALID_ID) {
@@ -1623,13 +1624,13 @@ void render_bloom_pass() {
 
 void render_ssao_pass() {
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     HMM_Vec2 ssao_proj{};
-    ssao_proj.Y = tanf(state.fov * 0.5f);
+    ssao_proj.Y = tanf((state.fov * (HMM_PI32 / 180.0f)) * 0.5f);
     ssao_proj.X = ssao_proj.Y * (static_cast<float>(w_width) / static_cast<float>(w_height));
     ssao_params.proj = ssao_proj;
-    ssao_params.screen_size = HMM_Vec2{1920.0f, 1080.0f};
+    ssao_params.screen_size = HMM_Vec2{static_cast<float>(w_width), static_cast<float>(w_height)};
     ssao_params.u_near = camera_near;
     ssao_params.u_far = camera_far;
     ssao_params.time = 0.0f; // TODO: this shit
@@ -1680,6 +1681,8 @@ void render_ssao_pass() {
 
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
+
+    blur_image(ssao_image, 1.0f, 5);
 }
 
 void render_pp_pass() {
@@ -1693,7 +1696,7 @@ void render_pp_pass() {
     swapchain_pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
 
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     sg_swapchain swapchain = {};
     swapchain.width = w_width;
@@ -1793,7 +1796,7 @@ struct RaycastResult {
 
 RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     int window_width, window_height;
-    SDL_GetWindowSize(state.win, &window_width, &window_height);
+    SDL_GetWindowSizeInPixels(state.win, &window_width, &window_height);
     float ndc_x = (2.0f * screen_x) / window_width - 1.0f;
     float ndc_y = 1.0f - (2.0f * screen_y) / window_height;
 
@@ -3940,7 +3943,7 @@ void _init() {
     state.directional_light.direction = HMM_V3(1.0f, -1.0f, -0.8f);
 
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
     state.window_surface.clear(w_width, w_height);
 
     // ImGui
@@ -4130,7 +4133,7 @@ void _init() {
 void _frame() {
     Time_BeginFrame(time_state);
     int w_width, w_height;
-    SDL_GetWindowSize(state.win, &w_width, &w_height);
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
     for (int i = 0; i < 225; i++) {
         if (i > 0) {

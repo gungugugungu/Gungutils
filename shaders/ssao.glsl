@@ -40,6 +40,10 @@ layout(binding = 0) uniform ssao_params {
 in vec2 uv;
 out vec4 ao_output;
 
+float rand(vec2 co){
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
 float linearize_reversed_depth(float d, float near, float far) {
     float denom = max((far - d * (far - near)), 1e-6);
     float viewZ = (near * far) / denom;
@@ -77,40 +81,33 @@ vec2 project_view_to_uv(vec3 viewPos) {
     return ndc * 0.5 + 0.5;
 }
 
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-
-float hash3D(vec3 p) {
-    return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
-}
-
-float interleavedGradientNoise(vec2 pos) {
-    vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
-    return fract(magic.z * fract(dot(pos, magic.xy)));
-}
-
-mat2 rotationMatrix(float angle) {
-    float s = sin(angle);
-    float c = cos(angle);
-    return mat2(c, -s, s, c);
-}
-
-vec3 hemispherePointUniform(int i, int numSamples, vec2 randomVec) {
-    float goldenAngle = 2.399963229728653;
-    float r = sqrt((float(i) + 0.5) / float(numSamples));
-    float theta = float(i) * goldenAngle + randomVec.x * 6.28318530718;
-    float phi = acos(1.0 - randomVec.y);
-
-    float x = r * cos(theta);
-    float y = r * sin(theta);
-    float z = sqrt(1.0 - r * r);
-
-    return vec3(x, y, z);
-}
+const vec3 kernel16[16] = vec3[](
+vec3( 0.5381, 0.1856, 0.4319),
+vec3( 0.1379, 0.2486, 0.4430),
+vec3( 0.3371, 0.5679, 0.0057),
+vec3(-0.6999, -0.0451, -0.0019),
+vec3( 0.0689, -0.1598, 0.8547),
+vec3( 0.0560, 0.0069, -0.1843),
+vec3(-0.0146, 0.1402, 0.0762),
+vec3( 0.0100, -0.1924, -0.0344),
+vec3(-0.3577, -0.5301, -0.4358),
+vec3(-0.3169, 0.1063, 0.0158),
+vec3( 0.0103, -0.5869, 0.0046),
+vec3(-0.0897, -0.4940, 0.3287),
+vec3( 0.7119, -0.0154, -0.0918),
+vec3(-0.0533, 0.0596, -0.5411),
+vec3( 0.0352, -0.0631, 0.5460),
+vec3(-0.4776, 0.2847, -0.0271)
+);
 
 void main() {
     float d = texture(depth2D, uv).r;
+
+    float linearDepth = linearize_reversed_depth(d, u_near, u_far);
+    float normalizedDepth = (linearDepth - u_near) / (u_far - u_near);
+    normalizedDepth = pow(normalizedDepth, 0.2); // Enhance near details
+    ao_output = vec4(normalizedDepth, normalizedDepth, normalizedDepth, 1.0);
+    return;
 
     if (d >= 0.9999) {
         ao_output = vec4(1.0);
@@ -118,59 +115,55 @@ void main() {
     }
 
     vec3 P = reconstruct_view_pos(uv, d);
-    vec3 N = estimate_normal(uv, d);
 
-    vec2 pixelPos = uv * screen_size;
-    float noiseAngle = interleavedGradientNoise(pixelPos + time * 0.1) * 6.28318530718;
-    vec2 randomVec = vec2(hash(pixelPos + vec2(time)), hash(pixelPos + vec2(time * 1.3 + 17.0)));
+    vec3 N = estimate_normal(uv, d);
 
     vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
     vec3 tangent = normalize(cross(up, N));
     vec3 bitangent = cross(N, tangent);
-    mat3 TBN = mat3(tangent, bitangent, N);
 
+    int samples = clamp(ssao_samples, 1, 32);
     float occlusion = 0.0;
-    int samples = clamp(ssao_samples, 8, 64);
-    int validSamples = 0;
 
     for (int i = 0; i < samples; ++i) {
-        vec3 sampleDir = hemispherePointUniform(i, samples, randomVec);
+        vec3 sampleDir;
 
-        mat2 rot = rotationMatrix(noiseAngle);
-        sampleDir.xy = rot * sampleDir.xy;
+        if (i < 16) {
+            sampleDir = kernel16[i];
+        } else {
+            float a = rand(uv + float(i) * 0.13) * 6.28318530718;
+            float z = rand(uv + float(i) * 0.37);
+            float r = sqrt(max(0.0, 1.0 - z*z));
+            sampleDir = vec3(r * cos(a), r * sin(a), z);
+        }
 
-        sampleDir = TBN * sampleDir;
+        vec3 sampleVec = tangent * sampleDir.x + bitangent * sampleDir.y + N * abs(sampleDir.z);
 
-        float scale = mix(0.1, 1.0, float(i) / float(samples));
-        vec3 samplePos = P + sampleDir * ao_radius * scale;
+        float scale = float(i) / float(samples);
+        scale = mix(0.1, 1.0, scale * scale);
+
+        vec3 samplePos = P + sampleVec * ao_radius * scale;
 
         vec2 sampleUV = project_view_to_uv(samplePos);
 
-        if (sampleUV.x < 0.0 || sampleUV.x > 1.0 ||
-        sampleUV.y < 0.0 || sampleUV.y > 1.0) continue;
+        if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0) continue;
 
-        float sampleDepth = texture(depth2D, sampleUV).r;
-        float sampleZ = linearize_reversed_depth(sampleDepth, u_near, u_far);
-        float samplePosZ = -samplePos.z;
+        float sampleDepthTex = texture(depth2D, sampleUV).r;
+        float sampleDepthViewZ = linearize_reversed_depth(sampleDepthTex, u_near, u_far);
+        float samplePosViewZ = -samplePos.z;
 
-        float depthDiff = sampleZ - samplePosZ;
+        float rangeCheck = smoothstep(0.0, 1.0, ao_radius / (abs(P.z - (-sampleDepthViewZ)) + 1e-4));
 
-        if (depthDiff > ao_bias) {
-            float rangeCheck = smoothstep(0.0, ao_radius * 2.0, ao_radius / abs(depthDiff));
+        if (sampleDepthViewZ < (samplePosViewZ - ao_bias)) {
             occlusion += rangeCheck;
         }
-
-        validSamples++;
     }
 
-    if (validSamples > 0) {
-        occlusion = occlusion / float(validSamples);
-    }
+    float occ = clamp(occlusion / float(samples), 0.0, 1.0);
 
-    float output_float = clamp(1.0 - occlusion, 0.0, 1.0);
-    ao_output = vec4(output_float, output_float, output_float, 1.0);
-    float reversed_depth = linearize_reversed_depth(texture(depth2D, uv).r, u_near, u_far);
-    ao_output = vec4(reversed_depth, reversed_depth, reversed_depth, 1.0);
+    float ao = 1.0 - occ;
+
+    ao_output = vec4(ao, ao, ao, 1.0);
 }
 @end
 
