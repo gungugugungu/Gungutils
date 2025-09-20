@@ -127,11 +127,6 @@ void main() {
 
     vec3 randomVec = sample_noise(uv);
 
-    float hash = fract(sin(dot(uv * screen_size, vec2(12.9898, 78.233))) * 43758.5453);
-    float angle = hash * 6.28318530718;
-    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-    randomVec.xy = rot * randomVec.xy;
-
     vec3 tangent = normalize(randomVec - N * dot(randomVec, N));
     vec3 bitangent = cross(N, tangent);
     mat3 TBN = mat3(tangent, bitangent, N);
@@ -140,13 +135,7 @@ void main() {
     float occlusion = 0.0;
 
     for (int i = 0; i < samples; ++i) {
-        vec3 kernelSample = kernel16[i];
-
-        float jitter = fract(sin(dot(uv + float(i) * 0.1, vec2(127.1, 311.7))) * 43758.5453) * 2.0 - 1.0;
-        kernelSample += vec3(jitter * 0.1, jitter * 0.07, 0.0);
-        kernelSample = normalize(kernelSample);
-
-        vec3 sampleVec = TBN * kernelSample;
+        vec3 sampleVec = TBN * kernel16[i];
         if (dot(sampleVec, N) < 0.0) {
             sampleVec = -sampleVec;
         }
@@ -168,8 +157,7 @@ void main() {
         }
     }
 
-    float validSamples = max(float(samples) - (occlusion == 0.0 ? 0.0 : float(samples) * 0.3), 1.0);
-    float occ = clamp(occlusion / validSamples, 0.0, 1.0);
+    float occ = clamp(occlusion / float(samples), 0.0, 1.0);
     float ao = 1.0 - occ;
 
     ao_output = vec4(ao, ao, ao, 1.0);
