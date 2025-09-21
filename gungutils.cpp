@@ -58,6 +58,7 @@
 #include "shaders/ssao.glsl.h"
 // sources
 #include "utils/Log.h"
+#include "utils/Input.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
@@ -3848,7 +3849,6 @@ void render_editor() {
                 }
             }
             ImGui::EndChild();
-            // TODO: custom developer commands
             static char name_buffer[256];
             if (ImGui::Button("SEND")) {
                 _add_log("> " + string(name_buffer), LogType::USER);

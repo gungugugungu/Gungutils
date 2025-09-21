@@ -52,11 +52,7 @@ void event(SDL_Event* e) {
     }
 }
 
-void on_dev_command(const string& command) {
-    if (command == "jeff") {
-        iprint("jeffy");
-    }
-}
+void on_dev_command(const string& command) {}
 
 void (*init_callback)() = init;
 void (*frame_callback)() = frame;
