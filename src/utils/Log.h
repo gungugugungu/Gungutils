@@ -7,7 +7,7 @@
 
 enum LogType {
     INFO,
-    ERROR,
+    OHNO,
     WARNING,
     USER,
 };
@@ -36,7 +36,7 @@ inline void iprint(std::string text) {
 inline void eprint(std::string text) {
     std::string output_text = "[" + std::to_string(stm_sec(stm_now())) + "] [ERROR] " + text;
     std::cerr << output_text.c_str() << std::endl;
-    _add_log(output_text, ERROR);
+    _add_log(output_text, OHNO);
 }
 
 inline void wprint(std::string text) {

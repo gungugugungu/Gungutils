@@ -1651,6 +1651,11 @@ void render_ssao_pass() {
     depth_att_desc.depth_stencil_attachment.image = depth_img;
     sg_view depth_att_view = sg_make_view(&depth_att_desc);
 
+    if (depth_img.id == SG_INVALID_ID || depth_att_view.id == SG_INVALID_ID) {
+        eprint("invalid depth image");
+        return;
+    }
+
     sg_pass_action pass_action = {};
     pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -1677,10 +1682,10 @@ void render_ssao_pass() {
 
     sg_end_pass();
 
+    blur_image(ssao_image, 1.0f, 5);
+
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
-
-    blur_image(ssao_image, 1.0f, 5);
 }
 
 void render_pp_pass() {
@@ -3781,6 +3786,8 @@ void render_editor() {
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
             }
+            ImTextureID imtex_id = simgui_imtextureid_with_sampler(ssao_tex_view, ssao_smp);
+            ImGui::Image(imtex_id, ImVec2(455, 256));
         }
 
         ImGui::Separator();
@@ -3838,7 +3845,7 @@ void render_editor() {
             ImGui::BeginChild("LOGS", ImVec2(600, 200), true);
             for (int i = 0; i < MAX_LOGS-1; i++) {
                 if (logs[i].text.length() > 0) {
-                    if (logs[i].type == LogType::ERROR) {
+                    if (logs[i].type == LogType::OHNO) {
                         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), logs[i].text.c_str());
                     } else if (logs[i].type == LogType::WARNING) {
                         ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), logs[i].text.c_str());
@@ -4595,7 +4602,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};
