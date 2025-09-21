@@ -53,6 +53,11 @@ void event(SDL_Event* e) {
     }
 }
 
+void on_dev_command(const string& command) {
+
+}
+
 void (*init_callback)() = init;
 void (*frame_callback)() = frame;
 void (*event_callback)(SDL_Event* e) = event;
+void (*on_dev_command_callback)(const string& command) = on_dev_command;

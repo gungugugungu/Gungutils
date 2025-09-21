@@ -1679,7 +1679,7 @@ void render_ssao_pass() {
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
 
-    blur_image(ssao_image, 1.00f, 5);
+    blur_image(ssao_image, 1.0f, 5);
 }
 
 void render_pp_pass() {
@@ -3127,6 +3127,7 @@ std::vector<Object*> get_objects_with_component() {
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
+extern void (*on_dev_command_callback)(const string& command);
 ImGuiKey ImGui_ImplSDL3_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode);
 
 static int selected_object_index = -1;
@@ -3839,6 +3840,8 @@ void render_editor() {
                         ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), logs[i].text.c_str());
                     } else if (logs[i].type == LogType::WARNING) {
                         ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), logs[i].text.c_str());
+                    } else if (logs[i].type == LogType::USER) {
+                        ImGui::TextColored(ImVec4(0.0f, 0.25f, 1.0f, 1.0f), logs[i].text.c_str());
                     } else {
                         ImGui::Text(logs[i].text.c_str());
                     }
@@ -3846,6 +3849,13 @@ void render_editor() {
             }
             ImGui::EndChild();
             // TODO: custom developer commands
+            static char name_buffer[256];
+            if (ImGui::Button("SEND")) {
+                on_dev_command_callback(string(name_buffer));
+                _add_log(string(name_buffer), LogType::USER);
+            }
+            ImGui::SameLine();
+            ImGui::InputText("COMMAND", name_buffer, sizeof(name_buffer));
         }
 
         ImGui::End();
@@ -4266,8 +4276,8 @@ void _frame() {
     }
 
     render_offscreen_pass();
-    render_bloom_pass();
     render_ssao_pass();
+    render_bloom_pass();
     render_pp_pass();
 
     // input

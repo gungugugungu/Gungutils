@@ -9,6 +9,7 @@ enum LogType {
     INFO,
     ERROR,
     WARNING,
+    USER,
 };
 
 struct Log {
