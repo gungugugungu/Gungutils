@@ -58,7 +58,6 @@
 #include "shaders/ssao.glsl.h"
 // sources
 #include "utils/Log.h"
-#include "utils/Input.h"
 #include "rendering/Material.h"
 #include "rendering/Mesh.h"
 #include "rendering/Object.h"
@@ -143,9 +142,11 @@ struct AppState {
     sg_pipeline surf_pipeline;
     Surface window_surface{};
     vector<ParticleSystem> particle_systems;
+    vector<VisGroup> vis_groups;
 };
 
 AppState state;
+AppState old_state;
 PostProcessState post_state = {};
 ssao_params_t ssao_params;
 int texture_index = 0;
@@ -610,8 +611,6 @@ HMM_Quat EulerDegreesToQuat(const HMM_Vec3& euler) {
 
 vs_params_t vs_params;
 
-vector<VisGroup> vis_groups;
-
 sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
     sg_image invalid_image{};
     invalid_image.id = SG_INVALID_ID;
@@ -826,7 +825,7 @@ std::pair<HMM_Vec3, HMM_Vec3> get_scene_bounds() { // TODO: occlusion culling fo
 
     std::vector<ObjSnapshot> snaps;
 
-    for (const auto& visgroup : vis_groups) {
+    for (const auto& visgroup : state.vis_groups) {
         if (!visgroup.enabled) continue;
         for (const auto& obj : visgroup.objects) {
             if (obj.enable_shading) {
@@ -895,7 +894,7 @@ void render_shadow_meshes(const HMM_Mat4& light_view, const HMM_Mat4& light_proj
         Object obj;
     };
     std::vector<Instance> instances;
-    for (auto& visgroup : vis_groups) {
+    for (auto& visgroup : state.vis_groups) {
         if (!visgroup.enabled) continue;
         for (size_t i = 0; i < visgroup.objects.size(); i++) {
             Object obj = visgroup.objects[i];
@@ -985,7 +984,7 @@ void render_meshes() {
     };
     std::vector<Instance> instances;
 
-    for (auto& visgroup : vis_groups) {
+    for (auto& visgroup : state.vis_groups) {
         if (!visgroup.enabled) continue;
         float group_opacity = visgroup.opacity;
         for (size_t i = 0; i < visgroup.objects.size(); i++) {
@@ -1818,7 +1817,7 @@ RaycastResult raycast_from_screen(float screen_x, float screen_y) {
     const Object* hit_obj = nullptr;
     bool hit_found = false;
 
-    for (const auto& visgroup : vis_groups) {
+    for (const auto& visgroup : state.vis_groups) {
         if (!visgroup.enabled) continue;
 
         for (const auto& obj : visgroup.objects) {
@@ -1882,7 +1881,7 @@ RaycastResult raycast_point_to_point(const HMM_Vec3& start_point, const HMM_Vec3
     const Object* hit_obj = nullptr;
     bool hit_found = false;
 
-    for (const auto& visgroup : vis_groups) {
+    for (const auto& visgroup : state.vis_groups) {
         if (!visgroup.enabled) continue;
 
         for (const auto& obj : visgroup.objects) {
@@ -2532,13 +2531,13 @@ void clear_scene() {
     }
     state.audio_sources.clear();
 
-    for (auto& visgroup : vis_groups) {
+    for (auto& visgroup : state.vis_groups) {
         /*for (auto& obj : visgroup.objects) {
             obj.shape_keys.clear();
         }*/
         visgroup.objects.clear();
     }
-    vis_groups.clear();
+    state.vis_groups.clear();
 
     for (auto* hpr : state.helpers) {
         hpr->remove();
@@ -2553,7 +2552,7 @@ void save_scene(const string& path) {
     nlohmann::json j;
 
     j["visgroups"] = nlohmann::json::array();
-    for (auto& visgroup : vis_groups) {
+    for (auto& visgroup : state.vis_groups) {
         nlohmann::json vg_json;
         vg_json["name"] = visgroup.name;
         vg_json["enabled"] = visgroup.enabled;
@@ -2992,7 +2991,7 @@ void load_scene(const string& path) {
                     new_visgroup.objects.push_back(std::move(obj));
                 }
             }
-            vis_groups.push_back(std::move(new_visgroup));
+            state.vis_groups.push_back(std::move(new_visgroup));
         }
     }
 
@@ -3115,7 +3114,7 @@ Helper* get_helper_by_name(const string& name) { // DO NOT NAME HELPERS THE SAME
 template<typename T>
 std::vector<Object*> get_objects_with_component() {
     std::vector<Object*> objects;
-    for (auto& vg : vis_groups) {
+    for (auto& vg : state.vis_groups) {
         for (auto& obj : vg.objects) {
             if (obj.has_component<T>()) {
                 objects.push_back(&obj);
@@ -3211,8 +3210,8 @@ void render_editor() {
 
         if (ImGui::CollapsingHeader("VISGROUPS")) {
             ImGui::BeginChild("VISGROUPS", ImVec2(150, 75), true);
-            for (int i = 0; i < vis_groups.size(); i++) {
-                string label = vis_groups[i].name;
+            for (int i = 0; i < state.vis_groups.size(); i++) {
+                string label = state.vis_groups[i].name;
 
                 bool is_selected = (selected_visgroup_index == i);
                 if (ImGui::Selectable(label.c_str(), is_selected)) {
@@ -3226,10 +3225,10 @@ void render_editor() {
             ImGui::EndChild();
             ImGui::SameLine();
             ImGui::BeginChild("VISGROUP SETTINGS", ImVec2(150, 75), true);
-            if (selected_visgroup_index >= 0 && selected_visgroup_index < vis_groups.size()) {
+            if (selected_visgroup_index >= 0 && selected_visgroup_index < state.vis_groups.size()) {
                 static char visgroup_name_buffer[256];
                 static int last_selected_visgroup = -1;
-                VisGroup* selected_visgroup = &vis_groups[selected_visgroup_index];
+                VisGroup* selected_visgroup = &state.vis_groups[selected_visgroup_index];
 
                 if (last_selected_visgroup != selected_visgroup_index) {
                     strncpy(visgroup_name_buffer, selected_visgroup->name.c_str(), sizeof(visgroup_name_buffer) - 1);
@@ -3244,9 +3243,9 @@ void render_editor() {
                 ImGui::DragFloat("OPACITY", &selected_visgroup->opacity, 0.01f, 0.0f, 1.0f);
                 if (ImGui::Button("DELETE")) {
                     for (auto& obj : selected_visgroup->objects) {
-                        vis_groups[0].objects.push_back(obj);
+                        state.vis_groups[0].objects.push_back(obj);
                     }
-                    vis_groups.erase(vis_groups.begin() + selected_visgroup_index);
+                    state.vis_groups.erase(state.vis_groups.begin() + selected_visgroup_index);
                     selected_visgroup_index = -1;
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
@@ -3256,7 +3255,7 @@ void render_editor() {
             }
             ImGui::EndChild();
             if (ImGui::Button("ADD VISGROUP")) {
-                vis_groups.emplace_back("New VisGroup", vector<Object>());
+                state.vis_groups.emplace_back("New VisGroup", vector<Object>());
             }
         }
 
@@ -3265,17 +3264,17 @@ void render_editor() {
             ImGui::BeginChild("INDEX MOVEMENT", ImVec2(20, 45), ImGuiChildFlags_None);
             if (ImGui::Button("^")) {
                 if (selected_object_index > 0) {
-                    Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
-                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                    vis_groups[selected_mesh_visgroup].objects.insert(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index - 1, std::move(object_to_move));
+                    Object object_to_move = std::move(state.vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                    state.vis_groups[selected_mesh_visgroup].objects.erase(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    state.vis_groups[selected_mesh_visgroup].objects.insert(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index - 1, std::move(object_to_move));
                     selected_object_index--;
                 }
             }
             if (ImGui::Button("v")) {
-                if (selected_object_index < vis_groups[selected_mesh_visgroup].objects.size() - 1) {
-                    Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
-                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                    vis_groups[selected_mesh_visgroup].objects.insert(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index + 1, std::move(object_to_move));
+                if (selected_object_index < state.vis_groups[selected_mesh_visgroup].objects.size() - 1) {
+                    Object object_to_move = std::move(state.vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                    state.vis_groups[selected_mesh_visgroup].objects.erase(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    state.vis_groups[selected_mesh_visgroup].objects.insert(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index + 1, std::move(object_to_move));
                     selected_object_index++;
                 }
             }
@@ -3284,8 +3283,8 @@ void render_editor() {
             ImGui::SameLine();
 
             ImGui::BeginChild("OBJECT", ImVec2(256, 300), true);
-            for (int v = 0; v < vis_groups.size(); v++) {
-                VisGroup visgroup = vis_groups[v];
+            for (int v = 0; v < state.vis_groups.size(); v++) {
+                VisGroup visgroup = state.vis_groups[v];
                 for (int i = 0; i < visgroup.objects.size(); i++) {
                     Object obj = visgroup.objects[i];
                     Mesh* mesh = obj.mesh;
@@ -3295,13 +3294,13 @@ void render_editor() {
                     if (ImGui::Selectable(label.c_str(), is_selected)) {
                         selected_object_index = i;
                         selected_mesh_visgroup = v;
-                        if (vis_groups[v].objects[i].mesh->material->has_color_texture) {
-                            editor_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->base_color_image_desc);
-                            editor_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->base_color_sampler_desc);
+                        if (state.vis_groups[v].objects[i].mesh->material->has_color_texture) {
+                            editor_display_image = sg_make_image(state.vis_groups[v].objects[i].mesh->material->base_color_image_desc);
+                            editor_display_sampler = sg_make_sampler(state.vis_groups[v].objects[i].mesh->material->base_color_sampler_desc);
                         }
-                        if (vis_groups[v].objects[i].mesh->material->has_metallic_roughness_texture) {
-                            editor_specular_display_image = sg_make_image(vis_groups[v].objects[i].mesh->material->metallic_roughness_image_desc);
-                            editor_specular_display_sampler = sg_make_sampler(vis_groups[v].objects[i].mesh->material->metallic_roughness_sampler_desc);
+                        if (state.vis_groups[v].objects[i].mesh->material->has_metallic_roughness_texture) {
+                            editor_specular_display_image = sg_make_image(state.vis_groups[v].objects[i].mesh->material->metallic_roughness_image_desc);
+                            editor_specular_display_sampler = sg_make_sampler(state.vis_groups[v].objects[i].mesh->material->metallic_roughness_sampler_desc);
                         }
                     }
 
@@ -3316,7 +3315,7 @@ void render_editor() {
             ImGui::SameLine();
             ImGui::BeginChild("OBJECT SETTINGS", ImVec2(300, 300), true);
             if (selected_object_index != -1) {
-                Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+                Object* selected_object = &state.vis_groups[selected_mesh_visgroup].objects[selected_object_index];
 
                 ImGui::PushItemWidth(200);
 
@@ -3345,15 +3344,15 @@ void render_editor() {
 
                 ImGui::PopItemWidth();
 
-                if (ImGui::BeginCombo("VISGROUP", vis_groups[selected_mesh_visgroup].name.c_str())) {
-                    for (int i = 0; i < vis_groups.size(); i++) {
+                if (ImGui::BeginCombo("VISGROUP", state.vis_groups[selected_mesh_visgroup].name.c_str())) {
+                    for (int i = 0; i < state.vis_groups.size(); i++) {
                         bool is_selected = (selected_selectable_visgroup_index == i);
-                        if (ImGui::Selectable(vis_groups[i].name.c_str(), is_selected)) {
+                        if (ImGui::Selectable(state.vis_groups[i].name.c_str(), is_selected)) {
                             selected_selectable_visgroup_index = i;
-                            if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
-                                Object object_to_move = std::move(vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
-                                vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
-                                vis_groups[i].objects.push_back(std::move(object_to_move));
+                            if (selected_object_index >= 0 && selected_object_index < state.vis_groups[selected_mesh_visgroup].objects.size()) {
+                                Object object_to_move = std::move(state.vis_groups[selected_mesh_visgroup].objects[selected_object_index]);
+                                state.vis_groups[selected_mesh_visgroup].objects.erase(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                                state.vis_groups[i].objects.push_back(std::move(object_to_move));
                                 selected_object_index = -1;
                             }
                         }
@@ -3374,8 +3373,8 @@ void render_editor() {
                     state.pitch = asinf(direction.Y) * 180.0f / HMM_PI;
                 }
                 if (ImGui::Button("DUPLICATE")) {
-                    if (selected_object_index >= 0 && selected_object_index < vis_groups[selected_mesh_visgroup].objects.size()) {
-                        const Object selected_object = vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+                    if (selected_object_index >= 0 && selected_object_index < state.vis_groups[selected_mesh_visgroup].objects.size()) {
+                        const Object selected_object = state.vis_groups[selected_mesh_visgroup].objects[selected_object_index];
                         Object new_object;
                         new_object.mesh = selected_object.mesh;
 
@@ -3384,11 +3383,11 @@ void render_editor() {
                         new_object.scale = selected_object.scale;
                         new_object.opacity = selected_object.opacity;
 
-                        vis_groups[0].objects.push_back(new_object);
+                        state.vis_groups[0].objects.push_back(new_object);
                     }
                 }
                 if (ImGui::Button("DELETE")) {
-                    vis_groups[selected_mesh_visgroup].objects.erase(vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
+                    state.vis_groups[selected_mesh_visgroup].objects.erase(state.vis_groups[selected_mesh_visgroup].objects.begin() + selected_object_index);
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
                 }
@@ -3477,7 +3476,7 @@ void render_editor() {
                 if (file_path) {
                     vector<Object> loaded_objects = load_gltf(file_path);
                     for (auto& obj : loaded_objects) {
-                        vis_groups[0].objects.push_back(obj);
+                        state.vis_groups[0].objects.push_back(obj);
                     }
                 }
             }
@@ -3802,7 +3801,7 @@ void render_editor() {
             int vertex_count = 0;
             int index_count = 0;
             int light_count = 0;
-            for (auto& vis_group : vis_groups) {
+            for (auto& vis_group : state.vis_groups) {
                 for (auto& object : vis_group.objects) {
                     vertex_count += object.mesh->vertex_count;
                     index_count += object.mesh->index_count;
@@ -3861,7 +3860,7 @@ void render_editor() {
         ImGui::End();
 
         if (selected_object_index != -1 && selected_mesh_visgroup != -1) {
-            Object* selected_object = &vis_groups[selected_mesh_visgroup].objects[selected_object_index];
+            Object* selected_object = &state.vis_groups[selected_mesh_visgroup].objects[selected_object_index];
 
             HMM_Mat4 translation = HMM_Translate(selected_object->position);
             HMM_Mat4 rotation_matrix = HMM_QToM4(selected_object->rotation);
@@ -3894,7 +3893,7 @@ void render_editor() {
 
 vector<Object*> get_objects_by_script_id(int id) {
     vector<Object*> objects;
-    for (auto& visgroup : vis_groups) {
+    for (auto& visgroup : state.vis_groups) {
         for (auto& object : visgroup.objects) {
             if (object.script_id == id) {
                 objects.push_back(&object);
@@ -3931,7 +3930,7 @@ vector<AudioSource3D*> get_audio_sources_by_script_id(int id) {
 
 void _init() {
     VisGroup* default_visgroup = new VisGroup("default", {});
-    vis_groups.push_back(*default_visgroup);
+    state.vis_groups.push_back(*default_visgroup);
     stbi_set_flip_vertically_on_load(true);
     stbi_set_flip_vertically_on_load_thread(true);
     load_font(&font, "font.ttf");
@@ -4258,7 +4257,7 @@ void _frame() {
     vs_params = {.view = view, .projection = projection};
     billboard_vs_params = {.view = view, .projection = projection};
 
-    for (auto& vg : vis_groups) {
+    for (auto& vg : state.vis_groups) {
         for (auto& obj : vg.objects) {
             obj.update_components();
         }
@@ -4344,8 +4343,8 @@ void _event(SDL_Event* e) {
                     selected_mesh_visgroup = -1;
 
                     bool found = false;
-                    for (int vg_idx = 0; vg_idx < vis_groups.size(); ++vg_idx) {
-                        auto& visgroup = vis_groups[vg_idx];
+                    for (int vg_idx = 0; vg_idx < state.vis_groups.size(); ++vg_idx) {
+                        auto& visgroup = state.vis_groups[vg_idx];
                         for (int obj_idx = 0; obj_idx < visgroup.objects.size(); ++obj_idx) {
                             if (&visgroup.objects[obj_idx] == result.obj) {
                                 selected_object_index = obj_idx;
@@ -4424,7 +4423,7 @@ void _event(SDL_Event* e) {
                 SDL_HideCursor();
             }
         }
-        if (state.editor_open && !state.rmb) {
+        if (state.editor_open && !state.rmb && !ImGui::GetIO().WantCaptureKeyboard) {
             if (e->key.key == SDLK_G) {
                 current_gizmo_operation = ImGuizmo::OPERATION::TRANSLATE;
             }
@@ -4436,11 +4435,59 @@ void _event(SDL_Event* e) {
             }
             if (e->key.key == SDLK_DELETE) {
                 if (selected_object_index != -1) {
-                    auto& vg = vis_groups[selected_mesh_visgroup];
+                    auto& vg = state.vis_groups[selected_mesh_visgroup];
                     vg.objects.erase(vg.objects.begin() + selected_object_index);
                     selected_object_index = -1;
                     selected_mesh_visgroup = -1;
                 }
+            }
+            if (e->key.key == SDLK_F6) {
+                old_state.camera_pos = state.camera_pos;
+                old_state.camera_front = state.camera_front;
+                old_state.camera_up = state.camera_up;
+                old_state.last_time = state.last_time;
+                old_state.background_color = state.background_color;
+                old_state.lmb = state.lmb;
+                old_state.rmb = state.rmb;
+                old_state.yaw = state.yaw;
+                old_state.pitch = state.pitch;
+                old_state.fov = state.fov;
+                old_state.inputs = state.inputs;
+                old_state.running = state.running;
+                old_state.editor_open = state.editor_open;
+                old_state.event_descriptions = state.event_descriptions;
+                old_state.audio_sources = state.audio_sources;
+                old_state.helpers = state.helpers;
+                old_state.directional_light = state.directional_light;
+                old_state.point_lights = state.point_lights;
+                old_state.spot_lights = state.spot_lights;
+                old_state.ambient_light = state.ambient_light;
+                old_state.window_surface = state.window_surface;
+                old_state.vis_groups = state.vis_groups;
+            }
+            if (e->key.key == SDLK_F7) {
+                state.camera_pos = old_state.camera_pos;
+                state.camera_front = old_state.camera_front;
+                state.camera_up = old_state.camera_up;
+                state.last_time = old_state.last_time;
+                state.background_color = old_state.background_color;
+                state.lmb = old_state.lmb;
+                state.rmb = old_state.rmb;
+                state.yaw = old_state.yaw;
+                state.pitch = old_state.pitch;
+                state.fov = old_state.fov;
+                state.inputs = old_state.inputs;
+                state.running = old_state.running;
+                state.editor_open = old_state.editor_open;
+                state.event_descriptions = old_state.event_descriptions;
+                state.audio_sources = old_state.audio_sources;
+                state.helpers = old_state.helpers;
+                state.directional_light = old_state.directional_light;
+                state.point_lights = old_state.point_lights;
+                state.spot_lights = old_state.spot_lights;
+                state.ambient_light = old_state.ambient_light;
+                state.window_surface = old_state.window_surface;
+                state.vis_groups = old_state.vis_groups;
             }
         }
     }
