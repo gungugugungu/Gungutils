@@ -7,7 +7,6 @@ float mouse_movement_x = 0.0f;
 float mouse_movement_y = 0.0f;
 float yrot = 0.0f;
 Surface jeff_goldblum;
-Surface jeff_button;
 bool show_jeff = false;
 
 AnimationPlayer anim_player;
@@ -54,7 +53,9 @@ void event(SDL_Event* e) {
 }
 
 void on_dev_command(const string& command) {
-
+    if (command == "jeff") {
+        iprint("jeffy");
+    }
 }
 
 void (*init_callback)() = init;

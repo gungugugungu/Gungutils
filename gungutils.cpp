@@ -3851,8 +3851,8 @@ void render_editor() {
             // TODO: custom developer commands
             static char name_buffer[256];
             if (ImGui::Button("SEND")) {
-                on_dev_command_callback(string(name_buffer));
                 _add_log("> " + string(name_buffer), LogType::USER);
+                on_dev_command_callback(string(name_buffer));
             }
             ImGui::SameLine();
             ImGui::InputText("COMMAND", name_buffer, sizeof(name_buffer));
@@ -4130,17 +4130,6 @@ uint64_t last_frame_time;
 double target_frame_time;
 
 void _frame() {
-    uint64_t current_ticks = stm_now();
-    double current_time = stm_sec(current_ticks);
-    double last_time = stm_sec(last_frame_time);
-    double elapsed = current_time - last_time;
-
-    if (elapsed < target_frame_time) {
-        return;
-    }
-
-    last_frame_time = current_ticks;
-
     Time_BeginFrame(time_state);
     int w_width, w_height;
     SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
