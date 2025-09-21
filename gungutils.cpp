@@ -1617,7 +1617,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.025f, 5);
+    blur_image(bloom_img, 1.025f, 7);
 }
 
 void render_ssao_pass() {
@@ -3852,7 +3852,7 @@ void render_editor() {
             static char name_buffer[256];
             if (ImGui::Button("SEND")) {
                 on_dev_command_callback(string(name_buffer));
-                _add_log(string(name_buffer), LogType::USER);
+                _add_log("> " + string(name_buffer), LogType::USER);
             }
             ImGui::SameLine();
             ImGui::InputText("COMMAND", name_buffer, sizeof(name_buffer));
