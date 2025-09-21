@@ -3,20 +3,8 @@
 //
 #include "gungutils.cpp"
 
-float mouse_movement_x = 0.0f;
-float mouse_movement_y = 0.0f;
-float yrot = 0.0f;
-Surface jeff_goldblum;
-bool show_jeff = false;
-
-AnimationPlayer anim_player;
-Animation animation;
-
 void init() {
     state.background_color = {1.0f, 1.0f, 1.0f};
-    //SDL_HideCursor();
-
-    jeff_goldblum.load_from_file("jeff goldblum.png");  // jeff goldblum 👍
 
     world->setGravity({0.0f, -9.81f, 0.0f});
 
@@ -37,7 +25,6 @@ void init() {
 }
 
 void frame() {
-    // input
     int w_width, w_height;
     SDL_GetWindowSize(state.win, &w_width, &w_height);
     SDL_WarpMouseInWindow(state.win, w_width/2, w_height/2);
@@ -45,12 +32,7 @@ void frame() {
     state.window_surface.clear(w_width, w_height);
 }
 
-void event(SDL_Event* e) {
-    if (e->type == SDL_EVENT_MOUSE_MOTION) {
-        mouse_movement_x = e->motion.xrel;
-        mouse_movement_y = e->motion.yrel;
-    }
-}
+void event(SDL_Event* e) {}
 
 void on_dev_command(const string& command) {}
 
