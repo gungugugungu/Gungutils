@@ -250,7 +250,7 @@ public:
             }
         }
 
-        img_data.subimage[0][0] = {sokol_data_u8.data(), sokol_data_u8.size()};
+        img_data.mip_levels[0] = {sokol_data_u8.data(), sokol_data_u8.size()};
 
         return img_data;
     }
@@ -276,7 +276,7 @@ public:
             }
         }
 
-        img_data.subimage[0][0] = {sokol_data_u8.data(), sokol_data_u8.size()};
+        img_data.mip_levels[0] = {sokol_data_u8.data(), sokol_data_u8.size()};
 
         return img_data;
     }

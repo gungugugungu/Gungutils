@@ -622,8 +622,8 @@ sg_image validate_and_make_image(sg_image_desc *d, const char *name) {
         printf("validate: %s pixel_format = %d (expected RGBA8)\n", name, (int)d->pixel_format);
     }
     size_t expected = (size_t)d->width * (size_t)d->height * 4;
-    size_t given = d->data.subimage[0][0].size;
-    const void *ptr = d->data.subimage[0][0].ptr;
+    size_t given = d->data.mip_levels[0].size;
+    const void *ptr = d->data.mip_levels[0].ptr;
     if (!ptr || given == 0) {
         printf("validate: %s has null ptr or zero size (ptr=%p size=%zu)\n", name, ptr, given);
     } else if (given != expected) {
@@ -2041,8 +2041,8 @@ vector<Object> load_gltf(const std::string& filename) {
                     img_desc.width = w;
                     img_desc.height = h;
                     img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                    img_desc.data.subimage[0][0].ptr = texture_data;
-                    img_desc.data.subimage[0][0].size = data_size;
+                    img_desc.data.mip_levels[0].ptr = texture_data;
+                    img_desc.data.mip_levels[0].size = data_size;
                 } else {
                     const unsigned char* src = image.image.data();
                     auto [expanded, expanded_size] = expand_to_rgba(src, w, h, channels);
@@ -2051,8 +2051,8 @@ vector<Object> load_gltf(const std::string& filename) {
                     img_desc.width = w;
                     img_desc.height = h;
                     img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                    img_desc.data.subimage[0][0].ptr = texture_data;
-                    img_desc.data.subimage[0][0].size = expanded_size;
+                    img_desc.data.mip_levels[0].ptr = texture_data;
+                    img_desc.data.mip_levels[0].size = expanded_size;
                 }
             } else {
                 return {nullptr, {}};
@@ -2074,8 +2074,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 texture_data = new uint8_t[data_size];
                 memcpy(texture_data, pixels, data_size);
                 flip_tex_vertically_local(texture_data, img_width, img_height, desired_channels);
-                img_desc.data.subimage[0][0].ptr = texture_data;
-                img_desc.data.subimage[0][0].size = data_size;
+                img_desc.data.mip_levels[0].ptr = texture_data;
+                img_desc.data.mip_levels[0].size = data_size;
                 stbi_image_free(pixels);
             }
         } else if (image.bufferView >= 0) {
@@ -2100,8 +2100,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 texture_data = new uint8_t[pixel_data_size];
                 memcpy(texture_data, pixels, pixel_data_size);
                 flip_tex_vertically_local(texture_data, img_width, img_height, desired_channels);
-                img_desc.data.subimage[0][0].ptr = texture_data;
-                img_desc.data.subimage[0][0].size = pixel_data_size;
+                img_desc.data.mip_levels[0].ptr = texture_data;
+                img_desc.data.mip_levels[0].size = pixel_data_size;
 
                 stbi_image_free(pixels);
             }
@@ -2230,7 +2230,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 if (texture_data && img_desc.width > 0) {
                     mat->base_color_image_data = texture_data;
                     mat->base_color_image_desc = img_desc;
-                    mat->base_color_image_data_size = img_desc.data.subimage[0][0].size;
+                    mat->base_color_image_data_size = img_desc.data.mip_levels[0].size;
                     mat->has_color_texture = true;
                 }
             } else {
@@ -2243,8 +2243,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->base_color_image_desc.width = default_surface.pixels[0].size();
                 mat->base_color_image_desc.height = default_surface.pixels.size();
                 mat->base_color_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                mat->base_color_image_desc.data.subimage[0]->ptr = mat->base_color_image_data;
-                mat->base_color_image_desc.data.subimage[0]->size = mat->base_color_image_data_size;
+                mat->base_color_image_desc.data.mip_levels[0].ptr = mat->base_color_image_data;
+                mat->base_color_image_desc.data.mip_levels[0].size = mat->base_color_image_data_size;
                 mat->base_color_image = validate_and_make_image(&mat->base_color_image_desc, "base_color");
                 mat->has_color_texture = true;
                 iprint("no base color image in GLTF, loading default values");
@@ -2256,7 +2256,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 if (u_specular_texture_data && u_specular_img_desc.width > 0) {
                     mat->metallic_roughness_image_data = u_specular_texture_data;
                     mat->metallic_roughness_image_desc = u_specular_img_desc;
-                    mat->metallic_roughness_image_data_size = u_specular_img_desc.data.subimage[0][0].size;
+                    mat->metallic_roughness_image_data_size = u_specular_img_desc.data.mip_levels[0].size;
                     mat->has_metallic_roughness_texture = true;
                 }
             } else {
@@ -2269,8 +2269,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->metallic_roughness_image_desc.width = default_surface.pixels[0].size();
                 mat->metallic_roughness_image_desc.height = default_surface.pixels.size();
                 mat->metallic_roughness_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                mat->metallic_roughness_image_desc.data.subimage[0]->ptr = mat->metallic_roughness_image_data;
-                mat->metallic_roughness_image_desc.data.subimage[0]->size = mat->metallic_roughness_image_data_size;
+                mat->metallic_roughness_image_desc.data.mip_levels[0].ptr = mat->metallic_roughness_image_data;
+                mat->metallic_roughness_image_desc.data.mip_levels[0].size = mat->metallic_roughness_image_data_size;
                 mat->metallic_roughness_image = validate_and_make_image(&mat->metallic_roughness_image_desc, "mr_image");
                 mat->has_metallic_roughness_texture = true;
                 iprint("no metallic roughness image in GLTF, loading default values");
@@ -2282,7 +2282,7 @@ vector<Object> load_gltf(const std::string& filename) {
                 if (u_normal_texture_data && u_normal_img_desc.width > 0) {
                     mat->normal_texture_data = u_normal_texture_data;
                     mat->normal_texture_desc = u_normal_img_desc;
-                    mat->normal_texture_data_size = u_normal_img_desc.data.subimage[0][0].size;
+                    mat->normal_texture_data_size = u_normal_img_desc.data.mip_levels[0].size;
                     mat->has_normal_texture = true;
                 }
             } else {
@@ -2295,8 +2295,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->normal_texture_desc.width = default_surface.pixels[0].size();
                 mat->normal_texture_desc.height = default_surface.pixels.size();
                 mat->normal_texture_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                mat->normal_texture_desc.data.subimage[0]->ptr = mat->normal_texture_data;
-                mat->normal_texture_desc.data.subimage[0]->size = mat->normal_texture_data_size;
+                mat->normal_texture_desc.data.mip_levels[0].ptr = mat->normal_texture_data;
+                mat->normal_texture_desc.data.mip_levels[0].size = mat->normal_texture_data_size;
                 mat->normal_image = validate_and_make_image(&mat->normal_texture_desc, "normal_image");
                 mat->has_normal_texture = true;
                 iprint("no normal texture in GLTF, loading default values");
@@ -2307,7 +2307,7 @@ vector<Object> load_gltf(const std::string& filename) {
 
                 if (u_emissive_texture_data && u_emissive_img_desc.width > 0) {
                     mat->emissive_image_data = u_emissive_texture_data;
-                    mat->emissive_image_data_size = u_emissive_img_desc.data.subimage[0][0].size;
+                    mat->emissive_image_data_size = u_emissive_img_desc.data.mip_levels[0].size;
                     mat->emissive_image_desc = u_emissive_img_desc;
                     mat->has_emissive_texture = true;
                 }
@@ -2321,8 +2321,8 @@ vector<Object> load_gltf(const std::string& filename) {
                 mat->emissive_image_desc.width = default_surface.pixels[0].size();
                 mat->emissive_image_desc.height = default_surface.pixels.size();
                 mat->emissive_image_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-                mat->emissive_image_desc.data.subimage[0]->ptr = mat->emissive_image_data;
-                mat->emissive_image_desc.data.subimage[0]->size = mat->emissive_image_data_size;
+                mat->emissive_image_desc.data.mip_levels[0].ptr = mat->emissive_image_data;
+                mat->emissive_image_desc.data.mip_levels[0].size = mat->emissive_image_data_size;
                 mat->emissive_image = validate_and_make_image(&mat->emissive_image_desc, "normal_image");
                 mat->has_emissive_texture = true;
                 iprint("no emissive texture in GLTF, loading default values");
@@ -2875,8 +2875,8 @@ void load_scene(const string& path) {
                                 material->base_color_image_data = new uint8_t[material->base_color_image_data_size];
                                 std::copy(tex_data.begin(), tex_data.end(), material->base_color_image_data);
 
-                                material->base_color_image_desc.data.subimage[0][0].ptr = material->base_color_image_data;
-                                material->base_color_image_desc.data.subimage[0][0].size = material->base_color_image_data_size;
+                                material->base_color_image_desc.data.mip_levels[0].ptr = material->base_color_image_data;
+                                material->base_color_image_desc.data.mip_levels[0].size = material->base_color_image_data_size;
 
                                 auto samp = diff_tex["samp"];
                                 material->base_color_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
@@ -2898,8 +2898,8 @@ void load_scene(const string& path) {
                                 material->metallic_roughness_image_data = new uint8_t[material->metallic_roughness_image_data_size];
                                 std::copy(tex_data.begin(), tex_data.end(), material->metallic_roughness_image_data);
 
-                                material->metallic_roughness_image_desc.data.subimage[0][0].ptr = material->metallic_roughness_image_data;
-                                material->metallic_roughness_image_desc.data.subimage[0][0].size = material->metallic_roughness_image_data_size;
+                                material->metallic_roughness_image_desc.data.mip_levels[0].ptr = material->metallic_roughness_image_data;
+                                material->metallic_roughness_image_desc.data.mip_levels[0].size = material->metallic_roughness_image_data_size;
 
                                 auto samp = spec_tex["samp"];
                                 material->metallic_roughness_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
@@ -2921,8 +2921,8 @@ void load_scene(const string& path) {
                                 material->normal_texture_data = new uint8_t[material->normal_texture_data_size];
                                 std::copy(tex_data.begin(), tex_data.end(), material->normal_texture_data);
 
-                                material->normal_texture_desc.data.subimage[0][0].ptr = material->normal_texture_data;
-                                material->normal_texture_desc.data.subimage[0][0].size = material->normal_texture_data_size;
+                                material->normal_texture_desc.data.mip_levels[0].ptr = material->normal_texture_data;
+                                material->normal_texture_desc.data.mip_levels[0].size = material->normal_texture_data_size;
 
                                 auto samp = norm_tex["samp"];
                                 material->normal_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
@@ -2944,8 +2944,8 @@ void load_scene(const string& path) {
                                 material->emissive_image_data = new uint8_t[material->emissive_image_data_size];
                                 std::copy(tex_data.begin(), tex_data.end(), material->emissive_image_data);
 
-                                material->emissive_image_desc.data.subimage[0][0].ptr = material->emissive_image_data;
-                                material->emissive_image_desc.data.subimage[0][0].size = material->emissive_image_data_size;
+                                material->emissive_image_desc.data.mip_levels[0].ptr = material->emissive_image_data;
+                                material->emissive_image_desc.data.mip_levels[0].size = material->emissive_image_data_size;
 
                                 auto samp = emis_tex["samp"];
                                 material->emissive_sampler_desc.min_filter = static_cast<sg_filter>(samp[0]);
@@ -4530,8 +4530,8 @@ void fetch_callback(const sfetch_response_t* response) {
             img_desc.width = img_width;
             img_desc.height = img_height;
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-            img_desc.data.subimage[0][0].ptr = pixels;
-            img_desc.data.subimage[0][0].size = img_width * img_height * 4;
+            img_desc.data.mip_levels[0].ptr = pixels;
+            img_desc.data.mip_levels[0].size = img_width * img_height * 4;
 
             sg_image new_img = sg_make_image(&img_desc);
             sg_view_desc tex_view_desc = {};
@@ -4563,12 +4563,12 @@ int main(int argc, char* argv[]) {
     env.defaults.color_format = SG_PIXELFORMAT_RGBA8;
     env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     env.defaults.sample_count = 1;
-    desc.buffer_pool_size = 4096;
-    desc.image_pool_size = 8192;
-    desc.sampler_pool_size = 8192;
-    desc.shader_pool_size = 512;
-    desc.pipeline_pool_size = 1024;
-    desc.view_pool_size = 8192;
+    desc.buffer_pool_size = 1024;
+    desc.image_pool_size = 4096;
+    desc.sampler_pool_size = 4096;
+    desc.shader_pool_size = 64;
+    desc.pipeline_pool_size = 64;
+    desc.view_pool_size = 4096;
     desc.environment = env;
     desc.logger.func = slog_func;
     sg_setup(&desc);

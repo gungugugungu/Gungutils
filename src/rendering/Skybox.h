@@ -55,17 +55,17 @@ sg_buffer skybox_ibuf = {SG_INVALID_ID};
 
 void initialize_skybox_buffers() {
     sg_buffer_desc vdesc = {};
-    vdesc.size = sizeof(skybox_vertices)*sizeof(float);
+    vdesc.size = sizeof(skybox_vertices);
+    vdesc.usage.vertex_buffer = true;
     vdesc.usage.immutable = true;
     vdesc.data = SG_RANGE(skybox_vertices);
     vdesc.label = "skybox-vertices";
     skybox_vbuf = sg_make_buffer(&vdesc);
 
     sg_buffer_desc idesc = {};
-    idesc.size = sizeof(skybox_indices)*sizeof(uint32_t);
-    idesc.usage.immutable = true;
-    idesc.usage.vertex_buffer = false;
+    idesc.size = sizeof(skybox_indices);
     idesc.usage.index_buffer = true;
+    idesc.usage.immutable = true;
     idesc.data = SG_RANGE(skybox_indices);
     idesc.label = "skybox-indices";
     skybox_ibuf = sg_make_buffer(&idesc);
@@ -106,14 +106,14 @@ void load_skybox(const char* filename) { // function for loading equirectangular
         face_size = height;
     }
 
-    float* face_float[SG_CUBEFACE_NUM] = {nullptr};
-    for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+    float* face_float[6] = {nullptr};
+    for (int face = 0; face < 6; ++face) {
         face_float[face] = new float[face_size * face_size * 4];
     }
 
     if (is_horizontal || is_vertical) {
         if (is_horizontal) {
-            for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+            for (int face = 0; face < 6; ++face) {
                 for (int y = 0; y < face_size; ++y) {
                     float* src_row = data + (y * width * 4) + (face * face_size * 4);
                     float* dst_row = face_float[face] + (y * face_size * 4);
@@ -121,23 +121,23 @@ void load_skybox(const char* filename) { // function for loading equirectangular
                 }
             }
         } else {
-            for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+            for (int face = 0; face < 6; ++face) {
                 float* src = data + (face * face_size * width * 4);
                 memcpy(face_float[face], src, face_size * face_size * 4 * sizeof(float));
             }
         }
     } else if (is_equi) {
-        for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+        for (int face = 0; face < 6; ++face) {
             for (int y = 0; y < face_size; ++y) {
                 for (int x = 0; x < face_size; ++x) {
                     float u = 2.0f * (x + 0.5f) / static_cast<float>(face_size) - 1.0f;
                     float v = 2.0f * (y + 0.5f) / static_cast<float>(face_size) - 1.0f;
                     HMM_Vec3 dir;
                     switch (face) {
-                        case 0: dir = HMM_V3(-1.0f, v, -u); break; // +x
-                        case 1: dir = HMM_V3(1.0f, v, u); break; // -x
-                        case 2: dir = HMM_V3(-u, -1.0f, v); break; // +y
-                        case 3: dir = HMM_V3(-u, 1.0f, -v); break; // -y
+                        case 0: dir = HMM_V3(-1.0f, v, -u); break; // -x?
+                        case 1: dir = HMM_V3(1.0f, v, u); break; // +x
+                        case 2: dir = HMM_V3(-u, -1.0f, v); break; // -y
+                        case 3: dir = HMM_V3(-u, 1.0f, -v); break; // +y
                         case 4: dir = HMM_V3(-u, v, 1.0f); break; // +z
                         case 5: dir = HMM_V3(u, v, -1.0f); break; // -z
                     }
@@ -183,8 +183,8 @@ void load_skybox(const char* filename) { // function for loading equirectangular
         }
     }
 
-    unsigned char* face_uchar[SG_CUBEFACE_NUM] = {nullptr};
-    for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+    unsigned char* face_uchar[6] = {nullptr};
+    for (int face = 0; face < 6; ++face) {
         face_uchar[face] = new unsigned char[face_size * face_size * 4];
         for (int i = 0; i < face_size * face_size * 4; ++i) {
             float val = face_float[face][i] * 255.0f;
@@ -193,17 +193,22 @@ void load_skybox(const char* filename) { // function for loading equirectangular
         delete[] face_float[face];
     }
 
+    size_t face_bytes = static_cast<size_t>(face_size) * face_size * 4;
+    unsigned char* all_faces = new unsigned char[6 * face_bytes];
+    for (int face = 0; face < 6; ++face) {
+        memcpy(all_faces + face * face_bytes, face_uchar[face], face_bytes);
+    }
+
     sg_image_desc desc = {};
     desc.type = SG_IMAGETYPE_CUBE;
     desc.width = face_size;
     desc.height = face_size;
+    desc.num_slices = 6;
     desc.pixel_format = SG_PIXELFORMAT_RGBA8;
     desc.usage.immutable = true;
     desc.num_mipmaps = 1;
-    for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
-        desc.data.subimage[face][0].ptr = face_uchar[face];
-        desc.data.subimage[face][0].size = face_size * face_size * 4;
-    }
+    desc.data.mip_levels[0].ptr = all_faces;
+    desc.data.mip_levels[0].size = 6 * face_bytes;
     desc.label = "skybox-cubemap";
     skybox_img = sg_make_image(&desc);
 
@@ -224,7 +229,8 @@ void load_skybox(const char* filename) { // function for loading equirectangular
         std::cerr << "couldn't create skybox sampler." << std::endl;
     }
 
-    for (int face = 0; face < SG_CUBEFACE_NUM; ++face) {
+    delete[] all_faces;
+    for (int face = 0; face < 6; ++face) {
         delete[] face_uchar[face];
     }
     stbi_image_free(data);
