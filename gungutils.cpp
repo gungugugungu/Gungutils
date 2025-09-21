@@ -3930,6 +3930,16 @@ vector<AudioSource3D*> get_audio_sources_by_script_id(int id) {
     return audio_sources;
 }
 
+bool is_shaking = false;
+float shake_remaining = 0.0f;
+float shake_strength = 0.0f;
+
+void camera_shake(float duration, float strength) {
+    is_shaking = true;
+    shake_remaining = duration;
+    shake_strength = strength;
+}
+
 void _init() {
     VisGroup* default_visgroup = new VisGroup("default", {});
     state.vis_groups.push_back(*default_visgroup);
@@ -4185,6 +4195,33 @@ void _frame() {
     sfetch_dowork();
 
     state.pass_action.colors[0].clear_value = { state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f};
+
+    float render_yaw = state.yaw;
+    float render_pitch = state.pitch;
+
+    if (is_shaking) {
+        shake_remaining -= time_state.dt;
+        if (shake_remaining <= 0.0f) {
+            is_shaking = false;
+        } else {
+            float offset_yaw = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * shake_strength;
+            float offset_pitch = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * shake_strength;
+            render_yaw += offset_yaw;
+            render_pitch += offset_pitch;
+            if (render_pitch > 89.0f) render_pitch = 89.0f;
+            if (render_pitch < -89.0f) render_pitch = -89.0f;
+        }
+    }
+
+    HMM_Vec3 direction;
+    direction.X = cosf(render_yaw * (HMM_PI32 / 180.0f)) * cosf(render_pitch * (HMM_PI32 / 180.0f));
+    direction.Y = sinf(render_pitch * (HMM_PI32 / 180.0f));
+    direction.Z = sinf(render_yaw * (HMM_PI32 / 180.0f)) * cosf(render_pitch * (HMM_PI32 / 180.0f));
+    state.camera_front = HMM_NormV3(direction);
+
+    HMM_Vec3 world_up = HMM_V3(0.0f, 1.0f, 0.0f);
+    HMM_Vec3 camera_right = HMM_NormV3(HMM_Cross(state.camera_front, world_up));
+    state.camera_up = HMM_NormV3(HMM_Cross(camera_right, state.camera_front));
 
     float aspect = static_cast<float>(w_width)/static_cast<float>(w_height);
     HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
