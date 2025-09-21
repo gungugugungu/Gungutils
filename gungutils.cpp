@@ -162,6 +162,7 @@ struct TimeState {
     Uint64 last = 0;
     float dt = 1.0f / 60.0f; // safe initial value
     float fps = 60.0f;
+    float speed_multiplier = 1.0f;
 };
 
 TimeState time_state;
@@ -3794,6 +3795,7 @@ void render_editor() {
         ImGui::InputFloat3("CAMERA POS", &state.camera_pos.X);
         ImGui::SliderFloat("FOV", &state.fov, 1.0f, 179.0, "%.0f");
         ImGui::ColorEdit3("AMBIENT COLOR", &state.ambient_light.X);
+        ImGui::SliderFloat("GAME SPEED", &time_state.speed_multiplier, 0.0f, 1.0f, "%.3f");
 
         ImGui::Separator();
         if (ImGui::CollapsingHeader("PROFILER")) {
@@ -4130,6 +4132,7 @@ double target_frame_time;
 
 void _frame() {
     Time_BeginFrame(time_state);
+    time_state.dt *= time_state.speed_multiplier;
     int w_width, w_height;
     SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
 
@@ -4563,12 +4566,12 @@ int main(int argc, char* argv[]) {
     env.defaults.color_format = SG_PIXELFORMAT_RGBA8;
     env.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
     env.defaults.sample_count = 1;
-    desc.buffer_pool_size = 1024;
-    desc.image_pool_size = 4096;
-    desc.sampler_pool_size = 4096;
+    desc.buffer_pool_size = 512;
+    desc.image_pool_size = 2048;
+    desc.sampler_pool_size = 2048;
     desc.shader_pool_size = 64;
     desc.pipeline_pool_size = 64;
-    desc.view_pool_size = 4096;
+    desc.view_pool_size = 2048;
     desc.environment = env;
     desc.logger.func = slog_func;
     sg_setup(&desc);
