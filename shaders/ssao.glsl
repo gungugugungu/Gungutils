@@ -34,7 +34,6 @@ layout(binding = 0) uniform ssao_params {
     vec2 screen_size;
     float u_near;
     float u_far;
-    float time;
 };
 
 in vec2 uv;
@@ -108,10 +107,10 @@ vec2 project_view_to_uv(vec3 viewPos) {
 }
 
 vec3 sample_noise(vec2 uv) {
-    vec2 noise_uv = uv * screen_size / 8.0;
-    ivec2 noise_coord = ivec2(int(noise_uv.x) % 8, int(noise_uv.y) % 8);
-    int noise_index = noise_coord.y * 8 + noise_coord.x;
-    return noise8x8[noise_index];
+    vec2 p = uv * screen_size;
+    float n = sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453;
+    float angle = fract(n) * 6.28318;
+    return vec3(cos(angle), sin(angle), 0.0);
 }
 
 void main() {

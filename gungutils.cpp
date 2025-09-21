@@ -491,7 +491,7 @@ void init_ssao() {
 
     ssao_params.ao_radius = 0.5f;
     ssao_params.ao_bias = 0.025f;
-    ssao_params.ssao_samples = 16;
+    ssao_params.ssao_samples = 64;
 }
 
 void init_post_processing() {
@@ -1631,7 +1631,6 @@ void render_ssao_pass() {
     ssao_params.screen_size = HMM_Vec2{static_cast<float>(w_width), static_cast<float>(w_height)};
     ssao_params.u_near = camera_near;
     ssao_params.u_far = camera_far;
-    ssao_params.time = stm_sec(stm_now());
 
     if (ssao_image.id == SG_INVALID_ID || ssao_pip.id == SG_INVALID_ID || ssao_att_view.id == SG_INVALID_ID || ssao_tex_view.id == SG_INVALID_ID) {
         eprint("invalid id somewhere in ssao");
@@ -1680,7 +1679,7 @@ void render_ssao_pass() {
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
 
-    blur_image(ssao_image, 1.0f, 7);
+    blur_image(ssao_image, 1.00f, 5);
 }
 
 void render_pp_pass() {
@@ -4503,7 +4502,7 @@ void fetch_callback(const sfetch_response_t* response) {
     texture_index++;
 }
 
-const float max_fps = 120.0f;
+const float max_fps = 75.0f;
 
 int main(int argc, char* argv[]) {
     srand (static_cast <unsigned> (time(0)));
