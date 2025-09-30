@@ -4623,24 +4623,45 @@ int main(int argc, char* argv[]) {
     Time_Init(time_state);
     _init();
 
+    SDL_GL_SetSwapInterval(-1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
     target_frame_time = 1.0f / max_fps;
     last_frame_time = stm_now();
 
+    uint64_t start_measure;
+    uint64_t measure;
+    bool first_frame = true;
     while (state.running) {
-        static bool first_frame = true;
+        start_measure = stm_now();
         if (first_frame) {
             init_callback();
             first_frame = false;
         }
 
+        measure = stm_now();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             _event(&e);
             event_callback(&e);
         }
+        cout << "Event time: " << stm_sec(stm_since(measure)) << endl;
+        measure = stm_now();
         if (!state.editor_open) frame_callback();
+        cout << "User frame time: " << stm_sec(stm_since(measure)) << endl;
+        measure = stm_now();
         _frame();
+        cout << "Frame time: " << stm_sec(stm_since(measure)) << endl;
+        measure = stm_now();
         SDL_GL_SwapWindow(state.win);
+        cout << "Swap time: " << stm_sec(stm_since(measure)) << endl;
+
+        cout << "Frame in: " << stm_sec(stm_since(start_measure)) << endl;
+        cout << "Estimated frame FPS: " << 1.0f/stm_sec(stm_since(start_measure)) << endl;
     }
 
     if (shadow_pip.id != SG_INVALID_ID) sg_destroy_pipeline(shadow_pip);
