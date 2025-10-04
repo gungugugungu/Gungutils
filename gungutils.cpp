@@ -101,7 +101,7 @@ float shadow_far = 100.0f;
 const float camera_near = 0.1f;
 const float camera_far = 1050.0f;
 
-const int max_light_amount = 150.0f;
+const int max_light_amount = 50;
 
 sg_image diffuse_img = {SG_INVALID_ID};
 sg_image specular_img = {SG_INVALID_ID};
@@ -1036,7 +1036,7 @@ void render_meshes() {
     }
 
     struct lighting_params {
-        int light_types_packed[38][4];
+        int light_types_packed[13][4];
         HMM_Vec4 light_positions[max_light_amount];
         HMM_Vec4 light_directions[max_light_amount];
         HMM_Vec4 light_colors[max_light_amount];
@@ -4602,7 +4602,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
     SDL_Rect display_bounds;
     SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &display_bounds);
-    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_FULLSCREEN);
+    state.win = SDL_CreateWindow("Gungutils", display_bounds.w, display_bounds.h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS);
     SDL_GLContext ctx = SDL_GL_CreateContext(state.win);
     SDL_StartTextInput(state.win);
     sg_desc desc = {};

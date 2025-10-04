@@ -69,11 +69,11 @@ layout(binding = 2) uniform model_fs_params {
 };
 
 layout(binding = 3) uniform lighting_params {
-    ivec4 light_types_packed[38];
-    vec4 light_positions[150];
-    vec4 light_directions[150];
-    vec4 light_colors[150];
-    vec4 light_att_params[150];
+    ivec4 light_types_packed[13];
+    vec4 light_positions[50];
+    vec4 light_directions[50];
+    vec4 light_colors[50];
+    vec4 light_att_params[50];
     int light_amount;
     float padding1;
     float padding2;
