@@ -74,6 +74,13 @@
 #include "utils/CharacterController.h"
 #include "utils/FPSController.h"
 
+extern "C" {
+#ifdef _WIN32
+    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+    __declspec(dllexport) DWORD NvOptimusEnablement = 1;
+#endif
+}
+
 using namespace std;
 
 class AudioSource3D;
