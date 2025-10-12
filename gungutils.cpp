@@ -1665,7 +1665,7 @@ void render_ssao_pass() {
 
     sg_pass_action pass_action = {};
     pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    pass_action.colors[0].clear_value = {1.0f, 0.0f, 0.0f, 1.0f};
+    pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
     pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     pass_action.depth.clear_value = 1.0f;
 
@@ -1683,6 +1683,7 @@ void render_ssao_pass() {
     sg_begin_pass(&pass);
 
     sg_apply_pipeline(ssao_pip);
+    iprint("SSAO pipeline id: " + to_string(ssao_pip.id));
     sg_apply_bindings(&binds);
     sg_apply_uniforms(UB_ssao_params, SG_RANGE(ssao_params));
     sg_draw(0, 3, 1);
