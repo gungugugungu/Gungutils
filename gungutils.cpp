@@ -1625,7 +1625,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.025f, 7);
+    blur_image(bloom_img, 1.025f, 10);
 }
 
 void render_ssao_pass() {
@@ -1665,7 +1665,7 @@ void render_ssao_pass() {
 
     sg_pass_action pass_action = {};
     pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    pass_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    pass_action.colors[0].clear_value = {1.0f, 0.0f, 0.0f, 1.0f};
     pass_action.depth.load_action = SG_LOADACTION_CLEAR;
     pass_action.depth.clear_value = 1.0f;
 
@@ -4640,35 +4640,21 @@ int main(int argc, char* argv[]) {
     target_frame_time = 1.0f / max_fps;
     last_frame_time = stm_now();
 
-    uint64_t start_measure;
-    uint64_t measure;
     bool first_frame = true;
     while (state.running) {
-        start_measure = stm_now();
         if (first_frame) {
             init_callback();
             first_frame = false;
         }
 
-        measure = stm_now();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             _event(&e);
             event_callback(&e);
         }
-        cout << "Event time: " << stm_sec(stm_since(measure)) << endl;
-        measure = stm_now();
         if (!state.editor_open) frame_callback();
-        cout << "User frame time: " << stm_sec(stm_since(measure)) << endl;
-        measure = stm_now();
         _frame();
-        cout << "Frame time: " << stm_sec(stm_since(measure)) << endl;
-        measure = stm_now();
         SDL_GL_SwapWindow(state.win);
-        cout << "Swap time: " << stm_sec(stm_since(measure)) << endl;
-
-        cout << "Frame in: " << stm_sec(stm_since(start_measure)) << endl;
-        cout << "Estimated frame FPS: " << 1.0f/stm_sec(stm_since(start_measure)) << endl;
     }
 
     if (shadow_pip.id != SG_INVALID_ID) sg_destroy_pipeline(shadow_pip);
