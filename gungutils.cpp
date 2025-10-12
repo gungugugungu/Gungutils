@@ -3959,7 +3959,6 @@ void _init() {
     state.vis_groups.push_back(*default_visgroup);
     stbi_set_flip_vertically_on_load(true);
     stbi_set_flip_vertically_on_load_thread(true);
-    load_font(&font, "font.ttf");
 
     state.directional_light.direction = HMM_V3(1.0f, -1.0f, -0.8f);
 

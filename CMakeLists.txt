@@ -48,7 +48,7 @@ file(GLOB TINYFD_SOURCES ${CMAKE_SOURCE_DIR}/include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
 
 # main executable
-add_executable(Gungutils main.cpp)
+file(GLOB GUNGUTILS_SRC ${CMAKE_SOURCE_DIR}/include/Gungutils/gungutils.cpp)
 
 # subdirectories
 add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
