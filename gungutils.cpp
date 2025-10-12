@@ -1675,7 +1675,7 @@ void render_ssao_pass() {
     pass.attachments.depth_stencil = depth_att_view;
     pass.label = "ssao_pass";
 
-    sg_bindings binds;
+    sg_bindings binds = {};
     binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
     binds.views[0] = post_state.rendered_depth_tex_view;
     binds.samplers[0] = post_state.rendered_depth_sampler;
@@ -1683,7 +1683,6 @@ void render_ssao_pass() {
     sg_begin_pass(&pass);
 
     sg_apply_pipeline(ssao_pip);
-    iprint("SSAO pipeline id: " + to_string(ssao_pip.id));
     sg_apply_bindings(&binds);
     sg_apply_uniforms(UB_ssao_params, SG_RANGE(ssao_params));
     sg_draw(0, 3, 1);
