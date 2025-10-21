@@ -284,9 +284,9 @@ void init_blur_filter() {
     blur_pip_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     blur_pip_desc.color_count = 1;
     blur_pip_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    blur_pip_desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
     blur_pip_desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
-    blur_pip_desc.depth.write_enabled = true;
+    blur_pip_desc.depth.write_enabled = false;
     blur_pip_desc.cull_mode = SG_CULLMODE_NONE;
     blur_pip_desc.label = "bloom_blur_pipeline";
     blur_pip = sg_make_pipeline(&blur_pip_desc);
@@ -348,7 +348,7 @@ void blur_image(sg_image input_image, float strength, int passes) {
     binds_temp_to_input.views[0] = temp_tex_view;
     binds_temp_to_input.samplers[0] = blur_smp;
 
-    if (temp_att_view.id != SG_INVALID_ID || temp_tex_view.id != SG_INVALID_ID || input_att_view.id != SG_INVALID_ID || input_tex_view.id != SG_INVALID_ID || blur_pip.id != SG_INVALID_ID || temp_img.id != SG_INVALID_ID || blur_smp.id != SG_INVALID_ID) {
+    if (temp_att_view.id != SG_INVALID_ID && temp_tex_view.id != SG_INVALID_ID && input_att_view.id != SG_INVALID_ID && input_tex_view.id != SG_INVALID_ID && blur_pip.id != SG_INVALID_ID && temp_img.id != SG_INVALID_ID && blur_smp.id != SG_INVALID_ID) {
         for (int i = 0; i < passes; i++) {
             sg_pass horiz_pass = {};
             horiz_pass.action = blur_pass_action;
@@ -1689,7 +1689,7 @@ void render_ssao_pass() {
 
     sg_end_pass();
 
-    blur_image(ssao_image, 1.0f, 5);
+    blur_image(ssao_image, 1.0f, 3);
 
     sg_destroy_view(depth_att_view);
     sg_destroy_image(depth_img);
@@ -1800,152 +1800,181 @@ HMM_Vec3 transform_vertex(const HMM_Vec3& vertex, const Object& obj) {
 
 struct RaycastResult {
     bool hit;
-    HMM_Vec3 point;
-    const Object* obj;
+    Object* obj;
+    float distance;
 };
 
-RaycastResult raycast_from_screen(float screen_x, float screen_y) {
-    int window_width, window_height;
-    SDL_GetWindowSizeInPixels(state.win, &window_width, &window_height);
-    float ndc_x = (2.0f * screen_x) / window_width - 1.0f;
-    float ndc_y = 1.0f - (2.0f * screen_y) / window_height;
+RaycastResult raycast_from_screen(float mx, float my) {
+    RaycastResult result { false, nullptr, std::numeric_limits<float>::max() };
 
-    HMM_Mat4 view = HMM_LookAt_RH(state.camera_pos, HMM_AddV3(state.camera_pos, state.camera_front), state.camera_up);
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(state.fov * (HMM_PI32 / 180.0f), (float)window_width / (float)window_height, 0.1f, 100.0f);
-    HMM_Mat4 view_proj = HMM_MulM4(projection, view);
-    HMM_Mat4 inv_view_proj = HMM_InvGeneralM4(view_proj);
-    HMM_Vec4 near_point_ndc = HMM_V4(ndc_x, ndc_y, -1.0f, 1.0f);
-    HMM_Vec4 far_point_ndc = HMM_V4(ndc_x, ndc_y, 1.0f, 1.0f);
-    HMM_Vec4 near_point_world = HMM_MulM4V4(inv_view_proj, near_point_ndc);
-    HMM_Vec4 far_point_world = HMM_MulM4V4(inv_view_proj, far_point_ndc);
-    near_point_world = HMM_DivV4F(near_point_world, near_point_world.W);
-    far_point_world = HMM_DivV4F(far_point_world, far_point_world.W);
+    int width, height;
+    SDL_GetWindowSizeInPixels(state.win, &width, &height);
 
-    HMM_Vec3 ray_origin = HMM_V3(near_point_world.X, near_point_world.Y, near_point_world.Z);
-    HMM_Vec3 ray_end = HMM_V3(far_point_world.X, far_point_world.Y, far_point_world.Z);
-    HMM_Vec3 ray_direction = HMM_NormV3(HMM_SubV3(ray_end, ray_origin));
+    float x = (2.0f * mx) / width - 1.0f;
+    float y = 1.0f - (2.0f * my) / height;
 
-    float closest_distance = FLT_MAX;
-    HMM_Vec3 closest_point = HMM_V3(0, 0, 0);
-    const Object* hit_obj = nullptr;
-    bool hit_found = false;
+    HMM_Vec4 ray_clip = HMM_V4(x, y, -1.0f, 1.0f);
 
-    for (const auto& visgroup : state.vis_groups) {
-        if (!visgroup.enabled) continue;
+    HMM_Mat4 inverse_proj = HMM_InvGeneralM4(vs_params.projection);
+    HMM_Vec4 ray_eye = HMM_MulM4V4(inverse_proj, ray_clip);
+    ray_eye = HMM_V4(ray_eye.X, ray_eye.Y, -1.0f, 0.0f);
 
-        for (const auto& obj : visgroup.objects) {
-            Mesh* mesh = obj.mesh;
-            if (!mesh->vertices || !mesh->indices || mesh->vertex_count == 0 || mesh->index_count == 0) {
-                continue;
-            }
+    HMM_Mat4 inverse_view = HMM_InvGeneralM4(vs_params.view);
+    HMM_Vec4 ray_world = HMM_MulM4V4(inverse_view, ray_eye);
 
-            for (size_t i = 0; i < mesh->index_count; i += 3) {
-                if (i + 2 >= mesh->index_count) break;
+    HMM_Vec3 ray_direction = HMM_NormV3(ray_world.XYZ);
+    HMM_Vec3 ray_origin = state.camera_pos;
 
-                uint32_t idx0, idx1, idx2;
-                if (mesh->use_uint16_indices && mesh->indices16) {
-                    idx0 = mesh->indices16[i];
-                    idx1 = mesh->indices16[i + 1];
-                    idx2 = mesh->indices16[i + 2];
-                } else {
-                    idx0 = mesh->indices[i];
-                    idx1 = mesh->indices[i + 1];
-                    idx2 = mesh->indices[i + 2];
-                }
+    std::vector<std::pair<const Object*, float>> candidates;
 
-                if (idx0 >= mesh->vertex_count || idx1 >= mesh->vertex_count || idx2 >= mesh->vertex_count) {
-                    continue;
-                }
+    for (const auto& vg : state.vis_groups) {
+        if (!vg.enabled) continue;
 
-                HMM_Vec3 v0 = HMM_V3(mesh->vertices[idx0 * 8], mesh->vertices[idx0 * 8 + 1], mesh->vertices[idx0 * 8 + 2]);
-                HMM_Vec3 v1 = HMM_V3(mesh->vertices[idx1 * 8], mesh->vertices[idx1 * 8 + 1], mesh->vertices[idx1 * 8 + 2]);
-                HMM_Vec3 v2 = HMM_V3(mesh->vertices[idx2 * 8], mesh->vertices[idx2 * 8 + 1], mesh->vertices[idx2 * 8 + 2]);
+        for (const auto& obj : vg.objects) {
+            if (obj.mesh == nullptr || !obj.enable_shading) continue;
 
-                v0 = transform_vertex(v0, obj);
-                v1 = transform_vertex(v1, obj);
-                v2 = transform_vertex(v2, obj);
-
-                float distance;
-                if (ray_triangle_intersect(ray_origin, ray_direction, v0, v1, v2, distance)) {
-                    if (distance < closest_distance) {
-                        closest_distance = distance;
-                        closest_point = HMM_AddV3(ray_origin, HMM_MulV3F(ray_direction, distance));
-                        hit_obj = &obj;
-                        hit_found = true;
-                    }
-                }
-            }
+            float dist_sq = HMM_LenSqrV3(HMM_SubV3(obj.position, ray_origin));
+            candidates.emplace_back(&obj, dist_sq);
         }
     }
 
-    if (hit_found) {
-        return {true, closest_point, hit_obj};
+    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
+
+    float current_min_dist = result.distance;
+
+    for (const auto& pair : candidates) {
+        const Object* obj = pair.first;
+
+        HMM_Vec3 half_ext = HMM_MulV3F(obj->bounding_rect, 0.5f);
+        half_ext.X *= std::abs(obj->scale.X);
+        half_ext.Y *= std::abs(obj->scale.Y);
+        half_ext.Z *= std::abs(obj->scale.Z);
+
+        HMM_Vec3 min_bb = HMM_SubV3(obj->position, half_ext);
+        HMM_Vec3 max_bb = HMM_AddV3(obj->position, half_ext);
+
+        float tmin = 0.0f;
+        float tmax = current_min_dist;
+
+        for (int i = 0; i < 3; ++i) {
+            float dir_comp = ray_direction.Elements[i];
+
+            if (std::abs(dir_comp) < 1e-6f) {
+                float orig_comp = ray_origin.Elements[i];
+
+                if (orig_comp < min_bb.Elements[i] || orig_comp > max_bb.Elements[i]) {
+                    goto next_object;
+                }
+            } else {
+                float ood = 1.0f / dir_comp;
+
+                float t1 = (min_bb.Elements[i] - ray_origin.Elements[i]) * ood;
+                float t2 = (max_bb.Elements[i] - ray_origin.Elements[i]) * ood;
+
+                if (t1 > t2) std::swap(t1, t2);
+
+                tmin = std::max(tmin, t1);
+                tmax = std::min(tmax, t2);
+
+                if (tmin > tmax) goto next_object;
+            }
+        }
+
+        if (tmin > 0.0f && tmin < current_min_dist) {
+            result.hit = true;
+            result.obj = const_cast<Object*>(obj);
+            result.distance = tmin;
+            current_min_dist = tmin;
+        }
+
+    next_object:;
     }
-    return {false, HMM_V3(0, 0, 0), nullptr};
+
+    return result;
 }
 
-RaycastResult raycast_point_to_point(const HMM_Vec3& start_point, const HMM_Vec3& end_point) {
-    HMM_Vec3 ray_direction = HMM_SubV3(end_point, start_point);
-    float max_distance = HMM_LenV3(ray_direction);
-    ray_direction = HMM_NormV3(ray_direction);
+RaycastResult raycast_point_to_point(HMM_Vec3 start, HMM_Vec3 end) {
+    RaycastResult result { false, nullptr, std::numeric_limits<float>::max() };
 
-    float closest_distance = FLT_MAX;
-    HMM_Vec3 closest_point = HMM_V3(0, 0, 0);
-    const Object* hit_obj = nullptr;
-    bool hit_found = false;
+    HMM_Vec3 ray_direction = HMM_SubV3(end, start);
+    float segment_length = HMM_LenV3(ray_direction);
 
-    for (const auto& visgroup : state.vis_groups) {
-        if (!visgroup.enabled) continue;
+    if (segment_length < 1e-6f) {
+        return result;
+    }
 
-        for (const auto& obj : visgroup.objects) {
-            Mesh* mesh = obj.mesh;
-            if (!mesh->vertices || !mesh->indices || mesh->vertex_count == 0 || mesh->index_count == 0) {
-                continue;
-            }
+    ray_direction = HMM_DivV3F(ray_direction, segment_length);
 
-            for (size_t i = 0; i < mesh->index_count; i += 3) {
-                if (i + 2 >= mesh->index_count) break;
+    std::vector<std::pair<const Object*, float>> candidates;
 
-                uint32_t idx0, idx1, idx2;
-                if (mesh->use_uint16_indices && mesh->indices16) {
-                    idx0 = mesh->indices16[i];
-                    idx1 = mesh->indices16[i + 1];
-                    idx2 = mesh->indices16[i + 2];
-                } else {
-                    idx0 = mesh->indices[i];
-                    idx1 = mesh->indices[i + 1];
-                    idx2 = mesh->indices[i + 2];
-                }
+    for (const auto& vg : state.vis_groups) {
+        if (!vg.enabled) continue;
 
-                if (idx0 >= mesh->vertex_count || idx1 >= mesh->vertex_count || idx2 >= mesh->vertex_count) {
-                    continue;
-                }
+        for (const auto& obj : vg.objects) {
+            if (obj.mesh == nullptr || !obj.enable_shading) continue;
 
-                HMM_Vec3 v0 = HMM_V3(mesh->vertices[idx0 * 8], mesh->vertices[idx0 * 8 + 1], mesh->vertices[idx0 * 8 + 2]);
-                HMM_Vec3 v1 = HMM_V3(mesh->vertices[idx1 * 8], mesh->vertices[idx1 * 8 + 1], mesh->vertices[idx1 * 8 + 2]);
-                HMM_Vec3 v2 = HMM_V3(mesh->vertices[idx2 * 8], mesh->vertices[idx2 * 8 + 1], mesh->vertices[idx2 * 8 + 2]);
-
-                v0 = transform_vertex(v0, obj);
-                v1 = transform_vertex(v1, obj);
-                v2 = transform_vertex(v2, obj);
-
-                float distance;
-                if (ray_triangle_intersect(start_point, ray_direction, v0, v1, v2, distance)) {
-                    if (distance >= 0.0f && distance <= max_distance && distance < closest_distance) {
-                        closest_distance = distance;
-                        closest_point = HMM_AddV3(start_point, HMM_MulV3F(ray_direction, distance));
-                        hit_obj = &obj;
-                        hit_found = true;
-                    }
-                }
-            }
+            float dist_sq = HMM_LenSqrV3(HMM_SubV3(obj.position, start));
+            candidates.emplace_back(&obj, dist_sq);
         }
     }
 
-    if (hit_found) {
-        return {true, closest_point, hit_obj};
+    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second;
+    });
+
+    float current_min_dist = result.distance;
+
+    for (const auto& pair : candidates) {
+        const Object* obj = pair.first;
+
+        HMM_Vec3 half_ext = HMM_MulV3F(obj->bounding_rect, 0.5f);
+        half_ext.X *= std::abs(obj->scale.X);
+        half_ext.Y *= std::abs(obj->scale.Y);
+        half_ext.Z *= std::abs(obj->scale.Z);
+
+        HMM_Vec3 min_bb = HMM_SubV3(obj->position, half_ext);
+        HMM_Vec3 max_bb = HMM_AddV3(obj->position, half_ext);
+
+        float tmin = 0.0f;
+        float tmax = std::min(segment_length, current_min_dist);
+
+        for (int i = 0; i < 3; ++i) {
+            float dir_comp = ray_direction.Elements[i];
+
+            if (std::abs(dir_comp) < 1e-6f) {
+                float orig_comp = start.Elements[i];
+
+                if (orig_comp < min_bb.Elements[i] || orig_comp > max_bb.Elements[i]) {
+                    goto next_object;
+                }
+            } else {
+                float ood = 1.0f / dir_comp;
+
+                float t1 = (min_bb.Elements[i] - start.Elements[i]) * ood;
+                float t2 = (max_bb.Elements[i] - start.Elements[i]) * ood;
+
+                if (t1 > t2) std::swap(t1, t2);
+
+                tmin = std::max(tmin, t1);
+                tmax = std::min(tmax, t2);
+
+                if (tmin > tmax) goto next_object;
+            }
+        }
+
+        if (tmin >= 0.0f && tmin < current_min_dist) {
+            result.hit = true;
+            result.obj = const_cast<Object*>(obj);
+            result.distance = tmin;
+            current_min_dist = tmin;
+        }
+
+    next_object:;
     }
-    return {false, HMM_V3(0, 0, 0), nullptr};
+
+    return result;
 }
 
 // helper function for gltf loading
