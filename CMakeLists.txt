@@ -1,6 +1,4 @@
 cmake_minimum_required(VERSION 3.22)
-project(Gungutils)
-set(CMAKE_CXX_STANDARD 20)
 
 # OpenGL
 find_package(OpenGL REQUIRED)
@@ -24,42 +22,44 @@ if(MSVC)
 endif()
 
 # ImGui
-set(IMGUI_PATH "${CMAKE_SOURCE_DIR}/include/imgui/")
+set(IMGUI_PATH "${GUNGUTILS_DIR}/include/imgui/")
 file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp)
 add_library(ImGui STATIC ${IMGUI_SOURCES})
 target_include_directories(ImGui PUBLIC ${IMGUI_PATH})
 
 # ImPlot
-set(IMPLOT_PATH "${CMAKE_SOURCE_DIR}/include/implot/")
+set(IMPLOT_PATH "${GUNGUTILS_DIR}/include/implot/")
 file(GLOB IMPLOT_SOURCES ${IMPLOT_PATH}/*.cpp)
 add_library(ImPlot STATIC ${IMPLOT_SOURCES})
 target_include_directories(ImPlot PUBLIC ${IMPLOT_PATH})
 target_link_libraries(ImPlot PUBLIC ImGui)
 
 # ImGuizmo
-set(IMGUIZMO_PATH "${CMAKE_SOURCE_DIR}/include/ImGuizmo/")
+set(IMGUIZMO_PATH "${GUNGUTILS_DIR}/include/ImGuizmo/")
 file(GLOB IMGUIZMO_SOURCES ${IMGUIZMO_PATH}/*.cpp)
 add_library(ImGuizmo STATIC ${IMGUIZMO_SOURCES})
 target_include_directories(ImGuizmo PUBLIC ${IMGUIZMO_PATH})
 target_link_libraries(ImGuizmo PUBLIC ImGui)
 
 # TinyFileDialogs
-file(GLOB TINYFD_SOURCES ${CMAKE_SOURCE_DIR}/include/libtinyfiledialogs/*.c)
+file(GLOB TINYFD_SOURCES ${GUNGUTILS_DIR}/include/libtinyfiledialogs/*.c)
 add_library(TinyFD STATIC ${TINYFD_SOURCES})
 
 # main executable
-file(GLOB GUNGUTILS_SRC ${CMAKE_SOURCE_DIR}/include/Gungutils/gungutils.cpp)
+file(GLOB GUNGUTILS_SRC "${GUNGUTILS_DIR}/gungutils.cpp")
+add_library(Gungutils STATIC ${GUNGUTILS_SRC})
 
 # subdirectories
-add_subdirectory(${CMAKE_SOURCE_DIR}/include/SDL)
-add_subdirectory(${CMAKE_SOURCE_DIR}/include/meshoptimizer)
+add_subdirectory(${GUNGUTILS_DIR}/include/SDL)
+add_subdirectory(${GUNGUTILS_DIR}/include/meshoptimizer)
+add_subdirectory(${GUNGUTILS_DIR}/include/reactphysics3d)
 
 if(WIN32)
-    set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio_vc.lib")
-    set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod_vc.lib")
+    set(FMOD_STUDIO_LIB "${GUNGUTILS_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio_vc.lib")
+    set(FMOD_CORE_LIB "${GUNGUTILS_DIR}/include/FModStudio/api/core/lib/x64/fmod_vc.lib")
 else() # Linux or Mac but ain't no way I'll use mac anytime
-    set(FMOD_STUDIO_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
-    set(FMOD_CORE_LIB "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
+    set(FMOD_STUDIO_LIB "${GUNGUTILS_DIR}/include/FModStudio/api/studio/lib/x86_64/libfmodstudio.so")
+    set(FMOD_CORE_LIB "${GUNGUTILS_DIR}/include/FModStudio/api/core/lib/x86_64/libfmod.so")
 endif()
 
 if(WIN32)
@@ -70,21 +70,18 @@ if(WIN32)
 
     add_custom_command(TARGET Gungutils POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/lib/x64/fmod.dll"
+            "${GUNGUTILS_DIR}/include/FModStudio/api/core/lib/x64/fmod.dll"
             $<TARGET_FILE_DIR:Gungutils>)
     add_custom_command(TARGET Gungutils POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio.dll"
+            "${GUNGUTILS_DIR}/include/FModStudio/api/studio/lib/x64/fmodstudio.dll"
             $<TARGET_FILE_DIR:Gungutils>)
 endif()
 
 set(FMOD_INCLUDE_DIRS
-        ${CMAKE_SOURCE_DIR}/include/FModStudio/api/studio/inc
-        ${CMAKE_SOURCE_DIR}/include/FModStudio/api/core/inc
+        ${GUNGUTILS_DIR}/include/FModStudio/api/studio/inc
+        ${GUNGUTILS_DIR}/include/FModStudio/api/core/inc
 )
-
-# ReactPhysics3D
-add_subdirectory(${CMAKE_SOURCE_DIR}/include/reactphysics3d)
 
 target_link_libraries(Gungutils
         PRIVATE
@@ -103,9 +100,9 @@ target_link_libraries(Gungutils
 )
 
 target_include_directories(Gungutils
-        PRIVATE
-        include
-        src
+        PUBLIC
+        ${GUNGUTILS_DIR}/include
+        ${GUNGUTILS_DIR}/src
         ${FMOD_INCLUDE_DIRS}
         ${PLATFORM_INCLUDE_DIRS}
         ${JOLT_SOURCE_DIR}
