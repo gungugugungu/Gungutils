@@ -148,8 +148,8 @@ void main() {
     float alpha = base_color.a;
     vec3 mr = texture(metallic_roughness_texture2D, TexCoord).rgb;
     float ao = mr.r;
-    float roughness = max(mr.g, 0.04);
-    float metallic = mr.b;
+    float roughness = mr.b;
+    float metallic = mr.g;
     vec3 normal_tex_color = texture(normal_texture2D, TexCoord).xyz;
     vec3 tangentNormal = normal_tex_color * 2.0 - 1.0;
     mat3 TBN = mat3(normalize(vTangent), normalize(vBitangent), normalize(vNormal));
@@ -254,17 +254,12 @@ void main() {
 
     // skybox reflections
     vec3 R = reflect(-V, N);
-
-    vec3 skyboxReflection = texture(skybox_textureCube, R).rgb;
-
+    float lod = roughness * 8.0;
+    vec3 skyboxReflection = textureLod(skybox_textureCube, R, lod).rgb;
     float NdotV = max(dot(N, V), 0.0);
-    vec3 F_die_refl = fresnelSchlickRoughness(NdotV, F0_die, roughness);
-    vec3 F_metal_refl = fresnelSchlickRoughness(NdotV, F0_metal, roughness);
-
-    vec3 reflection_die = skyboxReflection * F_die_refl * (1.0 - roughness);
-    vec3 reflection_metal = skyboxReflection * F_metal_refl * (1.0 - roughness);
-
-    vec3 reflectionContribution = (1.0 - metallic) * reflection_die + metallic * reflection_metal;
+    vec3 F0_refl = vec3(0.04);
+    vec3 F_refl = fresnelSchlickRoughness(NdotV, F0_refl, roughness);
+    vec3 reflectionContribution = skyboxReflection * F_refl * (1.0 - roughness);
 
     vec3 finalRgb = albedo;
     if (venable_shading == 1) {
@@ -272,6 +267,7 @@ void main() {
     }
 
     FragColor = vec4(clamp(finalRgb, 0.0, 1.0), alpha * v_opacity)+vec4(emissive_tex_color, 0.0f);
+    //FragColor = vec4(0.0, metallic, roughness, 1.0);
 }
 @end
 
