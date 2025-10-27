@@ -3166,6 +3166,14 @@ std::vector<Object*> get_objects_with_component() {
     return objects;
 }
 
+void look_at(HMM_Vec3 position) {
+    HMM_Vec3 target = position;
+    HMM_Vec3 direction = HMM_NormV3(HMM_SubV3(target, state.camera_pos));
+    state.camera_front = direction;
+    state.yaw = atan2f(direction.Z, direction.X) * 180.0f / HMM_PI;
+    state.pitch = asinf(direction.Y) * 180.0f / HMM_PI;
+}
+
 extern void (*init_callback)();
 extern void (*frame_callback)();
 extern void (*event_callback)(SDL_Event* e);
