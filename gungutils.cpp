@@ -500,8 +500,8 @@ void init_ssao() {
     ssao_pip = sg_make_pipeline(&ssao_pip_desc);
 
     ssao_params.ao_radius = 0.5f;
-    ssao_params.ao_bias = 0.05f;
-    ssao_params.ssao_samples = 64;
+    ssao_params.ao_bias = 0.025f;
+    ssao_params.ssao_samples = 12;
 }
 
 void init_post_processing() {

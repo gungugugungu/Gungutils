@@ -70,7 +70,7 @@ vec3( 0.0132, -0.0236, 0.2041), vec3(-0.1786, 0.1065, -0.0101)
 );
 
 float linearize_reversed_depth(float d, float near, float far) {
-    float denom = max((far - d * (far - near)), 1e-6);
+    float denom = max((near + d * (far - near)), 1e-6);
     float viewZ = (near * far) / denom;
     return viewZ;
 }
