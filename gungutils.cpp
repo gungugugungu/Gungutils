@@ -511,14 +511,11 @@ sg_view kw_output_1_tex_view;
 sg_image kw_output_2;
 sg_view kw_output_2_att_view;
 sg_view kw_output_2_tex_view;
-sg_image kw_output_3;
-sg_view kw_output_3_att_view;
-sg_view kw_output_3_tex_view;
 sg_sampler kw_smp;
 sg_pipeline kw_pip_1; // structure tensor computatation
 sg_pipeline kw_pip_2; // structure tensor smoothing
-sg_pipeline kw_pip_3; // actual kw
 st_params_t st_params = {}; // just for texel size, seemed like the safest option
+akw_params_t akw_params = {};
 
 void init_kw() {
     int width, height;
@@ -556,22 +553,6 @@ void init_kw() {
     kw_tex_view_desc_2.texture.image = kw_output_2;
     kw_output_2_tex_view = sg_make_view(&kw_tex_view_desc_2);
 
-    sg_image_desc kw_img_desc_3 = {};
-    kw_img_desc_3.width = width;
-    kw_img_desc_3.height = height;
-    kw_img_desc_3.pixel_format = SG_PIXELFORMAT_RGBA8;
-    kw_img_desc_3.usage.color_attachment = true;
-    kw_img_desc_3.label = "kw_output_3";
-    kw_output_3 = sg_make_image(&kw_img_desc_3);
-
-    sg_view_desc kw_view_desc_3 = {};
-    kw_view_desc_3.color_attachment.image = kw_output_3;
-    kw_output_3_att_view = sg_make_view(&kw_view_desc_3);
-
-    sg_view_desc kw_tex_view_desc_3 = {};
-    kw_tex_view_desc_3.texture.image = kw_output_3;
-    kw_output_3_tex_view = sg_make_view(&kw_tex_view_desc_3);
-
     sg_sampler_desc kw_smp_desc = {};
     kw_smp_desc.min_filter = SG_FILTER_LINEAR;
     kw_smp_desc.mag_filter = SG_FILTER_LINEAR;
@@ -586,14 +567,31 @@ void init_kw() {
     kw_pip_desc_1.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
     kw_pip_desc_1.color_count = 1;
     kw_pip_desc_1.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-    kw_pip_desc_1.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    kw_pip_desc_1.depth.pixel_format = SG_PIXELFORMAT_NONE;
     kw_pip_desc_1.depth.compare = SG_COMPAREFUNC_ALWAYS;
-    kw_pip_desc_1.depth.write_enabled = true;
+    kw_pip_desc_1.depth.write_enabled = false;
     kw_pip_desc_1.cull_mode = SG_CULLMODE_NONE;
     kw_pip_desc_1.label = "kuwahara_stage_1";
     kw_pip_1 = sg_make_pipeline(&kw_pip_desc_1);
 
+    sg_pipeline_desc kw_pip_desc_2 = {};
+    kw_pip_desc_2.shader = sg_make_shader(kw_akw_program_shader_desc(sg_query_backend()));
+    kw_pip_desc_2.layout.attrs[ATTR_kw_akw_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+    kw_pip_desc_2.layout.attrs[ATTR_kw_akw_program_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    kw_pip_desc_2.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    kw_pip_desc_2.color_count = 1;
+    kw_pip_desc_2.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    kw_pip_desc_2.depth.pixel_format = SG_PIXELFORMAT_NONE;
+    kw_pip_desc_2.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    kw_pip_desc_2.depth.write_enabled = false;
+    kw_pip_desc_2.cull_mode = SG_CULLMODE_NONE;
+    kw_pip_desc_2.label = "kuwahara_stage_1";
+    kw_pip_2 = sg_make_pipeline(&kw_pip_desc_2);
+
     st_params.texel_size = {1.0f/width, 1.0f/height};
+    akw_params.texel_size = {1.0f/width, 1.0f/height};
+    akw_params.radius = 7.0f;
+    akw_params.sharpness = 0.2f;
 }
 
 void render_kw_pass() {
@@ -603,23 +601,10 @@ void render_kw_pass() {
     sg_pass_action pass_1_action = {};
     pass_1_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     pass_1_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
-    pass_1_action.depth.load_action = SG_LOADACTION_CLEAR;
-    pass_1_action.depth.clear_value = 0.0f;
-
-    sg_image_desc _temp_depth_image_desc{};
-    _temp_depth_image_desc.width = width;
-    _temp_depth_image_desc.height = height;
-    _temp_depth_image_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    _temp_depth_image_desc.usage.depth_stencil_attachment = true;
-    sg_image temp_depth = sg_make_image(&_temp_depth_image_desc);
-    sg_view_desc _temp_view_desc{};
-    _temp_view_desc.depth_stencil_attachment.image = temp_depth;
-    sg_view temp_depth_view = sg_make_view(&_temp_view_desc);
 
     sg_pass pass_1 = {};
     pass_1.action = pass_1_action;
     pass_1.attachments.colors[0] = kw_output_1_att_view;
-    pass_1.attachments.depth_stencil = temp_depth_view;
 
     sg_bindings kw_binds = {};
     kw_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
@@ -627,14 +612,34 @@ void render_kw_pass() {
     kw_binds.samplers[0] = kw_smp;
 
     sg_begin_pass(&pass_1);
-    sg_apply_bindings(kw_binds);
     sg_apply_pipeline(kw_pip_1);
-    sg_apply_uniforms(0, SG_RANGE(st_params));
+    sg_apply_bindings(kw_binds);
+    sg_apply_uniforms(UB_st_params, SG_RANGE(st_params));
     sg_draw(0, 3, 1);
     sg_end_pass();
 
-    sg_destroy_view(temp_depth_view);
-    sg_destroy_image(temp_depth);
+    blur_image(kw_output_1, 1.0f, 2);
+
+    sg_pass_action pass_2_action = {};
+    pass_2_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    pass_2_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+
+    sg_pass pass_2 = {};
+    pass_2.action = pass_2_action;
+    pass_2.attachments.colors[0] = kw_output_2_att_view;
+
+    kw_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    kw_binds.views[0] = post_state.rendered_color_tex_view;
+    kw_binds.views[1] = kw_output_1_tex_view;
+    kw_binds.samplers[0] = kw_smp;
+    kw_binds.samplers[1] = kw_smp;
+
+    sg_begin_pass(&pass_2);
+    sg_apply_pipeline(kw_pip_2);
+    sg_apply_bindings(kw_binds);
+    sg_apply_uniforms(UB_akw_params, SG_RANGE(akw_params));
+    sg_draw(0, 3, 1);
+    sg_end_pass();
 }
 
 void init_post_processing() {
@@ -1861,8 +1866,8 @@ void render_pp_pass() {
     post_state.uniforms.time = stm_sec(stm_now());
 
     post_state.post_bindings.vertex_buffers[0] = {.id = SG_INVALID_ID};
-    post_state.post_bindings.views[0] = post_state.rendered_color_tex_view;
-    post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
+    post_state.post_bindings.views[0] = kw_output_2_tex_view; // replaced by kuwahara filter
+    post_state.post_bindings.samplers[0] = kw_smp;
     post_state.post_bindings.views[1] = post_state.rendered_depth_tex_view;
     post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
     post_state.post_bindings.views[2] = bloom_tex_view;
@@ -3969,6 +3974,8 @@ void render_editor() {
             ImGui::Separator();
             ImGui::Text("KUWAHARA FILTER");
             imtex_id = simgui_imtextureid_with_sampler(kw_output_1_tex_view, kw_smp);
+            ImGui::Image(imtex_id, ImVec2(455, 256));
+            imtex_id = simgui_imtextureid_with_sampler(kw_output_2_tex_view, kw_smp);
             ImGui::Image(imtex_id, ImVec2(455, 256));
         }
 
