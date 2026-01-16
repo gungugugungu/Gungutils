@@ -105,6 +105,7 @@ in vec2 uv;
 out vec4 frag_color;
 
 #define PI 3.14159265359
+#define INV_PI 0.31830988618
 #define NUM_SECTORS 8
 
 void main() {
@@ -113,116 +114,66 @@ void main() {
     float C = st.g;
     float B = st.b;
 
-    // dominant orientation from structure tensor
-    float theta;
-    if (abs(B) > 0.001) {
-        float trace = A + C;
-        float det = A * C - B * B;
-        float lambda_max = 0.5 * (trace + sqrt(trace * trace - 4.0 * det));
+    float theta = 0.5 * atan(2.0 * B, A - C);
 
-        vec2 evec = normalize(vec2(B, lambda_max - A));
-        theta = atan(evec.y, evec.x);
-    } else {
-        theta = (A > C) ? 0.0 : PI * 0.5;
-    }
+    float cos_t = cos(-theta);
+    float sin_t = sin(-theta);
+    float inv_aniso = 0.5;
 
-    float anisotropy = 2.0;
-
-    vec3 sector_mean[NUM_SECTORS];
-    float sector_var[NUM_SECTORS];
+    vec3 sum[NUM_SECTORS];
+    vec3 sum_sq[NUM_SECTORS];
+    float w_sum[NUM_SECTORS];
 
     for (int s = 0; s < NUM_SECTORS; s++) {
-        sector_mean[s] = vec3(0.0);
-        sector_var[s] = 0.0;
+        sum[s] = vec3(0.0);
+        sum_sq[s] = vec3(0.0);
+        w_sum[s] = 0.0;
     }
 
-    float sector_weight[NUM_SECTORS];
-    for (int s = 0; s < NUM_SECTORS; s++) {
-        sector_weight[s] = 0.0;
-    }
+    int kr = int(ceil(radius));
+    float r_sq = radius * radius;
+    float inv_r_sq = 1.0 / r_sq;
 
-    int kernel_radius = int(radius);
+    for (int y = -kr; y <= kr; y++) {
+        for (int x = -kr; x <= kr; x++) {
+            float rx = (float(x) * cos_t - float(y) * sin_t) * inv_aniso;
+            float ry = float(x) * sin_t + float(y) * cos_t;
 
-    for (int y = -kernel_radius; y <= kernel_radius; y++) {
-        for (int x = -kernel_radius; x <= kernel_radius; x++) {
-            vec2 offset = vec2(float(x), float(y));
+            float dist_sq = rx * rx + ry * ry;
+            if (dist_sq > r_sq) continue;
 
-            float cos_t = cos(-theta);
-            float sin_t = sin(-theta);
-            vec2 rotated = vec2(
-            offset.x * cos_t - offset.y * sin_t,
-            offset.x * sin_t + offset.y * cos_t
-            );
+            float t_sq = dist_sq * inv_r_sq;
+            float temp = 1.0 - t_sq;
+            float weight = temp * temp * sharpness;
 
-            rotated.x /= anisotropy;
+            float angle = atan(ry, rx);
+            int sector = int(floor((angle + PI) * INV_PI * 0.5 * float(NUM_SECTORS))) & 7;
 
-            float dist = length(rotated);
-            if (dist > radius) continue;
+            vec3 color = texture(input_tex, uv + vec2(float(x), float(y)) * texel_size).rgb;
 
-            float angle = atan(rotated.y, rotated.x);
-            int sector = int(floor((angle + PI) / (2.0 * PI) * float(NUM_SECTORS))) % NUM_SECTORS;
-
-            float weight = exp(-dist * dist * sharpness);
-
-            vec2 sample_uv = uv + offset * texel_size;
-            vec3 color = texture(input_tex, sample_uv).rgb;
-
-            sector_mean[sector] += color * weight;
-            sector_weight[sector] += weight;
+            sum[sector] += color * weight;
+            sum_sq[sector] += color * color * weight;
+            w_sum[sector] += weight;
         }
     }
+
+    int min_s = 0;
+    float min_var = 1e10;
 
     for (int s = 0; s < NUM_SECTORS; s++) {
-        if (sector_weight[s] > 0.0) {
-            sector_mean[s] /= sector_weight[s];
+        if (w_sum[s] > 0.001) {
+            vec3 mean = sum[s] / w_sum[s];
+            vec3 mean_sq = sum_sq[s] / w_sum[s];
+            float var = dot(mean_sq - mean * mean, vec3(1.0));
+
+            if (var < min_var) {
+                min_var = var;
+                min_s = s;
+            }
         }
     }
 
-    for (int y = -kernel_radius; y <= kernel_radius; y++) {
-        for (int x = -kernel_radius; x <= kernel_radius; x++) {
-            vec2 offset = vec2(float(x), float(y));
-
-            float cos_t = cos(-theta);
-            float sin_t = sin(-theta);
-            vec2 rotated = vec2(
-            offset.x * cos_t - offset.y * sin_t,
-            offset.x * sin_t + offset.y * cos_t
-            );
-
-            rotated.x /= anisotropy;
-            float dist = length(rotated);
-            if (dist > radius) continue;
-
-            float angle = atan(rotated.y, rotated.x);
-            int sector = int(floor((angle + PI) / (2.0 * PI) * float(NUM_SECTORS))) % NUM_SECTORS;
-
-            float weight = exp(-dist * dist * sharpness);
-
-            vec2 sample_uv = uv + offset * texel_size;
-            vec3 color = texture(input_tex, sample_uv).rgb;
-
-            vec3 diff = color - sector_mean[sector];
-            sector_var[sector] += dot(diff, diff) * weight;
-        }
-    }
-
-    for (int s = 0; s < NUM_SECTORS; s++) {
-        if (sector_weight[s] > 0.0) {
-            sector_var[s] /= sector_weight[s];
-        }
-    }
-
-    // minimum deviation
-    int min_sector = 0;
-    float min_var = sector_var[0];
-    for (int s = 1; s < NUM_SECTORS; s++) {
-        if (sector_var[s] < min_var) {
-            min_var = sector_var[s];
-            min_sector = s;
-        }
-    }
-
-    frag_color = vec4(sector_mean[min_sector], 1.0);
+    frag_color = vec4(sum[min_s] / w_sum[min_s], 1.0);
 }
 @end
 

@@ -96,6 +96,7 @@ int all_index_count = 0;
 
 stbtt_fontinfo font;
 
+bool ENABLE_KUWAHARA = true;
 sg_image shadow_depth_img = {SG_INVALID_ID};
 sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
@@ -1653,9 +1654,9 @@ void render_offscreen_pass() {
 
     sg_pass_action offscreen_pass_action = {};
     offscreen_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
-    offscreen_pass_action.colors[0].clear_value = {state.background_color.X, state.background_color.Y, state.background_color.Z, 1.0f};
+    offscreen_pass_action.colors[0].clear_value = {1.0f, 1.0f, 1.0f, 1.0f};
     offscreen_pass_action.depth.load_action = SG_LOADACTION_CLEAR;
-    offscreen_pass_action.depth.clear_value = 1.0f;
+    offscreen_pass_action.depth.clear_value = 1.0f; // well shit, if it's 0, then the skybox is fine, and if it's 1 then the models are fine, what do I do
 
     sg_pass pass = {};
     pass.action = offscreen_pass_action;
@@ -1866,8 +1867,13 @@ void render_pp_pass() {
     post_state.uniforms.time = stm_sec(stm_now());
 
     post_state.post_bindings.vertex_buffers[0] = {.id = SG_INVALID_ID};
-    post_state.post_bindings.views[0] = kw_output_2_tex_view; // replaced by kuwahara filter
-    post_state.post_bindings.samplers[0] = kw_smp;
+    if (ENABLE_KUWAHARA) {
+        post_state.post_bindings.views[0] = kw_output_2_tex_view;
+        post_state.post_bindings.samplers[0] = kw_smp;
+    } else {
+        post_state.post_bindings.views[0] = post_state.rendered_color_tex_view;
+        post_state.post_bindings.samplers[0] = post_state.rendered_post_sampler;
+    }
     post_state.post_bindings.views[1] = post_state.rendered_depth_tex_view;
     post_state.post_bindings.samplers[1] = post_state.rendered_depth_sampler;
     post_state.post_bindings.views[2] = bloom_tex_view;
@@ -3972,7 +3978,7 @@ void render_editor() {
             ImGui::Image(imtex_id, ImVec2(455, 256));
 
             ImGui::Separator();
-            ImGui::Text("KUWAHARA FILTER");
+            ImGui::Checkbox("KUWAHARA FILTER", &ENABLE_KUWAHARA);
             imtex_id = simgui_imtextureid_with_sampler(kw_output_1_tex_view, kw_smp);
             ImGui::Image(imtex_id, ImVec2(455, 256));
             imtex_id = simgui_imtextureid_with_sampler(kw_output_2_tex_view, kw_smp);
@@ -4502,7 +4508,7 @@ void _frame() {
     render_offscreen_pass();
     render_ssao_pass();
     render_bloom_pass();
-    render_kw_pass();
+    if (ENABLE_KUWAHARA) render_kw_pass();
     render_pp_pass();
 
     // input

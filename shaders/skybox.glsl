@@ -31,9 +31,6 @@ in vec3 uvw;
 
 void main() {
     vec3 color = texture(samplerCube(_tex2d, tex2d_smp), uvw).xyz;
-
-    color = pow(color, vec3(1.0/2.2));
-
     FragColor = vec4(color, 1.0f);
 }
 @end
