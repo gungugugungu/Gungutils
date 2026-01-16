@@ -56,6 +56,7 @@
 #include "shaders/bloom_filter.glsl.h"
 #include "shaders/blur.glsl.h"
 #include "shaders/ssao.glsl.h"
+#include "shaders/kuwahara.glsl.h"
 // sources
 #include "utils/Log.h"
 #include "rendering/Material.h"
@@ -502,6 +503,138 @@ void init_ssao() {
     ssao_params.ao_radius = 0.5f;
     ssao_params.ao_bias = 0.025f;
     ssao_params.ssao_samples = 12;
+}
+
+sg_image kw_output_1;
+sg_view kw_output_1_att_view;
+sg_view kw_output_1_tex_view;
+sg_image kw_output_2;
+sg_view kw_output_2_att_view;
+sg_view kw_output_2_tex_view;
+sg_image kw_output_3;
+sg_view kw_output_3_att_view;
+sg_view kw_output_3_tex_view;
+sg_sampler kw_smp;
+sg_pipeline kw_pip_1; // structure tensor computatation
+sg_pipeline kw_pip_2; // structure tensor smoothing
+sg_pipeline kw_pip_3; // actual kw
+st_params_t st_params = {}; // just for texel size, seemed like the safest option
+
+void init_kw() {
+    int width, height;
+    SDL_GetWindowSizeInPixels(state.win, &width, &height);
+
+    sg_image_desc kw_img_desc_1 = {};
+    kw_img_desc_1.width = width;
+    kw_img_desc_1.height = height;
+    kw_img_desc_1.pixel_format = SG_PIXELFORMAT_RGBA8;
+    kw_img_desc_1.usage.color_attachment = true;
+    kw_img_desc_1.label = "kw_output_1";
+    kw_output_1 = sg_make_image(&kw_img_desc_1);
+
+    sg_view_desc kw_view_desc_1 = {};
+    kw_view_desc_1.color_attachment.image = kw_output_1;
+    kw_output_1_att_view = sg_make_view(&kw_view_desc_1);
+
+    sg_view_desc kw_tex_view_desc_1 = {};
+    kw_tex_view_desc_1.texture.image = kw_output_1;
+    kw_output_1_tex_view = sg_make_view(&kw_tex_view_desc_1);
+
+    sg_image_desc kw_img_desc_2 = {};
+    kw_img_desc_2.width = width;
+    kw_img_desc_2.height = height;
+    kw_img_desc_2.pixel_format = SG_PIXELFORMAT_RGBA8;
+    kw_img_desc_2.usage.color_attachment = true;
+    kw_img_desc_2.label = "kw_output_2";
+    kw_output_2 = sg_make_image(&kw_img_desc_2);
+
+    sg_view_desc kw_view_desc_2 = {};
+    kw_view_desc_2.color_attachment.image = kw_output_2;
+    kw_output_2_att_view = sg_make_view(&kw_view_desc_2);
+
+    sg_view_desc kw_tex_view_desc_2 = {};
+    kw_tex_view_desc_2.texture.image = kw_output_2;
+    kw_output_2_tex_view = sg_make_view(&kw_tex_view_desc_2);
+
+    sg_image_desc kw_img_desc_3 = {};
+    kw_img_desc_3.width = width;
+    kw_img_desc_3.height = height;
+    kw_img_desc_3.pixel_format = SG_PIXELFORMAT_RGBA8;
+    kw_img_desc_3.usage.color_attachment = true;
+    kw_img_desc_3.label = "kw_output_3";
+    kw_output_3 = sg_make_image(&kw_img_desc_3);
+
+    sg_view_desc kw_view_desc_3 = {};
+    kw_view_desc_3.color_attachment.image = kw_output_3;
+    kw_output_3_att_view = sg_make_view(&kw_view_desc_3);
+
+    sg_view_desc kw_tex_view_desc_3 = {};
+    kw_tex_view_desc_3.texture.image = kw_output_3;
+    kw_output_3_tex_view = sg_make_view(&kw_tex_view_desc_3);
+
+    sg_sampler_desc kw_smp_desc = {};
+    kw_smp_desc.min_filter = SG_FILTER_LINEAR;
+    kw_smp_desc.mag_filter = SG_FILTER_LINEAR;
+    kw_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    kw_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    kw_smp = sg_make_sampler(&kw_smp_desc);
+
+    sg_pipeline_desc kw_pip_desc_1 = {};
+    kw_pip_desc_1.shader = sg_make_shader(kw_st_program_shader_desc(sg_query_backend()));
+    kw_pip_desc_1.layout.attrs[ATTR_kw_st_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+    kw_pip_desc_1.layout.attrs[ATTR_kw_st_program_texcoord].format = SG_VERTEXFORMAT_FLOAT2;
+    kw_pip_desc_1.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+    kw_pip_desc_1.color_count = 1;
+    kw_pip_desc_1.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+    kw_pip_desc_1.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    kw_pip_desc_1.depth.compare = SG_COMPAREFUNC_ALWAYS;
+    kw_pip_desc_1.depth.write_enabled = true;
+    kw_pip_desc_1.cull_mode = SG_CULLMODE_NONE;
+    kw_pip_desc_1.label = "kuwahara_stage_1";
+    kw_pip_1 = sg_make_pipeline(&kw_pip_desc_1);
+
+    st_params.texel_size = {1.0f/width, 1.0f/height};
+}
+
+void render_kw_pass() {
+    int width, height;
+    SDL_GetWindowSizeInPixels(state.win, &width, &height);
+
+    sg_pass_action pass_1_action = {};
+    pass_1_action.colors[0].load_action = SG_LOADACTION_CLEAR;
+    pass_1_action.colors[0].clear_value = {0.0f, 0.0f, 0.0f, 1.0f};
+    pass_1_action.depth.load_action = SG_LOADACTION_CLEAR;
+    pass_1_action.depth.clear_value = 0.0f;
+
+    sg_image_desc _temp_depth_image_desc{};
+    _temp_depth_image_desc.width = width;
+    _temp_depth_image_desc.height = height;
+    _temp_depth_image_desc.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
+    _temp_depth_image_desc.usage.depth_stencil_attachment = true;
+    sg_image temp_depth = sg_make_image(&_temp_depth_image_desc);
+    sg_view_desc _temp_view_desc{};
+    _temp_view_desc.depth_stencil_attachment.image = temp_depth;
+    sg_view temp_depth_view = sg_make_view(&_temp_view_desc);
+
+    sg_pass pass_1 = {};
+    pass_1.action = pass_1_action;
+    pass_1.attachments.colors[0] = kw_output_1_att_view;
+    pass_1.attachments.depth_stencil = temp_depth_view;
+
+    sg_bindings kw_binds = {};
+    kw_binds.vertex_buffers[0] = {.id = SG_INVALID_ID};
+    kw_binds.views[0] = post_state.rendered_color_tex_view;
+    kw_binds.samplers[0] = kw_smp;
+
+    sg_begin_pass(&pass_1);
+    sg_apply_bindings(kw_binds);
+    sg_apply_pipeline(kw_pip_1);
+    sg_apply_uniforms(0, SG_RANGE(st_params));
+    sg_draw(0, 3, 1);
+    sg_end_pass();
+
+    sg_destroy_view(temp_depth_view);
+    sg_destroy_image(temp_depth);
 }
 
 void init_post_processing() {
@@ -3824,13 +3957,18 @@ void render_editor() {
             bloom_preview_desc.texture.image = bloom_img;
             sg_view bloom_display_view = sg_make_view(&bloom_preview_desc);
             if (bloom_display_view.id == SG_INVALID_ID) {
-                ImGui::Text("I don't know how you did this but there's no bloom fitler image");
+                ImGui::Text("I don't know how you did this but there's no bloom filter image");
             } else {
                 ImTextureID imtex_id = simgui_imtextureid_with_sampler(bloom_display_view, bloom_smp);
                 ImGui::Image(imtex_id, ImVec2(455, 256));
                 temp_editor_views.push_back(bloom_display_view);
             }
             ImTextureID imtex_id = simgui_imtextureid_with_sampler(ssao_tex_view, ssao_smp);
+            ImGui::Image(imtex_id, ImVec2(455, 256));
+
+            ImGui::Separator();
+            ImGui::Text("KUWAHARA FILTER");
+            imtex_id = simgui_imtextureid_with_sampler(kw_output_1_tex_view, kw_smp);
             ImGui::Image(imtex_id, ImVec2(455, 256));
         }
 
@@ -4079,6 +4217,7 @@ void _init() {
     init_ssao();
     init_shadowmaps();
     init_bloom();
+    init_kw();
     init_post_processing();
 
     // 2d rendering pipeline
@@ -4356,6 +4495,7 @@ void _frame() {
     render_offscreen_pass();
     render_ssao_pass();
     render_bloom_pass();
+    render_kw_pass();
     render_pp_pass();
 
     // input
