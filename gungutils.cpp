@@ -593,6 +593,7 @@ void init_kw() {
     akw_params.texel_size = {1.0f/width, 1.0f/height};
     akw_params.radius = 7.0f;
     akw_params.sharpness = 0.2f;
+    // TODO: Fix the skybox by fixing the SSAO I think
 }
 
 void render_kw_pass() {
@@ -3343,6 +3344,12 @@ sg_image editor_specular_display_image;
 sg_sampler editor_specular_display_sampler;
 ImGuizmo::OPERATION current_gizmo_operation = ImGuizmo::TRANSLATE;
 
+float offscreen_time = 0.0f;
+float ssao_time = 0.0f;
+float bloom_time = 0.0f;
+float kuwahara_time = 0.0f;
+float pp_time = 0.0f;
+
 void render_editor() {
     if (state.editor_open) {
         std::vector<sg_view> temp_editor_views;
@@ -4002,6 +4009,11 @@ void render_editor() {
         ImGui::Separator();
         if (ImGui::CollapsingHeader("PROFILER")) {
             ImGui::Text("DT: %f", time_state.dt);
+            ImGui::Text("OFFSCREEN TIME: %f", offscreen_time);
+            ImGui::Text("SSAO TIME: %f", ssao_time);
+            ImGui::Text("BLOOM TIME: %f", bloom_time);
+            ImGui::Text("KUWAHARA TIME: %f", kuwahara_time);
+            ImGui::Text("PP TIME: %f", pp_time);
             int vertex_count = 0;
             int index_count = 0;
             int light_count = 0;
@@ -4505,11 +4517,21 @@ void _frame() {
         }
     }
 
+    float time = stm_now();
     render_offscreen_pass();
+    offscreen_time = stm_ms(stm_since(time));
+    time = stm_now();
     render_ssao_pass();
+    ssao_time = stm_ms(stm_since(time));
+    time = stm_now();
     render_bloom_pass();
+    bloom_time = stm_ms(stm_since(time));
+    time = stm_now();
     if (ENABLE_KUWAHARA) render_kw_pass();
+    kuwahara_time = stm_ms(stm_since(time));
+    time = stm_now();
     render_pp_pass();
+    pp_time = stm_ms(stm_since(time));
 
     // input
     if (state.editor_open && state.rmb) {
