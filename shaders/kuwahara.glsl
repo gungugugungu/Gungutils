@@ -34,31 +34,29 @@ layout(binding = 0) uniform st_params {
 in vec2 uv;
 out vec4 frag_color;
 
-float luminance(vec3 c) {
-    return dot(c, vec3(0.299, 0.587, 0.114));
-}
-
 void main() {
     // Sobel operator for gradient
-    float Ix =
-    -1.0 * luminance(texture(input_tex, uv + vec2(-1.0, -1.0) * texel_size).rgb) +
-    -2.0 * luminance(texture(input_tex, uv + vec2(-1.0,  0.0) * texel_size).rgb) +
-    -1.0 * luminance(texture(input_tex, uv + vec2(-1.0,  1.0) * texel_size).rgb) +
-    1.0 * luminance(texture(input_tex, uv + vec2( 1.0, -1.0) * texel_size).rgb) +
-    2.0 * luminance(texture(input_tex, uv + vec2( 1.0,  0.0) * texel_size).rgb) +
-    1.0 * luminance(texture(input_tex, uv + vec2( 1.0,  1.0) * texel_size).rgb);
+    vec3 Ix = (
+    -1.0 * texture(input_tex, uv + vec2(-1.0, -1.0) * texel_size).rgb +
+    -2.0 * texture(input_tex, uv + vec2(-1.0,  0.0) * texel_size).rgb +
+    -1.0 * texture(input_tex, uv + vec2(-1.0,  1.0) * texel_size).rgb +
+    1.0 * texture(input_tex, uv + vec2( 1.0, -1.0) * texel_size).rgb +
+    2.0 * texture(input_tex, uv + vec2( 1.0,  0.0) * texel_size).rgb +
+    1.0 * texture(input_tex, uv + vec2( 1.0,  1.0) * texel_size).rgb
+    ) / 4.0;
 
-    float Iy =
-    -1.0 * luminance(texture(input_tex, uv + vec2(-1.0, -1.0) * texel_size).rgb) +
-    -2.0 * luminance(texture(input_tex, uv + vec2( 0.0, -1.0) * texel_size).rgb) +
-    -1.0 * luminance(texture(input_tex, uv + vec2( 1.0, -1.0) * texel_size).rgb) +
-    1.0 * luminance(texture(input_tex, uv + vec2(-1.0,  1.0) * texel_size).rgb) +
-    2.0 * luminance(texture(input_tex, uv + vec2( 0.0,  1.0) * texel_size).rgb) +
-    1.0 * luminance(texture(input_tex, uv + vec2( 1.0,  1.0) * texel_size).rgb);
+    vec3 Iy = (
+    -1.0 * texture(input_tex, uv + vec2(-1.0, -1.0) * texel_size).rgb +
+    -2.0 * texture(input_tex, uv + vec2( 0.0, -1.0) * texel_size).rgb +
+    -1.0 * texture(input_tex, uv + vec2( 1.0, -1.0) * texel_size).rgb +
+    1.0 * texture(input_tex, uv + vec2(-1.0,  1.0) * texel_size).rgb +
+    2.0 * texture(input_tex, uv + vec2( 0.0,  1.0) * texel_size).rgb +
+    1.0 * texture(input_tex, uv + vec2( 1.0,  1.0) * texel_size).rgb
+    ) / 4.0;
 
-    float Ix2 = Ix * Ix;
-    float Iy2 = Iy * Iy;
-    float Ixy = Ix * Iy;
+    float Ix2 = dot(Ix, Ix);
+    float Iy2 = dot(Iy, Iy);
+    float Ixy = dot(Ix, Iy);
 
     // R = Ix^2, G = Iy^2, B = Ix*Iy
     frag_color = vec4(Ix2, Iy2, Ixy, 1.0);
@@ -114,11 +112,26 @@ void main() {
     float C = st.g;
     float B = st.b;
 
-    float theta = 0.5 * atan(2.0 * B, A - C);
+    float trace = A + C;
+    float disc = sqrt((A - C) * (A - C) + 4.0 * B * B);
+    float lambda1 = 0.5 * (trace + disc);
+    float lambda2 = 0.5 * (trace - disc);
+    float aniso = (lambda1 + lambda2 > 0.0) ? (lambda1 - lambda2) / (lambda1 + lambda2) : 0.0;
 
-    float cos_t = cos(-theta);
-    float sin_t = sin(-theta);
-    float inv_aniso = 0.5;
+    float alpha = 1.0;
+    float major = radius * clamp((alpha + aniso) / alpha, 0.1, 2.0);
+    float minor = radius * clamp(alpha / (alpha + aniso), 0.1, 2.0);
+
+    float theta = 0.5 * atan(2.0 * B, A - C);
+    float cos_theta = cos(theta);
+    float sin_theta = sin(theta);
+    float cos_phi = -sin_theta;
+    float sin_phi = cos_theta;
+
+    float max_x_sq = major * major * cos_phi * cos_phi + minor * minor * sin_phi * sin_phi;
+    float max_y_sq = major * major * sin_phi * sin_phi + minor * minor * cos_phi * cos_phi;
+    int kr_x = int(ceil(sqrt(max_x_sq)));
+    int kr_y = int(ceil(sqrt(max_y_sq)));
 
     vec3 sum[NUM_SECTORS];
     vec3 sum_sq[NUM_SECTORS];
@@ -130,23 +143,21 @@ void main() {
         w_sum[s] = 0.0;
     }
 
-    int kr = int(ceil(radius));
-    float r_sq = radius * radius;
-    float inv_r_sq = 1.0 / r_sq;
+    for (int y = -kr_y; y <= kr_y; y++) {
+        for (int x = -kr_x; x <= kr_x; x++) {
+            vec2 v = vec2(
+            (0.5 / major) * (cos_phi * float(x) - sin_phi * float(y)),
+            (0.5 / minor) * (sin_phi * float(x) + cos_phi * float(y))
+            );
 
-    for (int y = -kr; y <= kr; y++) {
-        for (int x = -kr; x <= kr; x++) {
-            float rx = (float(x) * cos_t - float(y) * sin_t) * inv_aniso;
-            float ry = float(x) * sin_t + float(y) * cos_t;
+            float dist_sq = dot(v, v);
+            if (dist_sq > 0.25) continue;
 
-            float dist_sq = rx * rx + ry * ry;
-            if (dist_sq > r_sq) continue;
-
-            float t_sq = dist_sq * inv_r_sq;
+            float t_sq = 4.0 * dist_sq;
             float temp = 1.0 - t_sq;
-            float weight = temp * temp * sharpness;
+            float weight = pow(temp, sharpness);
 
-            float angle = atan(ry, rx);
+            float angle = atan(v.y, v.x);
             int sector = int(floor((angle + PI) * INV_PI * 0.5 * float(NUM_SECTORS))) & 7;
 
             vec3 color = texture(input_tex, uv + vec2(float(x), float(y)) * texel_size).rgb;
