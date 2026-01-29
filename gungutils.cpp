@@ -294,6 +294,14 @@ void init_blur_filter() {
     blur_pip = sg_make_pipeline(&blur_pip_desc);
 }
 
+sg_view blur_temp_att_view = {SG_INVALID_ID};
+sg_view blur_temp_tex_view = {SG_INVALID_ID};
+sg_view blur_input_att_view = {SG_INVALID_ID};
+sg_view blur_input_tex_view = {SG_INVALID_ID};
+sg_image blur_temp_img = {SG_INVALID_ID};
+int blur_last_width = 0;
+int blur_last_height = 0;
+
 void blur_image(sg_image input_image, float strength, int passes) {
     struct {
         float strength;
@@ -304,30 +312,42 @@ void blur_image(sg_image input_image, float strength, int passes) {
     int width = sg_query_image_width(input_image);
     int height = sg_query_image_height(input_image);
 
-    sg_image_desc temp_img_desc = {};
-    temp_img_desc.width = width;
-    temp_img_desc.height = height;
-    temp_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
-    temp_img_desc.sample_count = 1;
-    temp_img_desc.usage.color_attachment = true;
-    temp_img_desc.label = "blur-temp-target";
-    sg_image temp_img = sg_make_image(&temp_img_desc);
+    if (width != blur_last_width || height != blur_last_height || blur_temp_img.id == SG_INVALID_ID) {
+        if (blur_temp_att_view.id != SG_INVALID_ID) sg_destroy_view(blur_temp_att_view);
+        if (blur_temp_tex_view.id != SG_INVALID_ID) sg_destroy_view(blur_temp_tex_view);
+        if (blur_temp_img.id != SG_INVALID_ID) sg_destroy_image(blur_temp_img);
 
-    sg_view_desc temp_att_desc = {};
-    temp_att_desc.color_attachment.image = temp_img;
-    sg_view temp_att_view = sg_make_view(&temp_att_desc);
+        sg_image_desc temp_img_desc = {};
+        temp_img_desc.width = width;
+        temp_img_desc.height = height;
+        temp_img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+        temp_img_desc.sample_count = 1;
+        temp_img_desc.usage.color_attachment = true;
+        temp_img_desc.label = "blur-temp-target";
+        blur_temp_img = sg_make_image(&temp_img_desc);
 
-    sg_view_desc temp_tex_desc = {};
-    temp_tex_desc.texture.image = temp_img;
-    sg_view temp_tex_view = sg_make_view(&temp_tex_desc);
+        sg_view_desc temp_att_desc = {};
+        temp_att_desc.color_attachment.image = blur_temp_img;
+        blur_temp_att_view = sg_make_view(&temp_att_desc);
+
+        sg_view_desc temp_tex_desc = {};
+        temp_tex_desc.texture.image = blur_temp_img;
+        blur_temp_tex_view = sg_make_view(&temp_tex_desc);
+
+        blur_last_width = width;
+        blur_last_height = height;
+    }
+
+    if (blur_input_att_view.id != SG_INVALID_ID) sg_destroy_view(blur_input_att_view);
+    if (blur_input_tex_view.id != SG_INVALID_ID) sg_destroy_view(blur_input_tex_view);
 
     sg_view_desc input_att_desc = {};
     input_att_desc.color_attachment.image = input_image;
-    sg_view input_att_view = sg_make_view(&input_att_desc);
+    blur_input_att_view = sg_make_view(&input_att_desc);
 
     sg_view_desc input_tex_desc = {};
     input_tex_desc.texture.image = input_image;
-    sg_view input_tex_view = sg_make_view(&input_tex_desc);
+    blur_input_tex_view = sg_make_view(&input_tex_desc);
 
     sg_sampler_desc blur_smp_desc = {};
     blur_smp_desc.min_filter = SG_FILTER_LINEAR;
@@ -342,36 +362,39 @@ void blur_image(sg_image input_image, float strength, int passes) {
 
     sg_bindings binds_input_to_temp = {};
     binds_input_to_temp.vertex_buffers[0] = {.id = SG_INVALID_ID};
-    binds_input_to_temp.views[0] = input_tex_view;
+    binds_input_to_temp.views[0] = blur_input_tex_view;
     binds_input_to_temp.samplers[0] = blur_smp;
 
     sg_bindings binds_temp_to_input = {};
     binds_temp_to_input.vertex_buffers[0] = {.id = SG_INVALID_ID};
-    binds_temp_to_input.views[0] = temp_tex_view;
+    binds_temp_to_input.views[0] = blur_temp_tex_view;
     binds_temp_to_input.samplers[0] = blur_smp;
 
-    if (temp_att_view.id != SG_INVALID_ID && temp_tex_view.id != SG_INVALID_ID && input_att_view.id != SG_INVALID_ID && input_tex_view.id != SG_INVALID_ID && blur_pip.id != SG_INVALID_ID && temp_img.id != SG_INVALID_ID && blur_smp.id != SG_INVALID_ID) {
+    if (blur_temp_att_view.id != SG_INVALID_ID && blur_temp_tex_view.id != SG_INVALID_ID &&
+        blur_input_att_view.id != SG_INVALID_ID && blur_input_tex_view.id != SG_INVALID_ID &&
+        blur_pip.id != SG_INVALID_ID && blur_temp_img.id != SG_INVALID_ID && blur_smp.id != SG_INVALID_ID) {
+
         for (int i = 0; i < passes; i++) {
             sg_pass horiz_pass = {};
             horiz_pass.action = blur_pass_action;
-            horiz_pass.attachments.colors[0] = temp_att_view;
+            horiz_pass.attachments.colors[0] = blur_temp_att_view;
             horiz_pass.label = "blur-horizontal";
             sg_begin_pass(&horiz_pass);
             sg_apply_pipeline(blur_pip);
             sg_apply_bindings(&binds_input_to_temp);
-            blur_params.type = 0; // horizontal
+            blur_params.type = 0;
             sg_apply_uniforms(2, SG_RANGE(blur_params));
             sg_draw(0, 3, 1);
             sg_end_pass();
 
             sg_pass vert_pass = {};
             vert_pass.action = blur_pass_action;
-            vert_pass.attachments.colors[0] = input_att_view;
+            vert_pass.attachments.colors[0] = blur_input_att_view;
             vert_pass.label = "blur-vertical";
             sg_begin_pass(&vert_pass);
             sg_apply_pipeline(blur_pip);
             sg_apply_bindings(&binds_temp_to_input);
-            blur_params.type = 1; // vertical
+            blur_params.type = 1;
             sg_apply_uniforms(2, SG_RANGE(blur_params));
             sg_draw(0, 3, 1);
             sg_end_pass();
@@ -380,12 +403,7 @@ void blur_image(sg_image input_image, float strength, int passes) {
         eprint("invalid buffers during image blur");
     }
 
-    sg_destroy_view(temp_att_view);
-    sg_destroy_view(temp_tex_view);
-    sg_destroy_view(input_att_view);
-    sg_destroy_view(input_tex_view);
     sg_destroy_sampler(blur_smp);
-    sg_destroy_image(temp_img);
 }
 
 void init_bloom() {
@@ -620,7 +638,7 @@ void render_kw_pass() {
     sg_draw(0, 3, 1);
     sg_end_pass();
 
-    blur_image(kw_output_1, 1.0f, 2);
+    blur_image(kw_output_1, 1.0f, 1);
 
     sg_pass_action pass_2_action = {};
     pass_2_action.colors[0].load_action = SG_LOADACTION_CLEAR;
@@ -1765,7 +1783,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.025f, 10);
+    blur_image(bloom_img, 1.025f, 5);
 }
 
 void render_ssao_pass() {
@@ -4355,6 +4373,7 @@ uint64_t last_frame_time;
 double target_frame_time;
 
 void _frame() {
+    float subtime = stm_now();
     Time_BeginFrame(time_state);
     time_state.dt *= time_state.speed_multiplier;
     int w_width, w_height;
@@ -4517,6 +4536,9 @@ void _frame() {
         }
     }
 
+    cout << "Pre-render: " << stm_ms(stm_since(subtime)) << endl;
+    subtime = stm_now();
+
     float time = stm_now();
     render_offscreen_pass();
     offscreen_time = stm_ms(stm_since(time));
@@ -4532,6 +4554,9 @@ void _frame() {
     time = stm_now();
     render_pp_pass();
     pp_time = stm_ms(stm_since(time));
+
+    cout << "Render: " << stm_ms(stm_since(subtime)) << endl;
+    subtime = stm_now();
 
     // input
     if (state.editor_open && state.rmb) {
@@ -4555,6 +4580,8 @@ void _frame() {
     }
 
     sg_commit();
+
+    cout << "Post-render: " << stm_ms(stm_since(subtime)) << endl;
 }
 
 void _event(SDL_Event* e) {
@@ -4858,6 +4885,7 @@ int main(int argc, char* argv[]) {
             first_frame = false;
         }
 
+        float timmy = stm_now();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             _event(&e);
@@ -4865,7 +4893,13 @@ int main(int argc, char* argv[]) {
         }
         if (!state.editor_open) frame_callback();
         _frame();
+
+        float before_finish = stm_now();
+        glFinish();
+        cout << "glFinish time: " << stm_ms(stm_since(before_finish)) << endl;
+        cout << "Frametime: " << stm_ms(stm_since(timmy)) << endl;
         SDL_GL_SwapWindow(state.win);
+        cout << "Frametime after SDL_GL_SwapWindow: " << stm_ms(stm_since(timmy)) << endl;
     }
 
     if (shadow_pip.id != SG_INVALID_ID) sg_destroy_pipeline(shadow_pip);
