@@ -96,7 +96,7 @@ int all_index_count = 0;
 
 stbtt_fontinfo font;
 
-bool ENABLE_KUWAHARA = true;
+bool ENABLE_KUWAHARA = false;
 sg_image shadow_depth_img = {SG_INVALID_ID};
 sg_view shadow_depth_att_view = {SG_INVALID_ID};
 sg_view shadow_depth_tex_view = {SG_INVALID_ID};
