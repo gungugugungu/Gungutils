@@ -52,25 +52,35 @@ layout(binding = 0) uniform pp_params {
 in vec2 uv;
 out vec4 frag_color;
 
-vec2 Panini_Generic(vec2 view_pos, float d) {
-    float view_dist = 1.0 + d;
-    float view_hyp_sq = view_pos.x * view_pos.x + view_dist * view_dist;
-    float isect_D = view_pos.x * d;
-    float isect_discrim = view_hyp_sq - isect_D * isect_D;
-    float cyl_dist_minus_d = (-isect_D * view_pos.x + view_dist * sqrt(isect_discrim)) / view_hyp_sq;
-    float cyl_dist = cyl_dist_minus_d + d;
-    vec2 cyl_pos = view_pos * (cyl_dist / view_dist);
-    return cyl_pos / (cyl_dist - d);
+vec2 InvPanini(vec2 p, float d) {
+    float k = 1.0 + d;
+    float S = p.x;
+
+    float R   = sqrt(S * S + k * k);
+    float psi = atan(-k, S);
+    float theta = psi + acos(clamp(-S * d / R, -1.0, 1.0));
+
+    float cos_theta = cos(theta);
+
+    return vec2(tan(theta), p.y * (cos_theta + d) / k);
 }
 
 void main() {
     vec2 sample_uv = uv;
     if (panini_d > 0.0) {
+        float d = panini_d;
+        float k = 1.0 + d;
         vec2 ndc = 2.0 * uv - 1.0;
-        vec2 view_pos = ndc * vec2(panini_scale_h, panini_scale_v);
-        vec2 proj_pos = Panini_Generic(view_pos, panini_d);
-        vec2 proj_ndc = proj_pos / vec2(panini_scale_h, panini_scale_v);
-        sample_uv = proj_ndc * 0.5 + 0.5;
+
+        float h_len = sqrt(1.0 + panini_scale_h * panini_scale_h);
+        float panini_display_h = k * panini_scale_h / (1.0 + d * h_len);
+
+        float panini_display_v = panini_scale_v;
+
+        vec2 panini_pos = ndc * vec2(panini_display_h, panini_display_v);
+        vec2 rect_pos   = InvPanini(panini_pos, d);
+
+        sample_uv = (rect_pos / vec2(panini_scale_h, panini_scale_v)) * 0.5 + 0.5;
     }
 
     vec3 color = texture(texture2D, sample_uv).rgb;

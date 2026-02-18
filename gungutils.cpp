@@ -666,9 +666,9 @@ void update_panini_projection_stuff() {
     int w_width, w_height;
     SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
     float aspect = static_cast<float>(w_width) / static_cast<float>(w_height);
-    float vfov_rad = state.fov * HMM_PI32 / 180.0f;
-    post_state.uniforms.panini_scale_v = tanf(vfov_rad / 2.0f);
-    post_state.uniforms.panini_scale_h = aspect * post_state.uniforms.panini_scale_v;
+    float hfov_rad = state.fov * HMM_PI32 / 180.0f;
+    post_state.uniforms.panini_scale_h = tanf(hfov_rad / 2.0f);
+    post_state.uniforms.panini_scale_v = post_state.uniforms.panini_scale_h / aspect;
 }
 
 void init_post_processing() {
