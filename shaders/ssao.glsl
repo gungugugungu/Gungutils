@@ -116,7 +116,7 @@ vec3 sample_noise(vec2 uv) {
 void main() {
     float d = texture(depth2D, uv).r;
 
-    if (d >= 0.9999) {
+    if (d <= 0.0001) {
         ao_output = vec4(1.0);
         return;
     }

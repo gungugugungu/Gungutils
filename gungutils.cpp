@@ -662,6 +662,15 @@ void render_kw_pass() {
     sg_end_pass();
 }
 
+void update_panini_projection_stuff() {
+    int w_width, w_height;
+    SDL_GetWindowSizeInPixels(state.win, &w_width, &w_height);
+    float aspect = static_cast<float>(w_width) / static_cast<float>(w_height);
+    float vfov_rad = state.fov * HMM_PI32 / 180.0f;
+    post_state.uniforms.panini_scale_v = tanf(vfov_rad / 2.0f);
+    post_state.uniforms.panini_scale_h = aspect * post_state.uniforms.panini_scale_v;
+}
+
 void init_post_processing() {
     int width, height;
     SDL_GetWindowSizeInPixels(state.win, &width, &height);
@@ -726,6 +735,9 @@ void init_post_processing() {
     post_state.uniforms.contrast = 1.0f;
     post_state.uniforms.brightness = 0.0f;
     post_state.uniforms.saturation = 1.0f;
+
+    update_panini_projection_stuff();
+    post_state.uniforms.panini_d = 0.0f;
 }
 
 void fetch_callback(const sfetch_response_t* response);
@@ -896,8 +908,8 @@ void prepare_mesh_buffers(Object& object) {
 
         material->base_color_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
         material->base_color_sampler_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-        material->base_color_sampler_desc.min_filter = SG_FILTER_LINEAR;
-        material->base_color_sampler_desc.mag_filter = SG_FILTER_LINEAR;
+        material->base_color_sampler_desc.min_filter = SG_FILTER_NEAREST;
+        material->base_color_sampler_desc.mag_filter = SG_FILTER_NEAREST;
         material->base_color_sampler = sg_make_sampler(&material->base_color_sampler_desc);
 
         material->metallic_roughness_sampler_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
@@ -1783,7 +1795,7 @@ void render_bloom_pass() {
 
     sg_end_pass();
 
-    blur_image(bloom_img, 1.025f, 5);
+    blur_image(bloom_img, 1.0f, 3);
 }
 
 void render_ssao_pass() {
@@ -1878,6 +1890,8 @@ void render_pp_pass() {
     pass.action = swapchain_pass_action;
     pass.swapchain = swapchain;
     pass.label = "swapchain-pass";
+
+    update_panini_projection_stuff();
 
     sg_begin_pass(&pass);
 
@@ -3987,6 +4001,7 @@ void render_editor() {
             ImGui::SliderFloat("VIGNETTE STRENGTH", &post_state.uniforms.vignette_strength, 0.0f, 10.0f, "%.1f");
             ImGui::SliderFloat("VIGNETTE RADIUS", &post_state.uniforms.vignette_radius, 0.0f, 10.0f, "%.1f");
             ImGui::ColorEdit3("TINT", &post_state.uniforms.color_tint.X);
+            ImGui::SliderFloat("PANINI DISTORTION", &post_state.uniforms.panini_d, 0.0f, 2.0f, "%.01f");
             ImGui::Separator();
             ImGui::Text("BLOOM TEXTURE:");
             sg_view_desc bloom_preview_desc = {};

@@ -44,14 +44,37 @@ layout(binding = 0) uniform pp_params {
     float brightness;
     float saturation;
     float time;
+    float panini_d;
+    float panini_scale_h;
+    float panini_scale_v;
 };
 
 in vec2 uv;
 out vec4 frag_color;
 
+vec2 Panini_Generic(vec2 view_pos, float d) {
+    float view_dist = 1.0 + d;
+    float view_hyp_sq = view_pos.x * view_pos.x + view_dist * view_dist;
+    float isect_D = view_pos.x * d;
+    float isect_discrim = view_hyp_sq - isect_D * isect_D;
+    float cyl_dist_minus_d = (-isect_D * view_pos.x + view_dist * sqrt(isect_discrim)) / view_hyp_sq;
+    float cyl_dist = cyl_dist_minus_d + d;
+    vec2 cyl_pos = view_pos * (cyl_dist / view_dist);
+    return cyl_pos / (cyl_dist - d);
+}
+
 void main() {
-    vec3 color = texture(texture2D, uv).rgb;
-    float d = texture(depth2D, uv).r;
+    vec2 sample_uv = uv;
+    if (panini_d > 0.0) {
+        vec2 ndc = 2.0 * uv - 1.0;
+        vec2 view_pos = ndc * vec2(panini_scale_h, panini_scale_v);
+        vec2 proj_pos = Panini_Generic(view_pos, panini_d);
+        vec2 proj_ndc = proj_pos / vec2(panini_scale_h, panini_scale_v);
+        sample_uv = proj_ndc * 0.5 + 0.5;
+    }
+
+    vec3 color = texture(texture2D, sample_uv).rgb;
+    float d = texture(depth2D, sample_uv).r;
 
     if (d >= 0.9999) {
         frag_color = vec4(color, 1.0);
@@ -72,8 +95,8 @@ void main() {
     float vignette_factor = max(0.0, 1.0 - vignette_strength * pow(norm_dist, vignette_radius));
     final_color *= vignette_factor;
 
-    vec3 bloom_color = texture(bloom2D, uv).xyz;
-    vec3 ao_color = texture(ao2D, uv).xyz;
+    vec3 bloom_color = texture(bloom2D, sample_uv).xyz;
+    vec3 ao_color = texture(ao2D, sample_uv).xyz;
     ao_color = vec3(abs(1-ao_color.r));
 
     frag_color = vec4(final_color + bloom_color - ao_color, 1.0);
