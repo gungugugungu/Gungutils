@@ -4388,7 +4388,6 @@ uint64_t last_frame_time;
 double target_frame_time;
 
 void _frame() {
-    float subtime = stm_now();
     Time_BeginFrame(time_state);
     time_state.dt *= time_state.speed_multiplier;
     int w_width, w_height;
@@ -4551,9 +4550,6 @@ void _frame() {
         }
     }
 
-    cout << "Pre-render: " << stm_ms(stm_since(subtime)) << endl;
-    subtime = stm_now();
-
     float time = stm_now();
     render_offscreen_pass();
     offscreen_time = stm_ms(stm_since(time));
@@ -4569,9 +4565,6 @@ void _frame() {
     time = stm_now();
     render_pp_pass();
     pp_time = stm_ms(stm_since(time));
-
-    cout << "Render: " << stm_ms(stm_since(subtime)) << endl;
-    subtime = stm_now();
 
     // input
     if (state.editor_open && state.rmb) {
@@ -4595,8 +4588,6 @@ void _frame() {
     }
 
     sg_commit();
-
-    cout << "Post-render: " << stm_ms(stm_since(subtime)) << endl;
 }
 
 void _event(SDL_Event* e) {
@@ -4900,7 +4891,6 @@ int main(int argc, char* argv[]) {
             first_frame = false;
         }
 
-        float timmy = stm_now();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             _event(&e);
@@ -4909,12 +4899,8 @@ int main(int argc, char* argv[]) {
         if (!state.editor_open) frame_callback();
         _frame();
 
-        float before_finish = stm_now();
         glFinish();
-        cout << "glFinish time: " << stm_ms(stm_since(before_finish)) << endl;
-        cout << "Frametime: " << stm_ms(stm_since(timmy)) << endl;
         SDL_GL_SwapWindow(state.win);
-        cout << "Frametime after SDL_GL_SwapWindow: " << stm_ms(stm_since(timmy)) << endl;
     }
 
     if (shadow_pip.id != SG_INVALID_ID) sg_destroy_pipeline(shadow_pip);
