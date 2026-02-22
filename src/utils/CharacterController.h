@@ -23,7 +23,10 @@ public:
         transform = reactphysics3d::Transform::identity();
         body = world->createRigidBody(transform);
         reactphysics3d::CapsuleShape* capsuleShape = physicsCommon.createCapsuleShape(collider_width, collider_height);
-        body->addCollider(capsuleShape, transform);
+        reactphysics3d::Collider* collider = body->addCollider(capsuleShape, transform);
+        collider->getMaterial().setBounciness(0.0f);
+        collider->getMaterial().setFrictionCoefficient(1.0f);
+        collider->getMaterial().setMassDensity(1.0f);
         body->setType(reactphysics3d::BodyType::DYNAMIC);
         body->enableGravity(true);
         body->setLinearDamping(0.0f);
@@ -61,6 +64,12 @@ public:
             reactphysics3d::Ray ray(start, end);
             world->raycast(ray, &callback);
             on_ground = callback.hit;
+            if (on_ground) {
+                auto vel = body->getLinearVelocity();
+                if (vel.y < 0.0f) {
+                    body->setLinearVelocity(reactphysics3d::Vector3(vel.x, 0.0f, vel.z));
+                }
+            }
         }
     }
 

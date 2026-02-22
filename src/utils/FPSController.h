@@ -11,26 +11,28 @@ public:
     float relative_camera_height;
 
     void update_input(std::map<SDL_Keycode, bool>& inputs,
-        float mouse_dx,
-        float mouse_dy,
-        HMM_Vec3* camera_pos,
-        HMM_Vec3* camera_front,
-        float* camera_yaw,
-        float* camera_pitch) {
+    float mouse_dx,
+    float mouse_dy,
+    HMM_Vec3* camera_pos,
+    HMM_Vec3* camera_front,
+    float* camera_yaw,
+    float* camera_pitch) {
 
         update();
 
-        *camera_yaw -= mouse_dx * mouse_sensitivity;
+        *camera_yaw += mouse_dx * mouse_sensitivity;
         *camera_pitch -= mouse_dy * mouse_sensitivity;
 
-        float pitch_limit = HMM_PI32 / 2.0f - 0.01f;
-        if (*camera_pitch > pitch_limit) *camera_pitch = pitch_limit;
-        if (*camera_pitch < -pitch_limit) *camera_pitch = -pitch_limit;
+        if (*camera_pitch > 89.0f) *camera_pitch = 89.0f;
+        if (*camera_pitch < -89.0f) *camera_pitch = -89.0f;
 
-        *camera_yaw = std::fmod(*camera_yaw, 2.0f * HMM_PI32);
-        if (*camera_yaw < 0.0f) *camera_yaw += 2.0f * HMM_PI32;
+        *camera_yaw = std::fmod(*camera_yaw, 360.0f);
+        if (*camera_yaw < 0.0f) *camera_yaw += 360.0f;
 
-        orientation = reactphysics3d::Quaternion::fromEulerAngles(0.0f, *camera_yaw, 0.0f);
+        float yaw_rad = *camera_yaw * (HMM_PI32 / 180.0f);
+        float pitch_rad = *camera_pitch * (HMM_PI32 / 180.0f);
+
+        orientation = reactphysics3d::Quaternion::fromEulerAngles(0.0f, -yaw_rad, 0.0f);
 
         HMM_Vec3 direction = {0.0f, 0.0f, 0.0f};
         if (inputs[SDLK_W] == true) direction.X += 1.0f;
@@ -46,17 +48,18 @@ public:
 
         bool is_crouching = (inputs.find(SDLK_C) != inputs.end() && inputs.at(SDLK_C));
         if (can_crouch && is_crouching) {
-            speed = 5.0f;  // TODO: add crouching
+            speed = 5.0f;
         } else {
             speed = 10.0f;
         }
+
         camera_pos->X = body->getTransform().getPosition().x;
         camera_pos->Y = body->getTransform().getPosition().y + relative_camera_height;
         camera_pos->Z = body->getTransform().getPosition().z;
-        // NOTE: vec3 direction is reused but like who cares, it isn't used after this anyways
-        direction.X = cosf(-*camera_yaw) * cosf(*camera_pitch);
-        direction.Y = sinf(*camera_pitch);
-        direction.Z = sinf(-*camera_yaw) * cosf(*camera_pitch);
+
+        direction.X = cosf(-yaw_rad) * cosf(pitch_rad);
+        direction.Y = sinf(pitch_rad);
+        direction.Z = sinf(-yaw_rad) * cosf(pitch_rad);
         HMM_Vec3 camera_front_result = HMM_NormV3(direction);
         camera_front->X = camera_front_result.X;
         camera_front->Y = camera_front_result.Y;

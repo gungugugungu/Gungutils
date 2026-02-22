@@ -4221,7 +4221,7 @@ void _init() {
     state.camera_pos = HMM_V3(0.0f, 0.0f, 0.0f);
     state.camera_front = HMM_V3(0.0f, 0.0f, -1.0f);
     state.camera_up = HMM_V3(0.0f, 1.0f, 0.0f);
-    state.yaw = -90.0f;
+    state.yaw = 0.0f;
     state.pitch = 0.0f;
     state.last_time = stm_now();
     state.fov = 75.0f;
