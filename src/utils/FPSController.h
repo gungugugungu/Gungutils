@@ -48,9 +48,7 @@ public:
 
         bool is_crouching = (inputs.find(SDLK_C) != inputs.end() && inputs.at(SDLK_C));
         if (can_crouch && is_crouching) {
-            speed = 5.0f;
-        } else {
-            speed = 10.0f;
+            // TODO: implement crouching, properly
         }
 
         camera_pos->X = body->getTransform().getPosition().x;
